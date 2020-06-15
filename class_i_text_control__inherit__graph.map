@@ -1,0 +1,12 @@
+<map id="ITextControl" name="ITextControl">
+<area shape="rect" id="node3" href="$class_i_b_text_control.html" title="A control to display text using a monospace bitmap font. " alt="" coords="317,5,422,32"/>
+<area shape="rect" id="node4" href="$class_i_caption_control.html" title="A control to display the textual representation of a parameter. " alt="" coords="309,56,429,83"/>
+<area shape="rect" id="node5" href="$class_i_editable_text_control.html" title="A basic control to display some editable text. " alt="" coords="296,107,443,133"/>
+<area shape="rect" id="node6" href="$class_i_r_t_text_control.html" title="A control to display some text in the UI, driven by values in the RT audio thread. " alt="" coords="268,157,471,184"/>
+<area shape="rect" id="node7" href="$class_i_text_toggle_control.html" title="A control to toggle between two text strings on click. " alt="" coords="301,208,437,235"/>
+<area shape="rect" id="node8" href="$class_i_u_r_l_control.html" title="A control to show a clickable URL, that changes colour after clicking. " alt="" coords="321,259,417,285"/>
+<area shape="rect" id="node9" href="$class_i_v_label_control.html" title="A vector label control that can display text with a shadow. " alt="" coords="312,309,427,336"/>
+<area shape="rect" id="node10" href="$class_place_holder.html" title="A control to use as a placeholder during development. " alt="" coords="320,360,419,387"/>
+<area shape="rect" id="node11" href="$class_test_gestures_control.html" title="Control to test multi gesture recognizers. " alt="" coords="294,411,445,437"/>
+<area shape="rect" id="node2" href="$class_i_control.html" title="The lowest level base class of an IGraphics control. " alt="" coords="5,208,76,235"/>
+</map>

@@ -1,0 +1,4 @@
+<map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
+<area shape="rect" id="node1" href="$class_i_sender.html" title="ISender\&lt; MAXNC, QUEUE\l_SIZE, std::array\&lt; float,\l MAXBUF \&gt; \&gt;" alt="" coords="5,5,192,61"/>
+<area shape="rect" id="node2" href="$class_i_buffer_sender.html" title="IBufferSender is a utility class which can be used to defer buffer data for sending to the GUI..." alt="" coords="240,13,427,54"/>
+</map>

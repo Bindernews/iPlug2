@@ -1,0 +1,4 @@
+<map id="IVDiskPresetManagerControl" name="IVDiskPresetManagerControl">
+<area shape="rect" id="node2" href="$class_i_dir_browse_control_base.html" title="An abstract IControl base class that you can inherit from in order to make a control that pops up a m..." alt="" coords="24,80,191,107"/>
+<area shape="rect" id="node3" href="$class_i_control.html" title="The lowest level base class of an IGraphics control. " alt="" coords="72,5,143,32"/>
+</map>
