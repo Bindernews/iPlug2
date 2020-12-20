@@ -79,6 +79,18 @@ static float GetLineCrossing(IVec2 p0, IVec2 p1, IVec2 p2, IVec2 p3)
   return -(d.x * b.y - d.y * b.x) / m;
 }
 
+static void CartToPolar(float x, float y, float& angle, float& length)
+{
+  angle = std::atan2f(y, x);
+  length = std::sqrtf((x * x) + (y * y));
+}
+
+static void PolarToCart(float angle, float length, float& x, float& y)
+{
+  x = std::cosf(angle) * length;
+  y = std::sinf(angle) * length;
+}
+
 END_IGRAPHICS_NAMESPACE
 END_IPLUG_NAMESPACE
 

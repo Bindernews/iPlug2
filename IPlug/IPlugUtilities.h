@@ -53,6 +53,29 @@ T Clip(T x, T lo, T hi) { return std::min(std::max(x, lo), hi); }
 template <typename T>
 inline T Lerp(T a, T b, T f) { return ((b - a) * f + a); }
 
+/** Reverse linear interpolation between values \p a and \p b
+ * @param a Low value
+ * @param b High value
+ * @param f Value between \p a and \p b
+ * @return Value in range 0-1 */
+template<typename T>
+inline T Unlerp(T a, T b, T f) { return ((f - a) / (b - a)); }
+
+template<typename T>
+inline T Wrap(T a, T b, T f)
+{
+  T d = b - a;
+  T m;
+  if (f < a)
+    m = std::ceil((a - f) / d);
+  else if (f > b)
+    m = -std::ceil((f - b) / d);
+  else
+    m = 0;
+  f += d * m;
+  return f;
+}
+
 static inline bool CStringHasContents(const char* str) { return str && str[0] != '\0'; }
 
 #define MAKE_QUOTE(str) #str

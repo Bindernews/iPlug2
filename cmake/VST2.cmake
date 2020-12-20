@@ -1,7 +1,5 @@
 cmake_minimum_required(VERSION 3.11)
 
-set(VST2_SDK "${IPLUG2_DIR}/Dependencies/IPlug/VST2_SDK" CACHE PATH "VST2 SDK directory.")
-
 # Determine VST2 and VST3 directories
 if (WIN32)
   set(fn "VstPlugins")
@@ -24,7 +22,7 @@ iplug2_find_path(VST2_INSTALL_PATH REQUIRED DIR DEFAULT_IDX 0
 set(sdk ${IPLUG2_DIR}/IPlug/VST2)
 add_library(iPlug2_VST2 INTERFACE)
 iplug2_target_add(iPlug2_VST2 INTERFACE
-  INCLUDE ${sdk} ${VST2_SDK}
+  INCLUDE ${sdk} ${IPLUG_DEPS}/VST2_SDK
   SOURCE ${sdk}/IPlugVST2.cpp
   DEFINE "VST2_API" "VST_FORCE_DEPRECATED" "IPLUG_DSP=1"
   LINK iPlug2_Core
@@ -40,11 +38,7 @@ if (OS_LINUX)
   endif()
 endif()
 
-list(APPEND IPLUG2_TARGETS iPlug2_VST2)
-
 function(iplug2_configure_vst2 target)
-  iplug2_target_add(${target} PUBLIC LINK iPlug2_VST2)
-
   if (WIN32)
     set(out_dir "${CMAKE_BINARY_DIR}/${target}")
     set_target_properties(${target} PROPERTIES
@@ -62,21 +56,9 @@ function(iplug2_configure_vst2 target)
     )
     
   elseif (CMAKE_SYSTEM_NAME MATCHES "Darwin")
-    set_target_properties(${target} PROPERTIES
-      BUNDLE TRUE
-      MACOSX_BUNDLE TRUE
-      MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/resources/${PLUG_NAME}-VST2-Info.plist
-      BUNDLE_EXTENSION "vst"
-      PREFIX ""
-      SUFFIX "")
+    # TODO Add MacOS build
 
-    if (CMAKE_GENERATOR STREQUAL "Xcode")
-      set(out_dir "${CMAKE_BINARY_DIR}/$<CONFIG>/${PLUG_NAME}.vst")
-      set(res_dir "")
-    endif()
-
-    add_custom_command(TARGET ${target} POST_BUILD
-      COMMAND ${CMAKE_COMMAND} ARGS "-E" "copy_directory" "${out_dir}" "${install_dir}")
+    set(res_dir "")
 
   elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
     set(out_dir "${CMAKE_BINARY_DIR}/${target}")
