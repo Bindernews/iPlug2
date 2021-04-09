@@ -47,3 +47,5 @@ Podfile.lock
 #.vscode/launch.json
 */*/.vscode/launch.json
 Examples/Build
+Examples/*/EBWebView
+Examples/*/packages

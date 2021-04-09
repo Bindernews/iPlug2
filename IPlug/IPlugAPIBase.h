@@ -181,8 +181,6 @@ public:
 
   /** Called by the API class to create the timer that pumps the parameter/message queues */
   void CreateTimer();
-
-  void OnTimer(Timer& t);
   
 private:
   /** Implementations call into the APIs resize hooks
@@ -209,7 +207,20 @@ private:
   /** \todo */
   virtual void TransmitSysExDataFromProcessor(const SysExData& data) {}
 
-protected:
+  void OnTimer(Timer& t);
+
+  friend class IPlugAPP;
+  friend class IPlugAAX;
+  friend class IPlugVST2;
+  friend class IPlugVST3;
+  friend class IPlugVST3Controller;
+  friend class IPlugVST3Processor;
+  friend class IPlugAU;
+  friend class IPlugAUv3;
+  friend class IPlugWEB;
+  friend class IPlugWAM;
+
+private:
   WDL_String mParamDisplayStr;
   std::unique_ptr<Timer> mTimer;
   

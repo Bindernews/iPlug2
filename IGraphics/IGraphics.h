@@ -356,10 +356,10 @@ public:
    * @param bounds after calling the method this IRECT will be updated with the rectangular region the text will occupy */
   virtual float MeasureText(const IText& text, const char* str, IRECT& bounds) const;
 
-  /** Get the color of a point. On a 1:1 screen this corresponds to a pixel. \todo check this
+  /** Get the color at an X, Y location in the graphics context
    * @param x The X coordinate of the pixel
    * @param y The Y coordinate of the pixel
-   * @return An IColor specifiying the color of the pixel at x,y */
+   * @return An IColor specifiying the color of the pixel at x, y */
   virtual IColor GetPoint(int x, int y)  = 0;
 
   /** Gets a void pointer to underlying drawing context, for the IGraphics backend
@@ -958,7 +958,7 @@ protected:
 
 #pragma mark - Base implementation
 public:
-  IGraphics(IGEditorDelegate& dlg, int w, int h, int fps = 0, float scale = 1.);
+  IGraphics(IGEditorDelegate& dlg, int w, int h, int fps = DEFAULT_FPS, float scale = 1.);
 
   virtual ~IGraphics();
     
@@ -966,8 +966,8 @@ public:
   IGraphics& operator=(const IGraphics&) = delete;
     
   /** Called by the platform IGraphics class when moving to a new screen to set DPI
-   * @param scale The scale of the display, typically 2 on a macOS retina screen */
-  void SetScreenScale(int scale);
+   * @param scale The scale of the screen, typically 2 on a macOS retina screen, or 2 with 200% scaling on windows */
+  void SetScreenScale(float scale);
 
   /** Called by some platform IGraphics classes in order to translate the graphics context, in response to e.g. iOS onscreen keyboard appearing */
   void SetTranslation(float x, float y) { mXTranslation = x; mYTranslation = y; }
@@ -1052,11 +1052,11 @@ public:
    * @return A whole number representing the height of the graphics context in pixels on a 1:1 screen */
   int Height() const { return mHeight; }
 
-  /** Gets the width of the graphics context including scaling (not display scaling!)
+  /** Gets the width of the graphics context including draw scaling
    * @return A whole number representing the width of the graphics context with scaling in pixels on a 1:1 screen */
   int WindowWidth() const { return static_cast<int>(static_cast<float>(mWidth) * mDrawScale); }
 
-  /** Gets the height of the graphics context including scaling (not display scaling!)
+  /** Gets the height of the graphics context including draw scaling
    * @return A whole number representing the height of the graphics context with scaling in pixels on a 1:1 screen */
   int WindowHeight() const { return static_cast<int>(static_cast<float>(mHeight) * mDrawScale); }
 
@@ -1068,13 +1068,17 @@ public:
    * @return The scaling applied to the graphics context */
   float GetDrawScale() const { return mDrawScale; }
 
-  /** Gets the display scaling factor
+  /** Gets the screen/display scaling factor, e.g. 2 for a macOS retina screen, 1.5 on Windows when screen is scaled to 150%
     * @return The scale factor of the display on which this graphics context is currently located */
-  int GetScreenScale() const { return mScreenScale; }
+  float GetScreenScale() const { return mScreenScale; }
 
-  /** Gets the combined screen and display scaling factor
+  /** Gets the screen/display scaling factor, rounded up
+  * @return The scale factor of the screen/display on which this graphics context is currently located */
+  int GetRoundedScreenScale() const { return static_cast<int>(std::ceil(GetScreenScale())); }
+
+  /** Gets the combined draw and screen/display scaling factor
   * @return The draw scale * screen scale */
-  float GetTotalScale() const { return static_cast<float>(mDrawScale * static_cast<float>(mScreenScale)); }
+  float GetTotalScale() const { return mDrawScale * mScreenScale; }
 
   /** Gets the nearest backing pixel aligned rect to the input IRECT
     * @param r The IRECT to snap
@@ -1179,7 +1183,7 @@ public:
 
   /** Returns a scaling factor for resizing parent windows via the host/plugin API
    * @return A scaling factor for resizing parent windows */
-  virtual int GetPlatformWindowScale() const { return 1; }
+  virtual float GetPlatformWindowScale() const { return 1.f; }
 
 private:
   /* NO-OP to create ImGui when IGRAPHICS_IMGUI is defined */
@@ -1220,7 +1224,7 @@ private:
 public:
   /** For all controls, including the "special controls" call a method
    * @param func A std::function to perform on each control */
-  void ForAllControlsFunc(std::function<void(IControl& control)> func);
+  void ForAllControlsFunc(std::function<void(IControl* pControl)> func);
   
   /** For all controls, including the "special controls" call a method
    * @param method The method to call
@@ -1230,7 +1234,7 @@ public:
   
   /** For all standard controls in the main control stack perform a function
    * @param func A std::function to perform on each control */
-  void ForStandardControlsFunc(std::function<void(IControl& control)> func);
+  void ForStandardControlsFunc(std::function<void(IControl* pControl)> func);
   
   /** For all standard controls in the main control stack that are linked to a specific parameter, call a method
    * @param method The method to call
@@ -1242,12 +1246,12 @@ public:
   /** For all standard controls in the main control stack that are linked to a specific parameter, execute a function
    * @param paramIdx The parameter index to match
    * @param func A std::function to perform on each control */
-  void ForControlWithParam(int paramIdx, std::function<void(IControl& control)> func);
+  void ForControlWithParam(int paramIdx, std::function<void(IControl* pControl)> func);
   
   /** For all standard controls in the main control stack that are linked to a group, execute a function
    * @param group CString specificying the goupd name
    * @param func A std::function to perform on each control */
-  void ForControlInGroup(const char* group, std::function<void(IControl& control)> func);
+  void ForControlInGroup(const char* group, std::function<void(IControl* pControl)> func);
   
   /** Attach an IBitmapControl as the lowest IControl in the control stack to be the background for the graphics context
    * @param fileName CString fileName resource id for the bitmap image */
@@ -1764,7 +1768,7 @@ private:
   int mWidth;
   int mHeight;
   int mFPS;
-  int mScreenScale = 1; // the scaling of the display that the UI is currently on e.g. 2 for retina
+  float mScreenScale = 1.f; // the scaling of the display that the UI is currently on e.g. 2 for retina
   float mDrawScale = 1.f; // scale deviation from  default width and height i.e stretching the UI by dragging bottom right hand corner
 
   int mIdleTicks = 0;

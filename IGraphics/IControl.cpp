@@ -231,15 +231,6 @@ bool IControl::IsDirty()
   if (GetAnimationFunction())
     return true;
   
-  if (!mDirty && mAnimationEndActionFuncQueued)
-  {
-    // swapping into tmp var here allows IGraphics::PromptForFile() etc to be used in action func without causing a loop
-    // this was problematic on windows
-    auto func = mAnimationEndActionFuncQueued;
-    mAnimationEndActionFuncQueued = nullptr; 
-    func(this);
-  }
-  
   return mDirty;
 }
 
@@ -432,8 +423,8 @@ void IControl::OnEndAnimation()
   mAnimationFunc = nullptr;
   SetDirty(false);
   
-  if(mAnimationEndActionFunc) // queue for next clean draw
-    mAnimationEndActionFuncQueued = mAnimationEndActionFunc;
+  if(mAnimationEndActionFunc)
+    mAnimationEndActionFunc(this);
 }
 
 void IControl::StartAnimation(int duration)
@@ -731,7 +722,6 @@ ISwitchControlBase::ISwitchControlBase(const IRECT& bounds, int paramIdx, IActio
 : IControl(bounds, paramIdx, aF)
 , mNumStates(numStates)
 {
-  assert(mNumStates > 1);
   mDisabledState.Resize(numStates);
   SetAllStatesDisabled(false);
   mDblAsSingleClick = true;
@@ -748,7 +738,7 @@ void ISwitchControlBase::SetAllStatesDisabled(bool disabled)
 
 void ISwitchControlBase::SetStateDisabled(int stateIdx, bool disabled)
 {
-  if(stateIdx >= 0 && stateIdx < mNumStates)
+  if(stateIdx >= 0 && stateIdx < mNumStates && mDisabledState.GetSize())
     mDisabledState.Get()[stateIdx] = disabled;
   
   SetDirty(false);
@@ -756,7 +746,7 @@ void ISwitchControlBase::SetStateDisabled(int stateIdx, bool disabled)
 
 bool ISwitchControlBase::GetStateDisabled(int stateIdx) const
 {
-  if(stateIdx >= 0 && stateIdx < mNumStates)
+  if(stateIdx >= 0 && stateIdx < mNumStates && mDisabledState.GetSize())
     return mDisabledState.Get()[stateIdx];
   return false;
 }
@@ -843,20 +833,7 @@ void IKnobControlBase::OnMouseDrag(float x, float y, float dX, float dY, const I
   const IParam* pParam = GetParam();
   
   if (pParam && pParam->GetStepped() && pParam->GetStep() > 0)
-  {
-    const double range = pParam->GetRange();
-    
-    if (range > 0.)
-    {
-      double l, h;
-      pParam->GetBounds(l, h);
-
-      v = l + mMouseDragValue * range;
-      v = v - std::fmod(v, pParam->GetStep());
-      v -= l;
-      v /= range;
-    }
-  }
+    v = pParam->ConstrainNormalized(mMouseDragValue);
 
   SetValue(v);
   SetDirty();
@@ -871,19 +848,13 @@ void IKnobControlBase::OnMouseWheel(float x, float y, const IMouseMod& mod, floa
   
   if (pParam && pParam->GetStepped() && pParam->GetStep() > 0)
   {
-    const double range = pParam->GetRange();
-
-    if (range > 0. && d != 0.f)
+    if (d != 0.f)
     {
-      double l, h;
-      pParam->GetBounds(l,h);
-      v = l + GetValue() * range;
       const double step = pParam->GetStep();
+
+      v = pParam->FromNormalized(v);
       v += d > 0 ? step : -step;
-      v = Clip(v, l, h);
-      v = v - std::fmod(v, step);
-      v -= l;
-      v /= range;
+      v = pParam->ToNormalized(v);
     }
   }
 
@@ -977,20 +948,7 @@ void ISliderControlBase::OnMouseDrag(float x, float y, float dX, float dY, const
   double v = mMouseDragValue;
   
   if (pParam && pParam->GetStepped() && pParam->GetStep() > 0)
-  {
-    const double range = pParam->GetRange();
-    
-    if (range > 0.)
-    {
-      double l, h;
-      pParam->GetBounds(l,h);
-
-      v = l + mMouseDragValue * range;
-      v = v - std::fmod(v, pParam->GetStep());
-      v -= l;
-      v /= range;
-    }
-  }
+    v = pParam->ConstrainNormalized(mMouseDragValue);
 
   SetValue(v);
   SetDirty(true);
@@ -1005,19 +963,13 @@ void ISliderControlBase::OnMouseWheel(float x, float y, const IMouseMod& mod, fl
   
   if (pParam && pParam->GetStepped() && pParam->GetStep() > 0)
   {
-    const double range = pParam->GetRange();
-
-    if (range > 0. && d != 0.f)
+    if (d != 0.f)
     {
-      double l, h;
-      pParam->GetBounds(l,h);
-      v = l + GetValue() * range;
       const double step = pParam->GetStep();
+          
+      v = pParam->FromNormalized(v);
       v += d > 0 ? step : -step;
-      v = Clip(v, l, h);
-      v = v - std::fmod(v, step);
-      v -= l;
-      v /= range;
+      v = pParam->ToNormalized(v);
     }
   }
 
@@ -1152,7 +1104,7 @@ void IDirBrowseControlBase::ScanDirectory(const char* path, IPopupMenu& menuToAd
             WDL_String menuEntry {f};
             
             if(!mShowFileExtensions)
-              menuEntry.Set(f, (int) (a - f));
+              menuEntry.Set(f, (int) (a - f) - 1);
             
             IPopupMenu::Item* pItem = new IPopupMenu::Item(menuEntry.Get(), IPopupMenu::Item::kNoFlags, mFiles.GetSize());
             menuToAddTo.AddItem(pItem, -2 /* sort alphabetically */);

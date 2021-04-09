@@ -128,7 +128,7 @@ void IGraphicsMac::CloseWindow()
 {
   if (mView)
   {
-#ifdef IGRAPHICS_IMGUI
+#if defined IGRAPHICS_IMGUI
     if(mImGuiView)
     {
       IGRAPHICS_IMGUIVIEW* pImGuiView = (IGRAPHICS_IMGUIVIEW*) mImGuiView;
@@ -169,7 +169,7 @@ void IGraphicsMac::PlatformResize(bool parentHasResized)
     [[NSAnimationContext currentContext] setDuration:0.0];
     [(IGRAPHICS_VIEW*) mView setFrameSize: size ];
     
-#ifdef IGRAPHICS_IMGUI
+#if defined IGRAPHICS_IMGUI && !defined IGRAPHICS_SKIA && !defined IGRAPHICS_GL
     if(mImGuiView)
       [(IGRAPHICS_IMGUIVIEW*) mImGuiView setFrameSize: size ];
 #endif
@@ -355,16 +355,11 @@ void IGraphicsMac::UpdateTooltips()
     return;
   }
 
-  if (GetTooltipControl()) // tooltips handled by IGraphics Control
+  auto func = [this](IControl* pControl)
   {
-    return;
-  }
-    
-  auto func = [this](IControl& control)
-  {
-    if (control.GetTooltip() && !control.IsHidden())
+    if (pControl->GetTooltip() && !pControl->IsHidden())
     {
-      IRECT pR = control.GetTargetRECT();
+      IRECT pR = pControl->GetTargetRECT();
       if (!pR.Empty())
       {
         [(IGRAPHICS_VIEW*) mView registerToolTip: pR];
@@ -628,7 +623,16 @@ bool IGraphicsMac::SetTextInClipboard(const char* str)
 
 void IGraphicsMac::CreatePlatformImGui()
 {
-#ifdef IGRAPHICS_IMGUI
+#if defined IGRAPHICS_IMGUI
+  #if defined IGRAPHICS_SKIA && IGRAPHICS_CPU
+    #define USE_IGRAPHICS_IMGUIVIEW 1
+  #elif defined IGRAPHICS_NANOVG && IGRAPHICS_METAL
+    #define USE_IGRAPHICS_IMGUIVIEW 1
+#else
+  #define USE_IGRAPHICS_IMGUIVIEW 0
+#endif
+
+#if USE_IGRAPHICS_IMGUIVIEW
   if(mView)
   {
     IGRAPHICS_VIEW* pView = (IGRAPHICS_VIEW*) mView;
@@ -638,6 +642,7 @@ void IGraphicsMac::CreatePlatformImGui()
     mImGuiView = pImGuiView;
   }
 #endif
+#endif // IGRAPHICS_IMGUI
 }
 
 #if defined IGRAPHICS_NANOVG

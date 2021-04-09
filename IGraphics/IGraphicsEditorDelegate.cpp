@@ -64,10 +64,10 @@ void IGEditorDelegate::CloseWindow()
   }
 }
 
-void IGEditorDelegate::SetScreenScale(double scale)
+void IGEditorDelegate::SetScreenScale(float scale)
 {
   if (GetUI())
-    mGraphics->SetScreenScale(static_cast<int>(std::round(scale)));
+    mGraphics->SetScreenScale(scale);
 }
 
 void IGEditorDelegate::SetIntegration(void* pMainLoop)
