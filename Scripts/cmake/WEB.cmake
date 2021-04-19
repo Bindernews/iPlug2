@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 3.11)
-find_package(Emscripten REQUIRED)
 
-set(sdk ${IPLUG2_DIR}/IPlug/WEB)
+set(sdk ${IPLUG2_SDK_PATH}/IPlug/WEB)
 set(WAM_SDK_PATH ${IPLUG_DEPS}/IPlug/WAM_SDK)
 set(WAM_AWP_PATH ${IPLUG_DEPS}/IPlug/WAM_AWP)
 

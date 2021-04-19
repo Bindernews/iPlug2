@@ -17,7 +17,9 @@
 #include <lv2/core/lv2.h>
 #include <lv2/core/lv2_util.h>
 #include <lv2/urid/urid.h>
+#include <lv2/ui/ui.h>
 #include <unordered_map>
+#include <heapbuf.h>
 
 BEGIN_IPLUG_NAMESPACE
 
@@ -30,7 +32,9 @@ BEGIN_IPLUG_NAMESPACE
 #define PLUG_UI_URI PLUG_URI "#ui"
 #endif
 
-#ifdef IPLUG_DSP
+
+
+#if IPLUG_DSP
 
 /** Used to pass various instance info to the API class */
 struct InstanceInfo
@@ -99,16 +103,17 @@ private:
   int write_cfg_parameters(FILE* f);
   int write_indent(FILE* f, int indent, const char* msg);
 
-  void **mPorts; // simpler then vector for AttachBuffers
+  WDL_TypedBuf<void*>  mPorts;
+  WDL_TypedBuf<float*> mIOPorts;
+  WDL_TypedBuf<float*> mControlPorts;
   CoreURIDMap mCoreURIs;
   std::unordered_map<LV2_URID, int> mParamIDMap;
+  bool mFirstActivate;
 };
 
 #endif
 
-#ifdef IPLUG_EDITOR
-
-#include <lv2/lv2plug.in/ns/ext/ui/ui.h>
+#if IPLUG_EDITOR
 #include "xcbt.h"
 
 /** Used to pass various instance info to the API class */
@@ -146,7 +151,7 @@ public:
   int  ui_idle();
 
   //IEditorDelegate
-  bool EditorResizeFromUI(int viewWidth, int viewHeight) override;
+  bool EditorResizeFromUI(int viewWidth, int viewHeight, bool needsPlatformResize) override;
   
 private:
   int mParameterPortOffset;

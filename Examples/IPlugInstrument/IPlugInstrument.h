@@ -2,6 +2,7 @@
 
 #include "IPlug_include_in_plug_hdr.h"
 #include "IControls.h"
+#include <atomic>
 
 const int kNumPresets = 1;
 
@@ -58,5 +59,10 @@ private:
   IPlugInstrumentDSP<sample> mDSP {16};
   IPeakSender<2> mMeterSender;
   ISender<1> mLFOVisSender;
+#endif
+
+#if IPLUG_DSP || IPLUG_EDITOR
+private:
+  std::atomic_uint64_t mIdleCalls;
 #endif
 };

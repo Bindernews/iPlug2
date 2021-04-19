@@ -111,5 +111,34 @@
 			"typeindex": "cpp",
 			"xlocmon": "cpp"
 		}
+	},
+	"launch": {
+		"version": "0.2.0",
+		"configurations": [
+			{
+				"name": "REAPER Launch Debug",
+				"request": "launch",
+				"type": "cppdbg",
+				"program": "/home/bindernews/opt/REAPER/reaper",
+				"MIMode": "gdb",
+				"cwd": "."
+			},
+			{
+				"name": "REAPER Attach Debug",
+				"type": "cppdbg",
+				"request": "attach",
+				"program": "/home/bindernews/opt/REAPER/reaper",
+				"processId": "${command:pickProcess}",
+				"MIMode": "gdb",
+				"setupCommands": [
+					{
+						"description": "Enable pretty-printing for gdb",
+						"text": "-enable-pretty-printing",
+						"ignoreFailures": true
+					}
+				],
+				"miDebuggerPath": "/usr/bin/gdb"
+			}
+		]
 	}
 }

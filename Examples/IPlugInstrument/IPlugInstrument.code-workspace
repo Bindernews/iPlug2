@@ -2,6 +2,10 @@
 	"folders": [
 		{
 			"path": "."
+		},
+		{
+			"path": "../../Scripts",
+			"name": "iPlug2/Scripts"
 		}
 	],
 	"settings": {
@@ -14,12 +18,76 @@
 		"C_Cpp.default.cppStandard": "c++17",
 		"C_Cpp.default.defines": [
 			"IGRAPHICS_GL=1",
-			"IGRAPHICS_GL3=1",
+			"IGRAPHICS_GL2=1",
 			"IGRAPHICS_NANOVG=1",
 			"APP_API",
 			"SWELL_TARGET_GDK",
 			"OS_LINUX",
 			"_DEBUG"
+		],
+		"C_Cpp.default.intelliSenseMode": "linux-gcc-x64",
+		"files.exclude": {
+			"**/.git": true,
+			"**/.svn": true,
+			"**/.hg": true,
+			"**/CVS": true,
+			"**/.DS_Store": true,
+		}
+	},
+	"launch": {
+		"version": "0.2.0",
+		"configurations": [
+			{
+				"name": "(gdb) Launch",
+				"type": "cppdbg",
+				"request": "launch",
+				"program": "enter program name, for example ${workspaceFolder}/a.out",
+				"args": [],
+				"stopAtEntry": false,
+				"cwd": "${workspaceFolder}",
+				"environment": [],
+				"externalConsole": false,
+				"MIMode": "gdb",
+				"setupCommands": [
+					{
+						"description": "Enable pretty-printing for gdb",
+						"text": "-enable-pretty-printing",
+						"ignoreFailures": true
+					}
+				]
+			},
+			{
+				"name": "REAPER Launch Debug",
+				"request": "launch",
+				"type": "cppdbg",
+				"program": "/home/bindernews/opt/REAPER/reaper",
+				"MIMode": "gdb",
+				"cwd": ".",
+				"setupCommands": [
+					{
+						"description": "Enable pretty-printing for gdb",
+						"text": "-enable-pretty-printing",
+						"ignoreFailures": true
+					}
+				],
+				"miDebuggerPath": "/usr/bin/gdb"
+			},
+			{
+				"name": "REAPER Attach Debug",
+				"type": "cppdbg",
+				"request": "attach",
+				"program": "/home/bindernews/opt/REAPER/reaper",
+				"processId": "${command:pickProcess}",
+				"MIMode": "gdb",
+				"setupCommands": [
+					{
+						"description": "Enable pretty-printing for gdb",
+						"text": "-enable-pretty-printing",
+						"ignoreFailures": true
+					}
+				],
+				"miDebuggerPath": "/usr/bin/gdb"
+			}
 		]
 	}
 }

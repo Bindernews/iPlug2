@@ -19,7 +19,7 @@
 #include <limits.h>
 #include <ctype.h>
 
-#define PROP_PREFIX "propex"
+#define PROP_PREFIX "plug"
 #define FMT_MAX (4096)
 
 #if defined(OS_WINDOWS)
@@ -78,7 +78,7 @@ static bool MapLV2Unit(IParam *p, WDL_String& unitStr)
     unitName = "units:hz";
     break;
   case IParam::kUnitLinearGain:
-    unitStr = "iplug2:unit_amp";
+    unitName = "iplug2:unit_amp";
     break;
   case IParam::kUnitMeters:
     unitName = "units:m";
@@ -204,6 +204,7 @@ int IPlugLV2DSP::write_also(const char* dest_dir)
               "@prefix doap:  <http://usefulinc.com/ns/doap#> .\n"
               "@prefix foaf:  <http://xmlns.com/foaf/0.1/> .\n"
               "@prefix lv2:   <http://lv2plug.in/ns/lv2core#> .\n"
+              "@prefix midi:  <http://lv2plug.in/ns/ext/midi#> .\n"
               "@prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .\n"
               "@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .\n"
               "@prefix patch: <http://lv2plug.in/ns/ext/patch#> .\n"
@@ -231,6 +232,7 @@ int IPlugLV2DSP::write_also(const char* dest_dir)
   write_unit("unit_amp", "Linear Amplitude", "amp", "%f amp");
   write_unit("unit_midi_ctrl", "MIDI Ctrl", "", "%d");
   write_unit("unit_pan", "Pan", "%", "%f");
+  fprintf(f, "\n");
               
   write_cfg_parameters(f);
 
@@ -274,22 +276,28 @@ int IPlugLV2DSP::write_also_io(FILE* f, const IOConfig* io, int io_index)
   };
 
   fprintf(f, "<%s>\n", uri.Get());
-  write_indent(f, 2,
-    "a lv2:Plugin ;\n" // TODO: type, f.e. lv2:AmplifierPlugin ;
+
+  msg.SetFormatted(FMT_MAX,
+    "a lv2:Plugin %s;\n" // TODO: type, f.e. lv2:AmplifierPlugin ;
     "lv2:project <" PLUG_URL_STR "> ;\n"
     "doap:name \"" PLUG_NAME "\" ;\n" // TODO: where can we get human readable name ?
     // TODO: licese, f.e. doap:license <https://github.com/iPlug2/iPlug2/blob/master/LICENSE.txt> ;
     "lv2:optionalFeature lv2:hardRTCapable ;\n"
-    "lv2:requiredFeature urid:map ;\n");
+    "lv2:requiredFeature urid:map ;\n"
+    "\n",
+    (PLUG_TYPE == 1) ? ", lv2:InstrumentPlugin " : "");
+  write_indent(f, 2, msg.Get());
 #ifdef PLUG_HAS_UI
-  fprintf(f, "  ui:ui <" PLUG_UI_URI "> ;\n");
+  fprintf(f, "  ui:ui <" PLUG_UI_URI "> ;\n\n");
 #endif
 
   // Write patch parameters
+  fprintf(f, "  patch:writeable\n");
   int nParams = NParams();
   for (int n = 0; n < nParams; n++)
   {
-    fprintf(f, "  patch:writeable %s:Par%d ;\n", PROP_PREFIX, n);
+    const char *suffix = (n == nParams - 1) ? ";" : ",";
+    fprintf(f, "    %s:Par%d %s\n", PROP_PREFIX, n, suffix);
   }
   
   // Current port index
@@ -303,10 +311,12 @@ int IPlugLV2DSP::write_also_io(FILE* f, const IOConfig* io, int io_index)
   write_port(false,
     "a atom:AtomPort, lv2:InputPort; \n"
     "atom:bufferType atom:Sequence;\n"
-    "atom:supports atom:Object, patch:Message;\n"
+    "atom:supports \n"
 #if PLUG_DOES_MIDI_IN
-    "atom:supports midi:MidiEvent ;\n"
+    "  midi:MidiEvent ,\n"
 #endif
+    "  atom:Object ,\n"
+    "  patch:Message ;\n"
     "lv2:index 0;\n"
     "lv2:symbol \"control_in\";\n"
     "lv2:name \"Control Input\";\n"
@@ -317,10 +327,12 @@ int IPlugLV2DSP::write_also_io(FILE* f, const IOConfig* io, int io_index)
   write_port(true,
     "a atom:AtomPort, lv2:OutputPort; \n"
     "atom:bufferType atom:Sequence;\n"
-    "atom:supports atom:Object, patch:Message;\n"
+    "atom:supports \n"
 #if PLUG_DOES_MIDI_OUT
-    "atom:supports midi:MidiEvent ;\n"
+    "  midi:MidiEvent ,\n"
 #endif
+    "  atom:Object ,\n"
+    "  patch:Message ;\n"
     "lv2:index 1;\n"
     "lv2:symbol \"control_out\";\n"
     "lv2:name \"Control Output\";\n"
@@ -388,7 +400,12 @@ int IPlugLV2DSP::write_also_io(FILE* f, const IOConfig* io, int io_index)
     WDL_String symbol(p->GetName());
     if(!IsValidSymbol(symbol)) // spaces are not allowed
     {
-      symbol.SetFormatted(32, "Par%d", n + 1);
+      for (int i = 0; i < symbol.GetLength(); i++) {
+        if (symbol.Get()[i] == ' ') {
+          symbol.Get()[i] = '_';
+        }
+      }
+      //symbol.SetFormatted(32, "Par%d", n + 1);
     }
 
     msg.SetFormatted(FMT_MAX,
@@ -399,7 +416,7 @@ int IPlugLV2DSP::write_also_io(FILE* f, const IOConfig* io, int io_index)
       "lv2:default %.4f ;\n"
       "lv2:minimum %.4f ;\n"
       "lv2:maximum %.4f ;\n",
-      portIndex, p->GetName(), symbol.Get(),
+      portIndex, symbol.Get(), p->GetName(),
       p->GetDefault(), p->GetMin(), p->GetMax());
       // TODO: units
     write_port(true, msg.Get());
@@ -409,6 +426,8 @@ int IPlugLV2DSP::write_also_io(FILE* f, const IOConfig* io, int io_index)
 
   // End writing ports list
   fprintf(f, " .\n");
+
+  return 0;
 }
 
 int IPlugLV2DSP::write_cfg_parameters(FILE* f)
@@ -447,10 +466,14 @@ int IPlugLV2DSP::write_cfg_parameters(FILE* f)
       "lv2:default %.4f ;\n"
       "lv2:minimum %.4f ;\n"
       "lv2:maximum %.4f ;\n"
-      "units:unit %s .\n",
+      "units:unit %s .\n"
+      "\n",
       p->GetName(), range.Get(),
       p->GetDefault(), p->GetMin(), p->GetMax(), unitLine.Get());
+    write_indent(f, 2, msg.Get());
   }
+
+  return 0;
 }
 
 int IPlugLV2DSP::write_indent(FILE* f, int indent, const char* msg)
@@ -466,11 +489,17 @@ int IPlugLV2DSP::write_indent(FILE* f, int indent, const char* msg)
   const char *sp = msg;
   while (*sp)
   {
-    size_t line_len = strcspn(sp, "\n\0");
+    size_t line_len = strcspn(sp, "\n");
     fprintf(f, "%s%.*s", indent_str, (int)line_len, sp);
     // Move to next line
-    sp += line_len + 1;
+    sp += line_len;
+    if (*sp == '\n')
+    {
+      fprintf(f, "\n");
+      sp++;
+    }
   }
+  return 0;
 }
 
 
@@ -481,7 +510,7 @@ extern "C" {
 
 LV2_SYMBOL_EXPORT const LV2_Descriptor* lv2_descriptor(uint32_t index);
 
-
+/*
 int main(int argc, const char *argv[])
 {
   const LV2_Descriptor *dsc = lv2_descriptor(0);
@@ -498,6 +527,7 @@ int main(int argc, const char *argv[])
   }
   return 1;
 }
+*/
 
 // Alternate "main" function may be invoked with rundyn
 LV2_SYMBOL_EXPORT int write_ttl(int argc, char **argv)
@@ -520,6 +550,11 @@ LV2_SYMBOL_EXPORT int write_ttl(int argc, char **argv)
     if (plug)
     {
       return plug->write_manifest(output_dir) || plug->write_also(output_dir);
+    }
+    else
+    {
+      printf("ERROR: Unable to instantiate plugin!\n");
+      return 1;
     }
   }
   return 1;

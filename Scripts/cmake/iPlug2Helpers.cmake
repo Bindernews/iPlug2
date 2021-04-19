@@ -19,39 +19,73 @@ include_guard(GLOBAL)
 # \group:FEATURE Add compile features
 function(iplug_target_add target set_type)
   cmake_parse_arguments("cfg" "" "" "INCLUDE;SOURCE;DEFINE;OPTION;LINK;LINK_DIR;DEPEND;FEATURE;RESOURCE" ${ARGN})
-  #message("CALL iplug_add_interface ${target}")
-  if (cfg_INCLUDE)
-    target_include_directories(${target} ${set_type} ${cfg_INCLUDE})
-  endif()
-  if (cfg_SOURCE)
-    target_sources(${target} ${set_type} ${cfg_SOURCE})
-  endif()
-  if (cfg_DEFINE)
-    target_compile_definitions(${target} ${set_type} ${cfg_DEFINE})
-  endif()
-  if (cfg_OPTION)
-    target_compile_options(${target} ${set_type} ${cfg_OPTION})
-  endif()
-  if (cfg_LINK)
-    target_link_libraries(${target} ${set_type} ${cfg_LINK})
-  endif()
-  if (cfg_LINK_DIR)
-    target_link_directories(${target} ${set_type} ${cfg_LINK_DIR})
-  endif()
-  if (cfg_DEPEND)
-    add_dependencies(${target} ${set_type} ${cfg_DEPEND})
-  endif()
-  if (cfg_FEATURE)
-    target_compile_features(${target} ${set_type} ${cfg_FEATURE})
-  endif()
-  if (cfg_RESOURCE)
-    set_property(TARGET ${target} APPEND PROPERTY RESOURCE ${cfg_RESOURCE})
-  endif()
+  #message("CALL iplug_add_target ${target}")
   if (cfg_UNUSED)
     message("Unused arguments ${cfg_UNUSED}" FATAL_ERROR)
   endif()
+
+  get_target_property(ttype ${target} TYPE)
+  if (${ttype} STREQUAL "INTERFACE_LIBRARY")
+    set(_set_type "INTERFACE")
+  else()
+    set(_set_type ${set_type})
+  endif()
+
+  if (cfg_INCLUDE)
+    target_include_directories(${target} ${_set_type} ${cfg_INCLUDE})
+  endif()
+  if (cfg_SOURCE)
+    target_sources(${target} ${_set_type} ${cfg_SOURCE})
+  endif()
+  if (cfg_DEFINE)
+    target_compile_definitions(${target} ${_set_type} ${cfg_DEFINE})
+  endif()
+  if (cfg_OPTION)
+    target_compile_options(${target} ${_set_type} ${cfg_OPTION})
+  endif()
+  if (cfg_LINK)
+    target_link_libraries(${target} ${_set_type} ${cfg_LINK})
+  endif()
+  if (cfg_LINK_DIR)
+    target_link_directories(${target} ${_set_type} ${cfg_LINK_DIR})
+  endif()
+  if (cfg_DEPEND)
+    add_dependencies(${target} ${_set_type} ${cfg_DEPEND})
+  endif()
+  if (cfg_FEATURE)
+    target_compile_features(${target} ${_set_type} ${cfg_FEATURE})
+  endif()
+  if (cfg_RESOURCE AND (NOT ttype STREQUAL "INTERFACE_LIBRARY"))
+    set_property(TARGET ${target} APPEND PROPERTY IPLUG_RESOURCES ${cfg_RESOURCE})
+  endif()
 endfunction()
 
+
+function(iplug_add_resources target)
+  cmake_parse_arguments(arg "" "" "RESOURCES" ${ARGN})
+
+  get_target_property(ttype ${target} TYPE)
+  if (NOT "${ttype}" STREQUAL "INTERFACE_LIBRARY")
+    set_property(TARGET ${target} APPEND PROPERTY IPLUG_RESOURCES ${arg_RESOURCES})
+  endif()
+
+  set(subs "${IPLUG_${target}_SUB_TARGETS}")
+  if (subs)
+    foreach(sub IN LISTS subs)
+      message(INFO "Adding resources to ${sub}")
+      iplug_add_resources(${sub} RESOURCES ${arg_RESOURCES} ${ARGN})
+    endforeach()
+  endif()
+  
+endfunction(iplug_add_resources)
+
+
+#! iplug_ternary : Evaluates extra arguments as a conditional and sets VAR to val_true or val_false accordingly.
+#
+# \arg:VAR Variable name to set
+# \arg:val_true Value to set if condition is true
+# \arg:val_false Value to set if condition is false
+# \argn Remaining arguments will be passed to IF()
 macro(iplug_ternary VAR val_true val_false)
   if (${ARGN})
     set(${VAR} ${val_true})
@@ -63,7 +97,7 @@ endmacro()
 macro(iplug_source_tree target)
   get_target_property(_tmp ${target} INTERFACE_SOURCES)
   if (NOT "${_tmp}" STREQUAL "_tmp-NOTFOUND")
-    source_group(TREE ${IPLUG2_DIR} PREFIX "IPlug" FILES ${_tmp})
+    source_group(TREE ${IPLUG2_SDK_PATH} PREFIX "IPlug" FILES ${_tmp})
   endif()
 endmacro()
 
@@ -129,8 +163,9 @@ endfunction(iplug_find_path)
 # \arg:target The target to apply the changes on
 # \arg:res_dir Directory to copy the resources into
 function(iplug_target_bundle_resources target res_dir)
-  get_property(resources TARGET ${target} PROPERTY RESOURCE)
+  get_property(resources TARGET ${target} PROPERTY IPLUG_RESOURCES)
   if (CMAKE_GENERATOR STREQUAL "Xcode")
+    set_target_properties(${target} PROPERTIES RESOURCE ${resources})
     # On Xcode we mark each file as non-compiled
     foreach (res ${resources})
       get_filename_component(fn "${res}" NAME)
@@ -151,13 +186,13 @@ function(iplug_target_bundle_resources target res_dir)
 
       set(dst "${res_dir}/${fn}")
       if (NOT APPLE)
+        # No Apple, this is the "normal" case
         if (fn MATCHES ".*\\.ttf")
           set(dst "${res_dir}/fonts/${fn}")
         elseif ((fn MATCHES ".*\\.png") OR (fn MATCHES ".*\\.svg"))
           set(dst "${res_dir}/img/${fn}")
         endif()
       else()
-
         # Apple but no Xcode? Manually compile xib files
         if (fn MATCHES ".*\\.xib")
           get_filename_component(tmp "${res}" NAME_WE)
@@ -174,8 +209,46 @@ function(iplug_target_bundle_resources target res_dir)
       if (copy)
         add_custom_command(OUTPUT "${dst}"
           COMMAND ${CMAKE_COMMAND} ARGS "-E" "copy" "${res}" "${dst}"
+          COMMENT "Copying resource to ${dst}"
           MAIN_DEPENDENCY "${res}")
       endif()
     endforeach()
   endif()
 endfunction()
+
+#! iplug_copy_properties : Copies properties from target_src to target_dst
+# \param:target_dst Destination target name
+# \param:target_src Source target name
+# \param:properties List of properties to copy
+function(iplug_copy_properties target_dst target_src properties)
+  foreach(prop IN LISTS properties)
+    get_target_property(tmp ${target_src} ${prop})
+    set_target_properties(${target_dst} PROPERTIES ${prop} ${tmp})
+  endforeach()
+endfunction(iplug_copy_properties)
+
+
+#[===[.rst:
+.. code-block:: cmake
+
+  iplug_add_post_build_copy(
+    <target>
+    <source_directory>
+    <destination_directory>
+    [FORCE])
+
+``FORCE``
+  If this is specified then the post-build command will be added regardless
+  of the state of the ``IPLUG_COPY_AFTER_BUILD`` property.
+
+#]===]
+function(iplug_add_post_build_copy target src_dir dest_dir)
+  cmake_parse_arguments(arg "FORCE" "" "" ${ARGN})
+  get_target_property(r ${target} IPLUG_COPY_AFTER_BUILD)
+  if (r OR arg_FORCE)
+    add_custom_command(TARGET ${target} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} ARGS "-E" "remove_directory" "${dest_dir}"
+      COMMAND ${CMAKE_COMMAND} ARGS "-E" "copy_directory" "${src_dir}" "${dest_dir}"
+      COMMENT "Copying ${target} to ${dest_dir}")
+  endif()
+endfunction(iplug_add_post_build_copy)

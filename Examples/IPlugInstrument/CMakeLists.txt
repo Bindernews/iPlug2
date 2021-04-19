@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.11 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.16 FATAL_ERROR)
 
 #########
 # This is a build file for iPlug2 on Linux.
@@ -13,8 +13,8 @@ cmake_minimum_required(VERSION 3.11 FATAL_ERROR)
 
 project(IPlugInstrument VERSION 1.0.0)
 
-set(IPLUG2_DIR ${CMAKE_SOURCE_DIR}/../..)
-include(${IPLUG2_DIR}/iPlug2.cmake)
+set(IPLUG2_SDK_PATH ${CMAKE_SOURCE_DIR}/../..)
+include(${IPLUG2_SDK_PATH}/iPlug2.cmake)
 find_package(iPlug2 REQUIRED)
 
 set(dir "${CMAKE_SOURCE_DIR}")
@@ -33,33 +33,16 @@ source_group(TREE "${dir}/resources" PREFIX Resources FILES ${RES_FILES})
 # Disable compiler-dependent C++ extension features (optional, but recommended for code portability)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# While not required, creating a base interface for includes and settings seems like a good idea.
-add_library(_base INTERFACE)
-# iplug_target_add() is a shorthand function for adding sources and include dirs,
-# linking libraries, adding resources, setting compile options, etc.
-iplug_target_add(_base INTERFACE
-  INCLUDE ${dir} ${dir}/resources
-  LINK iPlug2_Synth iPlug2_NANOVG iPlug2_GL2)
-# Use C++ 14 standard
-target_compile_features(_base INTERFACE cxx_std_17)
-
-
-add_executable(App WIN32 MACOSX_BUNDLE ${SRC_FILES} ${RES_FILES})
-iplug_target_add(App PUBLIC LINK _base RESOURCE ${RES_FILES})
-# You MUST call iplug_configure_target(<target_name> <app|vst2|vst3|...>) for things to build correctly.
-iplug_configure_target(App app)
-
-add_library(VST2 MODULE ${SRC_FILES} ${RES_FILES})
-iplug_target_add(VST2 PUBLIC LINK _base RESOURCE ${RES_FILES})
-iplug_configure_target(VST2 vst2)
-
-add_library(VST3 MODULE ${SRC_FILES} ${RES_FILES})
-iplug_target_add(VST3 PUBLIC LINK _base RESOURCE ${RES_FILES})
-iplug_configure_target(VST3 vst3)
-
-if (APPLE)
-  add_library(AUv2 MODULE ${SRC_FILES} ${RES_FILES})
-  iplug_target_add(AUv2 PUBLIC LINK _base RESOURCE ${RES_FILES})
-  iplug_configure_target(AUv2 au2)
-endif()
-
+iplug_add_plugin(IPlugInstrument
+  PLUGIN_NAME "IPlugInstrument"
+  GRAPHICS NANOVG_GL2
+  FORMATS APP LV2 VST2 VST3 AU2 AU3
+  RESOURCES ${RES_FILES}
+  COPY_AFTER_BUILD
+)
+target_link_libraries(IPlugInstrument INTERFACE iPlug2_Synth)
+target_compile_features(IPlugInstrument INTERFACE cxx_std_17)
+target_sources(IPlugInstrument INTERFACE ${SRC_FILES} ${RES_FILES})
+target_include_directories(IPlugInstrument INTERFACE "." "./resources")
+# iplug_add_resources(IPlugInstrument RESOURCES ${RES_FILES})
+# iplug_finish_plugin(IPlugInstrument)

@@ -11,7 +11,9 @@ set(IPLUG2_CMAKE_DIR ${CMAKE_CURRENT_LIST_DIR}/Scripts/cmake)
 list(APPEND CMAKE_MODULE_PATH ${IPLUG2_CMAKE_DIR})
 
 # This is used in many places
-set(IPLUG2_DIR ${CMAKE_CURRENT_LIST_DIR})
+if (NOT IPLUG2_SDK_PATH)
+  set(IPLUG2_SDK_PATH ${CMAKE_CURRENT_LIST_DIR})
+endif()
 
 # Make sure MSVC uses static linking for compatibility with Skia libraries and easier distribution.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")

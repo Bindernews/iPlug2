@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.11)
 
-set(VST3_SDK "${IPLUG2_DIR}/Dependencies/IPlug/VST3_SDK" CACHE PATH "VST3 SDK directory.")
+set(VST3_SDK "${IPLUG2_SDK_PATH}/Dependencies/IPlug/VST3_SDK" CACHE PATH "VST3 SDK directory.")
 set(vst3_target_arch "")
 
 if (WIN32)
@@ -28,7 +28,7 @@ iplug_find_path(VST3_INSTALL_PATH REQUIRED DIR DEFAULT_IDX 0
   PATHS ${_paths})
 
 set(IPLUG2_VST_ICON 
-  "${IPLUG2_DIR}/Dependencies/IPlug/VST3_SDK/doc/artwork/VST_Logo_Steinberg.ico"
+  "${IPLUG2_SDK_PATH}/Dependencies/IPlug/VST3_SDK/doc/artwork/VST_Logo_Steinberg.ico"
   CACHE FILEPATH "Path to VST3 plugin icon"
 )
 
@@ -37,7 +37,7 @@ set(IPLUG2_VST_ICON
 ##########################
 
 add_library(iPlug2_VST3 INTERFACE)
-set(sdk ${IPLUG2_DIR}/IPlug/VST3)
+set(sdk ${IPLUG2_SDK_PATH}/IPlug/VST3)
 set(_src
   "${sdk}/IPlugVST3.h"
   "${sdk}/IPlugVST3.cpp"
@@ -66,7 +66,7 @@ if (CMAKE_SYSTEM_NAME MATCHES "Linux")
   target_sources(iPlug2_VST3 INTERFACE "${sdk}/IPlugVST3_RunLoop.cpp")
 endif()
 
-source_group(TREE ${IPLUG2_DIR} PREFIX IPlug/VST3 FILES ${_src})
+source_group(TREE ${IPLUG2_SDK_PATH} PREFIX IPlug/VST3 FILES ${_src})
 
 ############
 # VST3 SDK #
@@ -164,26 +164,21 @@ iplug_target_add(${tgt} INTERFACE SOURCE ${_inf} DEFINE ${_def})
 
 
 function(iplug_configure_vst3 target)
+  get_target_property(plugin_name ${target} IPLUG_PLUGIN_NAME)
+
   iplug_target_add(${target} PUBLIC LINK iPlug2_VST3)
 
-  set(out_dir "${CMAKE_BINARY_DIR}/${PLUG_NAME}.vst3")
-  set(install_dir "${VST3_INSTALL_PATH}/${PLUG_NAME}.vst3")
-  set(res_dir "${CMAKE_BINARY_DIR}/${PLUG_NAME}.vst3/Contents/Resources")
+  set(out_dir "${CMAKE_BINARY_DIR}/${target}.vst3")
+  set(install_dir "${VST3_INSTALL_PATH}/${plugin_name}.vst3")
+  set(res_dir "${CMAKE_BINARY_DIR}/${target}.vst3/Contents/Resources")
 
   if (WIN32)
     # Use .vst3 as the extension instead of .dll
     set_target_properties(${target} PROPERTIES
-      OUTPUT_NAME "${IPLUG_APP_NAME}"
+      OUTPUT_NAME "${plugin_name}"
       LIBRARY_OUTPUT_DIRECTORY "${out_dir}/Contents/${vst3_target_arch}/"
       PREFIX ""
-      SUFFIX ".vst3"
-    )
-
-    # After building, we run the post-build script
-    add_custom_command(TARGET ${target} POST_BUILD
-      COMMAND "${CMAKE_BINARY_DIR}/postbuild-win.bat" 
-      ARGS "\"$<TARGET_FILE:${target}>\"" "\".vst3\""
-    )
+      SUFFIX ".vst3")
 
   elseif (CMAKE_SYSTEM_NAME MATCHES "Darwin")
     # Set the Info.plist file we're using and add resources
@@ -193,27 +188,19 @@ function(iplug_configure_vst3 target)
       MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/resources/${PLUG_NAME}-VST3-Info.plist
       BUNDLE_EXTENSION "vst3"
       PREFIX ""
-      SUFFIX ""
-    )
+      SUFFIX "")
 
     if (CMAKE_GENERATOR STREQUAL "Xcode")
-      set(out_dir "${CMAKE_BINARY_DIR}/$<CONFIG>/${PLUG_NAME}.vst3")
+      set(out_dir "${CMAKE_BINARY_DIR}/$<CONFIG>/${plugin_name}.vst3")
       set(res_dir "")
     endif()
-    
-    add_custom_command(TARGET ${target} POST_BUILD
-      COMMAND ${CMAKE_COMMAND} ARGS "-E" "copy_directory" "${out_dir}" "${install_dir}")
 
   elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
     set_target_properties(${target} PROPERTIES
       OUTPUT_NAME "${IPLUG_APP_NAME}"
       LIBRARY_OUTPUT_DIRECTORY "${out_dir}/Contents/${vst3_target_arch}/"
       PREFIX ""
-      SUFFIX ".so"
-    )
-
-    add_custom_command(TARGET ${target} POST_BUILD
-      COMMAND ${CMAKE_COMMAND} ARGS "-E" "copy_directory" "${out_dir}" "${install_dir}")
+      SUFFIX ".so")
 
   endif()
 
@@ -221,4 +208,5 @@ function(iplug_configure_vst3 target)
     iplug_target_bundle_resources(${target} "${res_dir}")
   endif()
 
+  iplug_add_post_build_copy(${target} "${out_dir}" "${install_dir}")
 endfunction()

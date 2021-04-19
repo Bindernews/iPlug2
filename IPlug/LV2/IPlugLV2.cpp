@@ -12,6 +12,7 @@
 
 #include <lv2/atom/atom.h>
 #include <lv2/atom/forge.h>
+#include <lv2/buf-size/buf-size.h>
 #include <lv2/midi/midi.h>
 #include <lv2/options/options.h>
 #include <lv2/patch/patch.h>
@@ -49,13 +50,19 @@ BEGIN_IPLUG_NAMESPACE
 IPlugLV2DSP::IPlugLV2DSP(const InstanceInfo &info, const Config& config)
   : IPlugAPIBase(config, kAPILV2)
   , IPlugProcessor(config, kAPILV2)
+  , mFirstActivate(true)
 {
   // maybe: info.descriptor should match our expectation, should we check that?
  
   Trace(TRACELOC, "%s", config.pluginName);
   
-  int nInputs = MaxNChannels(ERoute::kInput), nOutputs = MaxNChannels(ERoute::kOutput), nParams = NParams();
-  mPorts = new void *[nInputs + nOutputs + nParams + 2];
+  int nInputs = MaxNChannels(ERoute::kInput);
+  int nOutputs = MaxNChannels(ERoute::kOutput);
+  int nParams = NParams();
+  // Allocate port pointers
+  mPorts.Resize(2);
+  mIOPorts.Resize(nInputs + nOutputs);
+  mControlPorts.Resize(nParams);
   
   SetSampleRate(info.rate);
   
@@ -103,7 +110,7 @@ IPlugLV2DSP::IPlugLV2DSP(const InstanceInfo &info, const Config& config)
 #define GET_URID(name) urid_map->map(urid_map->handle, name)
     mCoreURIs.atom_Blank     = GET_URID(LV2_ATOM__Blank);
     mCoreURIs.atom_Object    = GET_URID(LV2_ATOM__Object);
-    mCoreURIs.atom_URID      = GET_URID(LV2_Atom__URID);
+    mCoreURIs.atom_URID      = GET_URID(LV2_ATOM__URID);
     mCoreURIs.atom_Float     = GET_URID(LV2_ATOM__Float);
     mCoreURIs.atom_Bool      = GET_URID(LV2_ATOM__Bool);
     mCoreURIs.midi_MidiEvent = GET_URID(LV2_MIDI__MidiEvent);
@@ -133,7 +140,6 @@ IPlugLV2DSP::IPlugLV2DSP(const InstanceInfo &info, const Config& config)
 
 IPlugLV2DSP::~IPlugLV2DSP()
 {
-  delete[] mPorts;
 }
 
 // Private methods
@@ -142,7 +148,7 @@ IPlugLV2DSP::~IPlugLV2DSP()
 //IPlugProcessor
 bool IPlugLV2DSP::SendMidiMsg(const IMidiMsg& msg)
 {
-  LV2_Atom_Sequence* out_port = ((LV2_Atom_Sequence*)mPorts[1]);
+  LV2_Atom_Sequence* out_port = ((LV2_Atom_Sequence*)(mPorts.Get()[1]));
 
   struct MIDINoteEvent
   {
@@ -168,12 +174,33 @@ bool IPlugLV2DSP::SendMidiMsg(const IMidiMsg& msg)
 void IPlugLV2DSP::connect_port(uint32_t port, void *data)
 {
   // maybe : check the size
-  mPorts[port] = data;
+  if (port < mPorts.GetSize()) {
+    mPorts.Get()[port] = data;
+    return;
+  }
+  port -= mPorts.GetSize();
+  if (port < mIOPorts.GetSize()) {
+    mIOPorts.Get()[port] = (float*)data;
+    return;
+  }
+  port -= mIOPorts.GetSize();
+  if (port < mControlPorts.GetSize()) {
+    mControlPorts.Get()[port] = (float*)data;
+    return;
+  }
 }
 
 void IPlugLV2DSP::activate()
 {
+  if (mFirstActivate) {
+    mFirstActivate = false;
+    int nParams = NParams();
+    for (int i = 0; i < nParams; i++) {
+      OnParamChange(i, kReset);
+    }
+  }
   OnActivate(true);
+  OnReset();
 }
 
 void IPlugLV2DSP::run(uint32_t n_samples)
@@ -189,10 +216,16 @@ void IPlugLV2DSP::run(uint32_t n_samples)
     SetBlockSize(n_samples);
   }
 
-  AttachBuffers(ERoute::kInput, 0, nInputs, (float **)mPorts, n_samples);
-  AttachBuffers(ERoute::kOutput, 0, nOutputs, (float **)(mPorts + nInputs), n_samples);
+  void** ports = mPorts.Get();
+  //float **inPorts = (float **)(&ports[2]);
+  //float **outPorts = (float **)(float **)(&ports[2 + nInputs]);
+  float **inPorts = mIOPorts.Get();
+  float **outPorts = mIOPorts.Get() + nInputs;
 
-  LV2_ATOM_SEQUENCE_FOREACH(mPorts[0], ev)
+  AttachBuffers(ERoute::kInput, 0, nInputs, inPorts, n_samples);
+  AttachBuffers(ERoute::kOutput, 0, nOutputs, outPorts, n_samples);
+
+  LV2_ATOM_SEQUENCE_FOREACH(static_cast<LV2_Atom_Sequence*>(ports[0]), ev)
   {
     uint32_t atom_type = ev->body.type;
 
@@ -235,20 +268,21 @@ void IPlugLV2DSP::run(uint32_t n_samples)
       switch (lv2_midi_message_type(msg))
       {
       case LV2_MIDI_MSG_NOTE_ON:
-        break;
       case LV2_MIDI_MSG_NOTE_OFF:
+        ProcessMidiMsg(IMidiMsg((int)(ev->time.frames), msg[0], msg[1], msg[2]));
         break;
       // TODO finish switch-case for processing MIDI messages
       }
     }
   }
   // END LV2_ATOM_SEQUENCE_FOREACH
-  
+       
 #ifdef LV2_CONTROL_PORTS
   ENTER_PARAMS_MUTEX;
   for (int i = 0; i < nParams; ++i)
   {
-    float *pParam = (float *)mPorts[nInputs + nOutputs + i];
+    float *pParam = mControlPorts.Get()[i];
+    //float *pParam = (float *)ports[nInputs + nOutputs + i];
     if (pParam)
     {
       IParam *param = GetParam(i);
@@ -266,13 +300,12 @@ void IPlugLV2DSP::run(uint32_t n_samples)
   // TODO: time info
   // TODO: midi
 
-  ProcessBuffers((float) 0.0f, n_samples);  
+  ProcessBlock((iplug::sample**)inPorts, (iplug::sample**)outPorts, n_samples);
 }
 
 void IPlugLV2DSP::deactivate()
 {
   OnActivate(false);
-  OnReset();
 }
 
 
@@ -280,32 +313,32 @@ void IPlugLV2DSP::deactivate()
 // LV2 DSP Callbacks //
 ///////////////////////
 
-static void connect_port(LV2_Handle instance, uint32_t port, void *data)
+static void c_connect_port(LV2_Handle instance, uint32_t port, void *data)
 {
   (static_cast<IPlugLV2DSP*>(instance))->connect_port(port, data);
 }
 
-static void activate(LV2_Handle instance)
+static void c_activate(LV2_Handle instance)
 {
   (static_cast<IPlugLV2DSP*>(instance))->activate();
 }
 
-static void run(LV2_Handle instance, uint32_t n_samples)
+static void c_run(LV2_Handle instance, uint32_t n_samples)
 {
   (static_cast<IPlugLV2DSP*>(instance))->run(n_samples);
 }
 
-static void deactivate(LV2_Handle instance)
+static void c_deactivate(LV2_Handle instance)
 {
   (static_cast<IPlugLV2DSP*>(instance))->deactivate();
 }
 
-static void cleanup(LV2_Handle instance)
+static void c_cleanup(LV2_Handle instance)
 {
   delete (static_cast<IPlugLV2DSP*>(instance));
 }
 
-static const void *extension_data(const char *uri)
+static const void *c_extension_data(const char *uri)
 {
   return nullptr;
 }
@@ -337,19 +370,19 @@ IPlugLV2DSP::descriptor(uint32_t index, LV2_InstantiateFn instantiate)
       sDescriptors.Add(LV2_Descriptor {
         urip,
         instantiate,
-        connect_port,
-        activate,
-        run,
-        deactivate,
-        cleanup,
-        extension_data,
+        &c_connect_port,
+        &c_activate,
+        &c_run,
+        &c_deactivate,
+        &c_cleanup,
+        &c_extension_data,
       });
       urip += uriLen;
     }
   }
 
   // Once everything is initialized returning descriptors is easy.
-  if (sDescriptors.GetSize() < index)
+  if (index < sDescriptors.GetSize())
   {
     return sDescriptors.Get() + index;
   }
@@ -411,7 +444,6 @@ LV2UI_Widget IPlugLV2Editor::CreateUI()
   // we can not do this in constructor, user code is not yet executed and so graphics can not be created
   SetIntegration(mEmbed);
   auto widget = reinterpret_cast<LV2UI_Widget>(OpenWindow(mHostWidget));
-  EditorResize();
   return widget;
 }
 
@@ -464,9 +496,9 @@ int IPlugLV2Editor::ui_idle()
   return 0;
 }
 
-bool IPlugLV2Editor::EditorResizeFromUI(int viewWidth, int viewHeight)
+bool IPlugLV2Editor::EditorResizeFromUI(int viewWidth, int viewHeight, bool needsPlatformResize)
 {
-  if (mHostResize)
+  if (mHostResize && needsPlatformResize)
   {
     return mHostResize->ui_resize(mHostResize->handle, viewWidth, viewHeight) == 0;
   }
