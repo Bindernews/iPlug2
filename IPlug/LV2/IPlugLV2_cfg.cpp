@@ -165,7 +165,7 @@ int IPlugLV2DSP::write_manifest(const char* dest_dir)
 #ifdef PLUG_HAS_UI
   fprintf(f,  "<" PLUG_UI_URI ">\n"
               "  a " UI_TYPE " ;\n"
-              "  lv2:binary <" PLUG_NAME "." DLL_EXT "> ;\n"
+              "  lv2:binary <" PLUG_NAME "_ui." DLL_EXT "> ;\n"
               "  rdfs:seeAlso <" PLUG_NAME ".ttl> .\n\n");
 #endif
 

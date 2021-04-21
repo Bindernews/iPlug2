@@ -315,13 +315,29 @@ static int ui_idle(LV2UI_Handle instance)
   return (static_cast<IPlugLV2Editor*>(instance))->ui_idle();
 }
 
+static int ui_show(LV2UI_Handle instance)
+{
+  return (static_cast<IPlugLV2Editor*>(instance))->ui_idle();
+}
+
+static int ui_hide(LV2UI_Handle instance)
+{
+  return (static_cast<IPlugLV2Editor*>(instance))->ui_idle();
+}
+
 static const void *ui_extension_data(const char *uri)
 {
   static const LV2UI_Idle_Interface idle = { ui_idle };
-  if (!strcmp(uri, LV2_UI__idleInterface))
+  //static const LV2UI_Show_Interface uiShow = { ui_show, ui_hide };
+
+  if (strcmp(uri, LV2_UI__idleInterface) == 0)
   {
     return &idle;
   }
+  // if (strcmp(uri, LV2_UI__showInterface) == 0)
+  // {
+  //   return &uiShow;
+  // }
   return nullptr;
 }
 

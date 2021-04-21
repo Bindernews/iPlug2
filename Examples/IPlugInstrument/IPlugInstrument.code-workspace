@@ -6,6 +6,10 @@
 		{
 			"path": "../../Scripts",
 			"name": "iPlug2/Scripts"
+		},
+		{
+			"path": "../../IGraphics",
+			"name": "iPlug2/IGraphics"
 		}
 	],
 	"settings": {
