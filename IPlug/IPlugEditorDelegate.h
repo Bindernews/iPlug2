@@ -346,7 +346,11 @@ public:
   virtual int UnserializeEditorState(const IByteChunk& chunk, int startPos)  { return startPos; }
 
   /** Can be used by a host API to inform the editor of screen scale changes
+<<<<<<< HEAD
    * @param scale The new screen scale */
+=======
+   * @param scale The new screen scale*/
+>>>>>>> 8ec796ca168798a2779c982e52b30864d4e63a62
   virtual void SetScreenScale(float scale) {}
   
   /** Can be used by a host API to specify event loop integration
