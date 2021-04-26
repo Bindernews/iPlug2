@@ -408,7 +408,9 @@ IPlugLV2Editor::IPlugLV2Editor(const InstanceInfo &info, const Config& config) :
   
   mParameterPortOffset = totalNInChans + totalNOutChans;
 
+#ifdef OS_LINUX
   mEmbed = xcbt_embed_idle();
+#endif
  
   mHostWrite      = info.write_function;
   mHostController = info.controller;
@@ -499,7 +501,9 @@ void IPlugLV2Editor::port_event(uint32_t port_index, uint32_t buffer_size, uint3
 int IPlugLV2Editor::ui_idle()
 {
   OnIdle();
+#ifdef OS_LINUX
   xcbt_embed_idle_cb(mEmbed);
+#endif
   return 0;
 }
 

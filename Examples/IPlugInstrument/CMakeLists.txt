@@ -7,9 +7,9 @@ cmake_minimum_required(VERSION 3.16 FATAL_ERROR)
 # To setup the build (change CMAKE_BUILD_TYPE as desired):
 #   cmake -S . -B build-linux -DCMAKE_BUILD_TYPE=Debug
 # To build the VST2 version:
-#   cmake --build build-linux --target IPlugInstrument-vst2
+#   cmake --build build-linux --target IPlugInstrument_VST2
 # To build the VST3 version:
-#   cmake --build build-linux --target IPlugInstrument-vst3
+#   cmake --build build-linux --target IPlugInstrument_VST3
 
 project(IPlugInstrument VERSION 1.0.0)
 
