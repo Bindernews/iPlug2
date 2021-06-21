@@ -49,3 +49,4 @@ Podfile.lock
 Examples/Build
 Examples/*/EBWebView
 Examples/*/packages
+Examples/IPlugConvoEngine/r8brain
