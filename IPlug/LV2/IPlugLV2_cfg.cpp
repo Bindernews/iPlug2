@@ -490,12 +490,11 @@ int IPlugLV2DSP::write_indent(FILE* f, int indent, const char* msg)
   while (*sp)
   {
     size_t line_len = strcspn(sp, "\n");
-    fprintf(f, "%s%.*s", indent_str, (int)line_len, sp);
+    fprintf(f, "%s%.*s\n", indent_str, (int)line_len, sp);
     // Move to next line
     sp += line_len;
     if (*sp == '\n')
     {
-      fprintf(f, "\n");
       sp++;
     }
   }

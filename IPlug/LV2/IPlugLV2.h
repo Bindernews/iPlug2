@@ -162,7 +162,9 @@ private:
   LV2UI_Widget mHostWidget;
   LV2UI_Resize * mHostResize;
   
+#ifdef OS_LINUX
   xcbt_embed * mEmbed;
+#endif
 };
 
 #endif
