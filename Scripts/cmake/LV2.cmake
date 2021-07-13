@@ -41,6 +41,8 @@ function(_iplug_setup_lv2)
       "${dir}/IPlugLV2.h"
       "${dir}/IPlugLV2.cpp"
       "${dir}/IPlugLV2_cfg.cpp"
+      "${dir}/TTLDocument.h"
+      "${dir}/TTLDocument.cpp"
     LINK iPlug2_LV2)
 
   add_library(iPlug2_LV2_UI INTERFACE)
@@ -87,6 +89,7 @@ function(iplug_configure_lv2 target)
   add_custom_command(TARGET ${target} POST_BUILD
     COMMAND rundyn "$<TARGET_FILE:${target}>,write_ttl" "${out_dir}"
     COMMENT "Generating TTL file for ${target}")
+  #add_dependencies(${target} rundyn)
 
   # Handle resources
   if (res_dir)

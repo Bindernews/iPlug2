@@ -24,6 +24,19 @@
 // Maximum number of DIGITS for IO configs (e.g. 9999 = 4 digits)
 #define MAX_CONFIG_DIGITS (4) 
 
+int parse_config_index(const char *uri)
+{
+  size_t hashIndex = strcspn(uri, "#");
+  if (uri[hashIndex] == 0) {
+    return -1;
+  }
+  int ioIndex = 0;
+  if (sscanf(uri + hashIndex, "io_%d", &ioIndex) != 1) {
+    return -1;
+  }
+  return ioIndex;
+}
+
 template<typename T, class Compare>
 int binary_find(const T* ar, size_t len, const T* test, Compare comp)
 {
@@ -51,24 +64,23 @@ IPlugLV2DSP::IPlugLV2DSP(const InstanceInfo &info, const Config& config)
   : IPlugAPIBase(config, kAPILV2)
   , IPlugProcessor(config, kAPILV2)
   , mFirstActivate(true)
+  , mMap(nullptr)
 {
   // maybe: info.descriptor should match our expectation, should we check that?
  
   Trace(TRACELOC, "%s", config.pluginName);
   
-  int nInputs = MaxNChannels(ERoute::kInput);
-  int nOutputs = MaxNChannels(ERoute::kOutput);
-  int nParams = NParams();
   // Allocate port pointers
   mPorts.Resize(2);
-  mIOPorts.Resize(nInputs + nOutputs);
-  mControlPorts.Resize(nParams);
+  mIOPorts.Resize( MaxNChannels(ERoute::kInput) + MaxNChannels(ERoute::kOutput) );
+  mControlPorts.Resize( NParams() );
   
   SetSampleRate(info.rate);
   
   int block_size = DEFAULT_BLOCK_SIZE; // that can lead to allocation in RT, but there is no workaround in case host does not specify it
   
-  LV2_URID_Map *urid_map = nullptr;
+  bool validInstance = true;
+
   //LV2_URID_Unmap *urid_unmap = nullptr;
   const LV2_Options_Option *options = nullptr;
   auto features = info.features;
@@ -80,60 +92,59 @@ IPlugLV2DSP::IPlugLV2DSP(const InstanceInfo &info, const Config& config)
       if(!strcmp(feature->URI, LV2_OPTIONS__options))
       {
         options = (const LV2_Options_Option *)feature->data;
-      } else if(!strcmp(feature->URI, LV2_URID__map))
+      }
+      else if(!strcmp(feature->URI, LV2_URID__map))
       {
-        urid_map = (LV2_URID_Map *)feature->data;
-      } else if(!strcmp(feature->URI, LV2_URID__unmap))
+        mMap = (LV2_URID_Map *)feature->data;
+      }
+      else if(!strcmp(feature->URI, LV2_URID__unmap))
       {
         // urid_unmap = (LV2_URID_Unmap *)feature->data;
       }
-    }
-  }
-  
-  if(options && urid_map) // options we are looking for are URID based
-  {
-    LV2_URID maxBlockLengthID = urid_map->map(urid_map->handle, LV2_BUF_SIZE__maxBlockLength);
-    // maybe: sequenceSize
-    for(; options->key ; ++options)
-    {
-      if((options->key == maxBlockLengthID) && (options->size == sizeof(int) && options->value))
+      else if (!strcmp(feature->URI, LV2_IPLUG2__InvalidInstance))
       {
-        block_size =  *(int *)options->value; // at least Arodour reports theoretical maximum here, not currently used buffer size
+        validInstance = false;
       }
     }
   }
 
-  if (urid_map)
+  // If validInstance is false then we don't get URID map or anything like that. We use this so
+  // we can get a plugin instance for the purpose of generating TTL files. When the InvalidInstance
+  // feature is supplied, the plugin CANNOT be used. It WILL crash if you try to do almost anything.
+  if (validInstance)
   {
-    // Find-Replace regex to turn name into full line
-    // ([a-z]+)_([A-Za-z]+)   mCoreURIs.$1_$2 = GET_URID(LV2_\U$1 __$2);
-#define GET_URID(name) urid_map->map(urid_map->handle, name)
-    mCoreURIs.atom_Blank     = GET_URID(LV2_ATOM__Blank);
-    mCoreURIs.atom_Object    = GET_URID(LV2_ATOM__Object);
-    mCoreURIs.atom_URID      = GET_URID(LV2_ATOM__URID);
-    mCoreURIs.atom_Float     = GET_URID(LV2_ATOM__Float);
-    mCoreURIs.atom_Bool      = GET_URID(LV2_ATOM__Bool);
-    mCoreURIs.midi_MidiEvent = GET_URID(LV2_MIDI__MidiEvent);
-    mCoreURIs.patch_Set      = GET_URID(LV2_PATCH__Set);
-    mCoreURIs.patch_property = GET_URID(LV2_PATCH__property);
-    mCoreURIs.patch_value    = GET_URID(LV2_PATCH__value);
-
-    // Map all params to URIDs
-    WDL_String uri;
-    int nParams = NParams();
-    for (int n = 0; n < nParams; n++)
+    if(options) // options we are looking for are URID based
     {
-      uri.SetFormatted(2048, "%s#Par%d", PLUG_URI, n);
-      mParamIDMap[GET_URID(uri.Get())] = n;
+      LV2_URID maxBlockLengthID = mMap->map(mMap->handle, LV2_BUF_SIZE__maxBlockLength);
+      // maybe: sequenceSize
+      for(; options->key ; ++options)
+      {
+        if((options->key == maxBlockLengthID) && (options->size == sizeof(int) && options->value))
+        {
+          block_size =  *(int *)options->value; // at least Arodour reports theoretical maximum here, not currently used buffer size
+        }
+      }
     }
-#undef GET_URID
+
+    mURIs.init(mMap, NParams());
+    mForgeCtrl.init(mMap);
+
+    int config_index = parse_config_index(info.descriptor->URI);
+    if (config_index != -1)
+    {
+      auto ioconfig = GetIOConfig(config_index);
+      SetChannelConnections(ERoute::kInput, 0, ioconfig->GetTotalNChannels(ERoute::kInput), true);
+      SetChannelConnections(ERoute::kOutput, 0, ioconfig->GetTotalNChannels(ERoute::kOutput), true);
+    }
+
+    SetBlockSize(block_size);
   }
-
-  SetBlockSize(block_size);
-
-  // Default everything to connected, maybe: support less inputs/outpus then max (with separate descriptor, like Mono/Stereo/Surround 
-  SetChannelConnections(ERoute::kInput, 0, nInputs, true);
-  SetChannelConnections(ERoute::kOutput, 0, nOutputs, true);
+  else
+  {
+    SetChannelConnections(ERoute::kInput, 0, MaxNChannels(ERoute::kInput), false);
+    SetChannelConnections(ERoute::kOutput, 0, MaxNChannels(ERoute::kOutput), false);
+  }
+    
   
   // TODO: CreateTimer();
 }
@@ -142,32 +153,51 @@ IPlugLV2DSP::~IPlugLV2DSP()
 {
 }
 
-// Private methods
-
-
 //IPlugProcessor
 bool IPlugLV2DSP::SendMidiMsg(const IMidiMsg& msg)
 {
-  LV2_Atom_Sequence* out_port = ((LV2_Atom_Sequence*)(mPorts.Get()[1]));
-
-  struct MIDINoteEvent
-  {
-    LV2_Atom_Event event;
-    uint8_t        msg[3];
-  };
-
-  MIDINoteEvent ev;
-  ev.event.time.frames = msg.mOffset;
-  ev.event.body.type = mCoreURIs.midi_MidiEvent;
-  ev.event.body.size = 3;
-  ev.msg[0] = msg.mStatus;
-  ev.msg[1] = msg.mData1;
-  ev.msg[2] = msg.mData2;
-  lv2_atom_sequence_append_event(out_port, out_port->atom.size, &ev.event);
-
+  SendMidiMsgFromUI(msg);
   return true;
 }
 
+// IPlugAPIBase
+void IPlugLV2DSP::SendMidiMsgFromUI(const IMidiMsg &msg)
+{
+  LV2_Atom atmidi = { 3, mURIs.midi_MidiEvent };
+  uint8_t buf[3] = { msg.mStatus, msg.mData1, msg.mData2 };
+
+  if (0 == lv2_atom_forge_frame_time(mForgeCtrl, msg.mOffset)) return;
+  if (!mForgeCtrl.forge_raw(&atmidi, sizeof(LV2_Atom))) return;
+  if (!mForgeCtrl.forge_raw(buf, 3)) return;
+  lv2_atom_forge_pad(mForgeCtrl, sizeof(LV2_Atom) + atmidi.size);
+}
+
+void IPlugLV2DSP::SendSysexMsgFromUI(const ISysEx &msg)
+{
+  LV2_Atom atom = { (uint32_t)msg.mSize, mURIs.midi_MidiEvent };
+  if (0 == lv2_atom_forge_frame_time(mForgeCtrl, msg.mOffset)) return;
+  if (!mForgeCtrl.forge_raw(&atom, sizeof(LV2_Atom))) return;
+  if (!mForgeCtrl.forge_raw(msg.mData, atom.size)) return;
+  lv2_atom_forge_pad(mForgeCtrl, sizeof(LV2_Atom) + atom.size);
+}
+
+void IPlugLV2DSP::SendArbitraryMsgFromUI(int msgTag, int ctrlTag = kNoTag, int dataSize = 0, const void* pData = nullptr)
+{
+  LV2_Atom_Forge_Frame frame;
+  lv2_atom_forge_frame_time(mForgeCtrl, 0);
+  lv2_atom_forge_object(mForgeCtrl, &frame, 0, mURIs.iplug2_UIMessage);
+  lv2_atom_forge_key(mForgeCtrl, mURIs.iplug2_msgTag);
+  lv2_atom_forge_int(mForgeCtrl, msgTag);
+  lv2_atom_forge_key(mForgeCtrl, mURIs.iplug2_ctrlTag);
+  lv2_atom_forge_int(mForgeCtrl, ctrlTag);
+  lv2_atom_forge_key(mForgeCtrl, mURIs.iplug2_data);
+  // Chunk
+  lv2_atom_forge_atom(mForgeCtrl, dataSize, mURIs.atom_Chunk);
+  lv2_atom_forge_raw(mForgeCtrl, pData, dataSize);
+  lv2_atom_forge_pad(mForgeCtrl, dataSize);
+  // Finish
+  lv2_atom_forge_pop(mForgeCtrl, &frame);
+}
 
 //LV2 methods
 
@@ -222,6 +252,9 @@ void IPlugLV2DSP::run(uint32_t n_samples)
   float **inPorts = mIOPorts.Get();
   float **outPorts = mIOPorts.Get() + nInputs;
 
+  // Initialize output sequences
+  mForgeCtrl.open(static_cast<LV2_Atom_Sequence*>(ports[1]));
+
   AttachBuffers(ERoute::kInput, 0, nInputs, inPorts, n_samples);
   AttachBuffers(ERoute::kOutput, 0, nOutputs, outPorts, n_samples);
 
@@ -229,10 +262,11 @@ void IPlugLV2DSP::run(uint32_t n_samples)
   {
     uint32_t atom_type = ev->body.type;
 
-    if (atom_type == mCoreURIs.atom_Object)
+    if (atom_type == mURIs.atom_Object)
     {
       const LV2_Atom_Object* obj = (LV2_Atom_Object*)&ev->body;
-      if (obj->body.otype == mCoreURIs.patch_Set)
+      // Handle patch messages
+      if (obj->body.otype == mURIs.patch_Set)
       {
         uint32_t sampleAt = ev->time.frames;
         // We should check to make sure bad hosts don't do this.
@@ -242,27 +276,18 @@ void IPlugLV2DSP::run(uint32_t n_samples)
           sampleAt = n_samples - 1;
         }
 
-        // Determine the Param index from property ID
-        const LV2_Atom* property = nullptr;
-        lv2_atom_object_get(obj, mCoreURIs.patch_property, &property, 0);
-        if (!property || property->type != mCoreURIs.atom_URID)
-        {
-          continue;
-        }
+        HandleAtomPatchSet(obj, EParamSource::kHost, sampleAt);
+      }
 
-        const LV2_Atom* val = nullptr;
-        lv2_atom_object_get(obj, mCoreURIs.patch_value, &val, 0);
-        if (!val)
-        {
-          continue;
-        }
-
-        LV2_URID urid = ((LV2_Atom_URID*)property)->body;
-        OnParamChange(mParamIDMap[urid], EParamSource::kHost, sampleAt);
+      // Handle arbitrary messages from the UI
+      if (obj->body.otype == mURIs.iplug2_UIMessage)
+      {
+        HandleAtomUIMessage(obj);
       }
     }
     
-    if (atom_type == mCoreURIs.midi_MidiEvent)
+    // Handle MIDI messages
+    if (atom_type == mURIs.midi_MidiEvent)
     {
       const uint8_t* const msg = (const uint8_t*)(ev + 1);
       switch (lv2_midi_message_type(msg))
@@ -301,6 +326,8 @@ void IPlugLV2DSP::run(uint32_t n_samples)
   // TODO: midi
 
   ProcessBlock((iplug::sample**)inPorts, (iplug::sample**)outPorts, n_samples);
+
+  mForgeCtrl.close();
 }
 
 void IPlugLV2DSP::deactivate()
@@ -308,6 +335,8 @@ void IPlugLV2DSP::deactivate()
   OnActivate(false);
 }
 
+
+// Private methods
 
 ///////////////////////
 // LV2 DSP Callbacks //
@@ -345,7 +374,7 @@ static const void *c_extension_data(const char *uri)
 
 static WDL_TypedBuf<LV2_Descriptor> sDescriptors;
 // Static buffer for ALL URI strings.
-// Instead of doing a bunch of small allocations, we do one large one.
+// Instead of doing a bunch of small allocations, we do one large one. Why? Because it's easy and efficient.
 static WDL_TypedBuf<char> sUriBuf;
 
 const LV2_Descriptor*
@@ -421,16 +450,23 @@ IPlugLV2Editor::IPlugLV2Editor(const InstanceInfo &info, const Config& config) :
     const LV2_Feature *feature;
     while((feature = *features++))
     {
+      if (!strcmp(feature->URI, LV2_URID__map))
+      {
+        mURIs.init((LV2_URID_Map*)feature->data, 0);
+      }
       if(!strcmp(feature->URI, LV2_UI__parent))
       {
         mHostWidget = (LV2UI_Widget)feature->data;
-      } else if(!strcmp(feature->URI, LV2_UI__idleInterface))
+      }
+      else if(!strcmp(feature->URI, LV2_UI__idleInterface))
       {
         mHostSupportIdle = true;
-      } else if(!strcmp(feature->URI, LV2_UI__resize))
+      }
+      else if(!strcmp(feature->URI, LV2_UI__resize))
       {
         mHostResize = (LV2UI_Resize *)feature->data;
-      } else
+      }
+      else
       {
         // printf("Host feature: %s\n", feature->URI);
       }
@@ -479,6 +515,8 @@ void IPlugLV2Editor::InformHostOfParamChange(int idx, double normalizedValue)
 
 void IPlugLV2Editor::port_event(uint32_t port_index, uint32_t buffer_size, uint32_t format, const void*  buffer)
 {
+#ifdef LV2_CONTROL_PORTS
+  // This is for control ports
   if ((format == 0) && (buffer_size == sizeof(float)) && buffer)
   {
     float value = *((float *)buffer);
@@ -496,6 +534,47 @@ void IPlugLV2Editor::port_event(uint32_t port_index, uint32_t buffer_size, uint3
       }
     }
   }
+#endif
+
+  // Listening for output messages from the control_out port
+  if (port_index == 1 && format == mURIs.atom_eventTransfer)
+  {
+    auto atom = reinterpret_cast<const LV2_Atom*>(buffer);
+    
+    if (atom->type == mURIs.atom_Object)
+    {
+      const LV2_Atom_Object* obj = reinterpret_cast<const LV2_Atom_Object*>(((const uint8_t*)buffer) + sizeof(LV2_Atom));
+      // Handle patch messages
+      if (obj->body.otype == mURIs.patch_Set)
+      {
+        // We don't get frame times so sampleAt = 0
+        HandleAtomPatchSet(obj, EParamSource::kHost, 0);
+      }
+
+      // Handle arbitrary messages from the UI
+      if (obj->body.otype == mURIs.iplug2_UIMessage)
+      {
+        HandleAtomUIMessage(obj);
+      }
+    }
+    
+    // Handle MIDI messages
+    if (atom->type == mURIs.midi_MidiEvent)
+    {
+      /*
+      const uint8_t* const msg = (const uint8_t*)(ev + 1);
+      switch (lv2_midi_message_type(msg))
+      {
+      case LV2_MIDI_MSG_NOTE_ON:
+      case LV2_MIDI_MSG_NOTE_OFF:
+        ProcessMidiMsg(IMidiMsg((int)(ev->time.frames), msg[0], msg[1], msg[2]));
+        break;
+      // TODO finish switch-case for processing MIDI messages
+      }
+      */
+    }
+  }
+
 }
 
 int IPlugLV2Editor::ui_idle()
@@ -504,6 +583,18 @@ int IPlugLV2Editor::ui_idle()
 #ifdef OS_LINUX
   xcbt_embed_idle_cb(mEmbed);
 #endif
+
+  // Return 0 if the UI is still open
+  if (GetUI() != nullptr) {
+    return 0;
+  } else {
+    return 1;
+  }
+}
+
+int IPlugLV2Editor::ui_resize(int width, int height)
+{
+  SetEditorSize(width, height);
   return 0;
 }
 
@@ -518,5 +609,106 @@ bool IPlugLV2Editor::EditorResizeFromUI(int viewWidth, int viewHeight, bool need
 
 
 #endif
+
+
+/////////////////
+// Common Code //
+/////////////////
+
+AtomSequenceForge::AtomSequenceForge()
+{}
+
+AtomSequenceForge::~AtomSequenceForge()
+{}
+
+void AtomSequenceForge::init(LV2_URID_Map *map)
+{
+  lv2_atom_forge_init(&forge, map);
+  used = false;
+}
+
+void AtomSequenceForge::open(LV2_Atom_Sequence *seq)
+{
+  if (!used)
+  {
+    used = true;
+    lv2_atom_forge_set_buffer(&forge, (uint8_t*)seq, seq->atom.size);
+    lv2_atom_forge_sequence_head(&forge, &sequence_head, 0);
+  }
+}
+
+void AtomSequenceForge::close()
+{
+  if (used)
+  {
+    used = false;
+    lv2_atom_forge_pop(&forge, &sequence_head);
+  }
+}
+
+bool AtomSequenceForge::forge_raw(const void *data, uint32_t size)
+{
+  return lv2_atom_forge_raw(&forge, data, size) != 0;
+}
+
+bool URIDMap::init(LV2_URID_Map *map, int nParams)
+{
+  mMap = map;
+
+  // Find-Replace regex to turn name into full line
+  // ([a-z]+)_([A-Za-z]+)   this->$1_$2 = GET_URID(LV2_\U$1 __$2);
+#define GET_URID(key, name) this->key = mMap->map(mMap->handle, name); if (this->key == 0) { return false; }
+  GET_URID(atom_atomTransfer,    LV2_ATOM__atomTransfer);
+  GET_URID(atom_Blank,           LV2_ATOM__Blank);
+  GET_URID(atom_Chunk,           LV2_ATOM__Chunk);
+  GET_URID(atom_eventTransfer,   LV2_ATOM__eventTransfer);
+  GET_URID(atom_Object,          LV2_ATOM__Object);
+  GET_URID(atom_URID,            LV2_ATOM__URID);
+  GET_URID(atom_Float,           LV2_ATOM__Float);
+  GET_URID(atom_Bool,            LV2_ATOM__Bool);
+  GET_URID(midi_MidiEvent,       LV2_MIDI__MidiEvent);
+  GET_URID(patch_Set,            LV2_PATCH__Set);
+  GET_URID(patch_property,       LV2_PATCH__property);
+  GET_URID(patch_value,          LV2_PATCH__value);
+  GET_URID(iplug2_ctrlTag,       LV2_IPLUG2__ctrlTag);
+  GET_URID(iplug2_data,          LV2_IPLUG2__data);
+  GET_URID(iplug2_msgTag,        LV2_IPLUG2__msgTag);
+  GET_URID(iplug2_UIMessage,     LV2_IPLUG2__UIMessage);
+#undef GET_URID
+
+  // Map all params to URIDs
+  WDL_String uri;
+  for (int n = 0; n < nParams; n++)
+  {
+    uri.SetFormatted(2048, "%s#Patch_%d", PLUG_URI, n);
+    get(uri.Get());
+    uri.SetFormatted(2048, "%s#port_param_%d", PLUG_URI, n);
+    get(uri.Get());
+  }
+
+  return true;
+}
+
+int URIDMap::getParam(LV2_URID urid)
+{
+  auto it = mParamMap.find(urid);
+  if (it != mParamMap.end()) {
+    return it->second;
+  } else {
+    return -1;
+  }
+}
+
+LV2_URID URIDMap::get(const char *uri)
+{
+  auto it = mExtras.find(uri);
+  if (it == mExtras.end()) {
+    LV2_URID urid = mMap->map(mMap->handle, uri);
+    mExtras[uri] = urid;
+    return urid;
+  } else {
+    return it->second;
+  }
+}
 
 END_IPLUG_NAMESPACE

@@ -74,6 +74,7 @@ int main(int argc, char **argv)
   if (hnd == NULL)
   {
     fprintf(stderr, "ERROR: Unable to load library \"%s\"\n", path);
+    fprintf(stderr, "ERROR: %s\n", dlerror());
     return ERR_RET + 2;
   }
 
