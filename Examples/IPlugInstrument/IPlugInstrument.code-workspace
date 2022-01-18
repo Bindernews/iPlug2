@@ -10,6 +10,9 @@
 		{
 			"path": "../../IGraphics",
 			"name": "iPlug2/IGraphics"
+		},
+		{
+			"path": "../../IPlug"
 		}
 	],
 	"settings": {
