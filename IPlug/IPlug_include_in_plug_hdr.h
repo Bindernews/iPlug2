@@ -86,14 +86,15 @@
   #include "IPlugVST3_Processor.h"
   #define PLUGIN_API_BASE IPlugVST3Processor
   #define API_EXT "vst3"
-#elif defined LV2_API
+#elif defined LV2C_API
   #define IPLUG_LV2
   #include "IPlugLV2.h"
-  #ifdef IPLUG_DSP
-    #define PLUGIN_API_BASE IPlugLV2DSP
-  #else
-    #define PLUGIN_API_BASE IPlugLV2Editor
-  #endif
+  #define PLUGIN_API_BASE IPlugLV2Editor
+  #define API_EXT "lv2"
+#elif defined LV2P_API
+  #define IPLUG_LV2
+  #include "IPlugLV2.h"
+  #define PLUGIN_API_BASE IPlugLV2DSP
   #define API_EXT "lv2"
 #else
   #error "No API defined!"
@@ -121,7 +122,7 @@ END_IPLUG_NAMESPACE
   #error "No OS defined!"
 #endif
 
-#if !defined NO_IGRAPHICS && !defined VST3P_API
+#if !defined NO_IGRAPHICS && !defined VST3P_API && !defined LV2P_API
 #include "IGraphics_include_in_plug_hdr.h"
 #endif
 

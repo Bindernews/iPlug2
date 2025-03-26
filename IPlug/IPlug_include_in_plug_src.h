@@ -324,13 +324,39 @@ static int ui_idle(LV2UI_Handle instance)
   return (static_cast<IPlugLV2Editor*>(instance))->ui_idle();
 }
 
+static int ui_show(LV2UI_Handle instance)
+{
+  return (static_cast<IPlugLV2Editor*>(instance))->ui_idle();
+}
+
+static int ui_hide(LV2UI_Handle instance)
+{
+  return (static_cast<IPlugLV2Editor*>(instance))->ui_idle();
+}
+
+static int ui_resize(LV2UI_Feature_Handle handle, int width, int height)
+{
+  return static_cast<IPlugLV2Editor*>(handle)->ui_resize(width, height);
+}
+
 static const void *ui_extension_data(const char *uri)
 {
   static const LV2UI_Idle_Interface idle = { ui_idle };
+  static const LV2UI_Resize ext_resize = { NULL, ui_resize };
+  //static const LV2UI_Show_Interface uiShow = { ui_show, ui_hide };
+
   if (!strcmp(uri, LV2_UI__idleInterface))
   {
     return &idle;
   }
+  else if (!strcmp(uri, LV2_UI__resize))
+  {
+    return &ext_resize;
+  }
+  // if (strcmp(uri, LV2_UI__showInterface) == 0)
+  // {
+  //   return &uiShow;
+  // }
   return nullptr;
 }
 

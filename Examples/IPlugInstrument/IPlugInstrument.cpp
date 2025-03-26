@@ -2,6 +2,8 @@
 #include "IPlug_include_in_plug_src.h"
 #include "LFO.h"
 
+#if IPLUG_EDITOR
+#include "IControls.h"
 
 class ContextMenuButton : public IVButtonControl
 {
@@ -30,9 +32,46 @@ public:
   IPopupMenu mMenu;
 };
 
+
+class IdleCPSControl : public ITextControl
+{
+public:
+  IdleCPSControl(const IRECT &bounds, std::atomic_uint64_t &cpsValue)
+  : ITextControl(bounds, "", DEFAULT_TEXT.WithFGColor(IColor(255, 255, 0, 0)))
+  , mCPS(cpsValue)
+  {
+    mPrevTimestamp = GetTimestamp();
+    SetDirty(true);
+    SetStrFmt(20, "CPS: 0");
+  }
+
+  void Draw(IGraphics &g) override
+  {
+    double ts = GetTimestamp();
+    float delta = (float)(ts - mPrevTimestamp);
+    if (delta >= 0.25f)
+    {
+      uint64_t newCalls = mCPS.load();
+      uint64_t diff = newCalls - mPrevCalls;
+      mPrevCalls = newCalls;
+      mPrevTimestamp = ts;
+      SetStrFmt(20, "CPS: %.3f", (float)diff / delta);
+    }
+    ITextControl::Draw(g);
+    SetDirty(true);
+  }
+
+  double mPrevTimestamp;
+  uint64_t mPrevCalls;
+  std::atomic_uint64_t &mCPS;
+};
+#endif // IPLUG_EDITOR
+
 IPlugInstrument::IPlugInstrument(const InstanceInfo& info)
 : Plugin(info, MakeConfig(kNumParams, kNumPresets))
 {
+  mIdleCalls.store(0);
+
   GetParam(kParamGain)->InitDouble("Gain", 100., 0., 100.0, 0.01, "%");
   GetParam(kParamNoteGlideTime)->InitMilliseconds("Note Glide Time", 0., 0.0, 30.);
   GetParam(kParamAttack)->InitDouble("Attack", 10., 1., 1000., 0.1, "ms", IParam::kFlagsNone, "ADSR", IParam::ShapePowCurve(3.));
@@ -116,8 +155,9 @@ IPlugInstrument::IPlugInstrument(const InstanceInfo& info)
 
     pGraphics->EnableTooltips(true);
     pGraphics->ShowFPSDisplay(true);
-    IRECT testPanel = b.GetFromTLHC(260, 40).GetTranslated(80, 80);
-    const int TEST_COLS = 4;
+
+    IRECT testPanel = b.GetFromTLHC(400, 50).GetTranslated(80, 80);
+    const int TEST_COLS = 5;
     pGraphics->AttachControl(new IVButtonControl(testPanel.GetGridCell(0, 1, TEST_COLS), [&](IControl* ctrl) {
       WDL_String contents;
       if (ctrl->GetUI()->GetTextFromClipboard(contents))
@@ -145,6 +185,8 @@ IPlugInstrument::IPlugInstrument(const InstanceInfo& info)
       int result = ctrl->GetUI()->ShowMessageBox("A message for you", "Testy Testerson Title", EMsgBoxType::kMB_OKCANCEL);
       printf("MsgBox result: %d\n", result);
     }, "Test MsgBox"));
+
+    pGraphics->AttachControl(new IdleCPSControl(testPanel.GetGridCell(4, 1, TEST_COLS), mIdleCalls));
   };
 #endif
 }
@@ -161,6 +203,7 @@ void IPlugInstrument::OnIdle()
 {
   mMeterSender.TransmitData(*this);
   mLFOVisSender.TransmitData(*this);
+  mIdleCalls++;
 }
 
 void IPlugInstrument::OnReset()

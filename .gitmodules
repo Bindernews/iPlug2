@@ -1,0 +1,3 @@
+[submodule "Dependencies/IPlug/lv2"]
+	path = Dependencies/IPlug/lv2
+	url = https://github.com/lv2/lv2.git

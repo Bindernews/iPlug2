@@ -1,3 +1,4 @@
 .vscode/settings.json
 IPlugInstrument.code-workspace
-
+build/
+build-linux/

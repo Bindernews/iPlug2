@@ -344,13 +344,13 @@ public:
    * @param startPos The start position in the chunk where parameter values are stored
    * @return The new chunk position (endPos) */
   virtual int UnserializeEditorState(const IByteChunk& chunk, int startPos)  { return startPos; }
-  
-  /** Can be used by a host API to inform the editor of screen scale changes
-   * @param scale The new screen scale*/
-  virtual void SetScreenScale(float scale) {}
 
+  /** Can be used by a host API to inform the editor of screen scale changes
+   * @param scale The new screen scale */
+  virtual void SetScreenScale(float scale) {}
+  
   /** Can be used by a host API to specify event loop integration
-   *@param pMainLoop platform specific pointer */
+   * @param pMainLoop platform specific pointer */
   virtual void SetIntegration(void* pMainLoop) {}
 
   friend class IPlugAPP;

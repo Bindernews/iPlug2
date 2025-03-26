@@ -1,3 +1,8 @@
 cmake_minimum_required(VERSION 3.10 FATAL_ERROR)
 project(rundyn VERSION 1.0 LANGUAGES C)
 add_executable(rundyn rundyn.c)
+if (WIN32)
+  target_link_libraries(rundyn PRIVATE "")
+else()
+  target_link_libraries(rundyn PRIVATE "dl")
+endif()

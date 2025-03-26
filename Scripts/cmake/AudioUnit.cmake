@@ -10,7 +10,7 @@ find_library(AUDIOUNIT_LIB AudioUnit)
 find_library(COREAUDIO_LIB CoreAudio)
 
 add_library(iPlug2_AUv2 INTERFACE)
-set(_sdk ${IPLUG2_DIR}/IPlug/AUv2)
+set(_sdk ${IPLUG2_SDK_PATH}/IPlug/AUv2)
 iplug_target_add(iPlug2_AUv2 INTERFACE
   DEFINE "AU_API" "IPLUG_EDITOR=1" "IPLUG_DSP=1" "SWELL_CLEANUP_ON_UNLOAD"
   LINK iPlug2_Core ${AUDIOUNIT_LIB} ${COREAUDIO_LIB} "-framework CoreMidi" "-framework AudioToolbox"
@@ -57,7 +57,7 @@ endfunction(iplug_configure_au2)
 #################
 
 
-set(_sdk ${IPLUG2_DIR}/IPlug/AUv3)
+set(_sdk ${IPLUG2_SDK_PATH}/IPlug/AUv3)
 add_library(iPlug2_AUv3 INTERFACE)
 iplug_target_add(iPlug2_AUv3 INTERFACE
   INCLUDE ${_sdk}

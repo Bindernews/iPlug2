@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.11)
 
 set(IPLUG2_AAX_ICON
-  "${IPLUG2_DIR}/Dependencies/IPlug/AAX_SDK/Utilities/PlugIn.ico"
+  "${IPLUG2_SDK_PATH}/Dependencies/IPlug/AAX_SDK/Utilities/PlugIn.ico"
   CACHE FILEPATH "Path to AAX plugin icon"
 )
 

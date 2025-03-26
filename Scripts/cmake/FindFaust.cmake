@@ -29,7 +29,7 @@ function(add_faust_target target)
     set(out_file "${inc_dir}/Faust${class_name}.hpp")
     add_custom_command(
       OUTPUT "${out_file}"
-      COMMAND "${Faust_EXECUTABLE}" -lang cpp -cn "${class_name}" -a "${IPLUG2_DIR}/IPlug/Extras/Faust/IPlugFaust_arch.cpp" -o "${out_file}" "${dsp_file}"
+      COMMAND "${Faust_EXECUTABLE}" -lang cpp -cn "${class_name}" -a "${IPLUG2_SDK_PATH}/IPlug/Extras/Faust/IPlugFaust_arch.cpp" -o "${out_file}" "${dsp_file}"
       DEPENDS "${dsp_file}"
     )
     list(APPEND src_list "${dsp_file}")

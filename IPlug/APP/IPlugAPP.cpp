@@ -69,7 +69,7 @@ bool IPlugAPP::EditorResize(int viewWidth, int viewHeight)
   bool parentResized = false;
   if (viewWidth != GetEditorWidth() || viewHeight != GetEditorHeight())
   {
-    #ifdef OS_MAC
+  #ifdef OS_MAC
     const int titleBarOffset = GetTitleBarOffset();
     RECT r;
     GetWindowRect(gHWND, &r);
