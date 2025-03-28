@@ -22,7 +22,6 @@
 
 #ifdef OS_LINUX
   #ifdef IGRAPHICS_GL
-    #include "glad.c"
     #include <glad/glad_glx.h>
   #endif
   #include <fontconfig/fontconfig.h>
@@ -38,14 +37,14 @@ using namespace igraphics;
 class IGraphicsLinux::Font : public PlatformFont
 {
 public:
-  Font(WDL_String &fileName) 
+  Font(WDL_String &fileName)
   : PlatformFont(false)
   , mFileName(fileName)
   {
     mFontData.Resize(0);
   }
 
-  Font(WDL_String &fontID, const void* pData, int dataSize) 
+  Font(WDL_String &fontID, const void* pData, int dataSize)
   : PlatformFont(false)
   , mFileName(fontID)
   {
@@ -118,7 +117,7 @@ static int RunSubprocess(char* command, WDL_String& subStdout, const WDL_String&
     close(pipeOut[1]);
     exit(status);
   }
-  else 
+  else
   {
     // Parent process
 
@@ -185,7 +184,7 @@ void IGraphicsLinux::Paint()
 void IGraphicsLinux::DrawResize()
 {
   void* ctx = xcbt_window_draw_begin(mPlugWnd);
-  
+
   if (ctx)
   {
     IGRAPHICS_DRAW_CLASS::DrawResize();
@@ -200,7 +199,7 @@ inline IMouseInfo IGraphicsLinux::GetMouseInfo(int16_t x, int16_t y, int16_t sta
   IMouseInfo info;
   info.x = mCursorX = x / (GetDrawScale() * GetScreenScale());
   info.y = mCursorY = y / (GetDrawScale() * GetScreenScale());
-  info.ms = IMouseMod((state & XCB_BUTTON_MASK_1), (state & XCB_BUTTON_MASK_3), // Note "2" is the middle button 
+  info.ms = IMouseMod((state & XCB_BUTTON_MASK_1), (state & XCB_BUTTON_MASK_3), // Note "2" is the middle button
     (state & XCB_KEY_BUT_MASK_SHIFT), (state & XCB_KEY_BUT_MASK_CONTROL), (state & XCB_KEY_BUT_MASK_MOD_1) // shift, ctrl, alt
   );
 
@@ -211,14 +210,14 @@ inline IMouseInfo IGraphicsLinux::GetMouseInfoDeltas(float& dX, float& dY, int16
 {
   float oldX = mCursorX;
   float oldY = mCursorY;
-  
+
   IMouseInfo info = GetMouseInfo(x, y, state);
-  
+
   dX = info.x - oldX;
   dY = info.y - oldY;
   // dX = oldX - info.x;
   // dY = oldY - info.y;
-  
+
   return info;
 }
 
@@ -736,7 +735,7 @@ void IGraphicsLinux::WindowHandler(xcb_generic_event_t* evt)
     mPlugWnd = nullptr;
   }
   else
-  { 
+  {
     auto type = evt->response_type & ~0x80;
     switch(type)
     {
@@ -758,11 +757,11 @@ void IGraphicsLinux::WindowHandler(xcb_generic_event_t* evt)
         bool btnRight = bp->detail == 3;
 
         if (btnLeft) // check for double-click
-        { 
+        {
           if (!mLastLeftClickStamp)
           {
             mLastLeftClickStamp = bp->time;
-          } 
+          }
           else
           {
             if ((bp->time - mLastLeftClickStamp) < mDblClickTimeout)
@@ -790,18 +789,18 @@ void IGraphicsLinux::WindowHandler(xcb_generic_event_t* evt)
         xcb_set_input_focus_checked(xcbt_conn(mX), XCB_INPUT_FOCUS_POINTER_ROOT, mPlugWnd->wnd, XCB_CURRENT_TIME);
 
         // TODO: detect double click
-        
+
         // TODO: set capture (or after capture...) (but check other buttons first)
         if ((bp->detail == 1) || (bp->detail == 3)) // left/right
-        { 
+        {
           uint16_t state = bp->state | (0x80<<bp->detail); // merge state before with pressed button
           IMouseInfo info = GetMouseInfo(bp->event_x, bp->event_y, state); // convert button to state mask
           std::vector<IMouseInfo> list{ info };
           OnMouseDown(list);
           RequestFocus();
-        } 
+        }
         else if ((bp->detail == 4) || (bp->detail == 5)) // wheel
-        { 
+        {
           IMouseInfo info = GetMouseInfo(bp->event_x, bp->event_y, bp->state);
           OnMouseWheel(info.x, info.y, info.ms, bp->detail == 4 ? 1. : -1);
         }
@@ -839,8 +838,8 @@ void IGraphicsLinux::WindowHandler(xcb_generic_event_t* evt)
           {
             IMouseInfo info = GetMouseInfo(mn->event_x, mn->event_y, mn->state);
             OnMouseOver(info.x, info.y, info.ms);
-          } 
-          else 
+          }
+          else
           {
             // NOTE: this also updates mCursorX and mCursorY
             float dX, dY;
@@ -891,12 +890,12 @@ void IGraphicsLinux::WindowHandler(xcb_generic_event_t* evt)
       {
         break;
       }
-      case XCB_KEY_PRESS: 
-      case XCB_KEY_RELEASE: 
+      case XCB_KEY_PRESS:
+      case XCB_KEY_RELEASE:
       {
         auto kp = (xcb_key_press_event_t*) evt;
         XKeyEvent keyev;
-        keyev.display = (Display*) xcbt_display(mX); 
+        keyev.display = (Display*) xcbt_display(mX);
         keyev.keycode = kp->detail;
         keyev.state = kp->state;
         char buf[16]{};
@@ -963,7 +962,7 @@ void* IGraphicsLinux::OpenWindow(void* pParent)
 {
   xcbt_rect r = {0, 0, static_cast<int16_t>(WindowWidth()), static_cast<int16_t>(WindowHeight())};
   xcb_window_t xprt = (intptr_t) pParent;
-  
+
 #ifdef APP_API
   if (!mEmbed)
   {
@@ -1034,7 +1033,7 @@ void* IGraphicsLinux::OpenWindow(void* pParent)
   }
 
   if (xcbt_window_draw_begin(mPlugWnd)) // GL context set
-  { 
+  {
     OnViewInitialized(nullptr);
     SetScreenScale(1); // resizes draw context, calls DrawResize
 
@@ -1320,7 +1319,7 @@ void IGraphicsLinux::PromptForFile(WDL_String& fileName, WDL_String& path, EFile
         ext++;
     }
   }
-  
+
   WDL_String sStdout;
   WDL_String sStdin;
   int status;
@@ -1333,7 +1332,7 @@ void IGraphicsLinux::PromptForFile(WDL_String& fileName, WDL_String& path, EFile
 
   if (status == 0)
   {
-    fileName.Set(sStdout.Get()); 
+    fileName.Set(sStdout.Get());
   }
   else
   {
@@ -1355,7 +1354,7 @@ void IGraphicsLinux::PromptForDirectory(WDL_String& dir)
   {
     args.AppendFormatted(dir.GetLength() + 20, "\"--filename=%s\"", dir.Get());
   }
-  
+
   WDL_String sStdout;
   WDL_String sStdin;
   int status;
@@ -1367,7 +1366,7 @@ void IGraphicsLinux::PromptForDirectory(WDL_String& dir)
 
   if (status == 0)
   {
-    dir.Set(sStdout.Get()); 
+    dir.Set(sStdout.Get());
   }
   else
   {
@@ -1382,7 +1381,7 @@ bool IGraphicsLinux::PromptForColor(IColor& color, const char* str, IColorPicker
 
   if (str)
     args.AppendFormatted(strlen(str) + 20, "\"--title=%s\" ", str);
-  
+
   args.AppendFormatted(100, "\"--color=rgba(%d,%d,%d,%f)\" ", color.R, color.G, color.B, (float)color.A / 255.f);
 
   bool ok = false;
@@ -1604,7 +1603,7 @@ IGraphicsLinux::~IGraphicsLinux()
   xcbt_embed_dtor(mEmbed);
 }
 
-#ifndef NO_IGRAPHICS
+#if !defined(NO_IGRAPHICS)
   #if defined IGRAPHICS_SKIA
     #include "IGraphicsSkia.cpp"
   #elif defined IGRAPHICS_NANOVG

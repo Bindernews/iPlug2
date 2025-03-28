@@ -1,16 +1,17 @@
 /*
  ==============================================================================
- 
- This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers. 
- 
+
+ This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers.
+
  See LICENSE.txt for  more info.
- 
+
  ==============================================================================
 */
 
 #pragma once
 #include "pluginterfaces/gui/iplugviewcontentscalesupport.h"
 #include "pluginterfaces/base/keycodes.h"
+#include "base/source/fstring.h"
 
 #include "IPlugStructs.h"
 
@@ -29,15 +30,15 @@ public:
   {
     mOwner.addRef();
   }
-  
+
   ~IPlugVST3View()
   {
     mOwner.release();
   }
-  
+
   IPlugVST3View(const IPlugVST3View&) = delete;
   IPlugVST3View& operator=(const IPlugVST3View&) = delete;
-  
+
   Steinberg::tresult PLUGIN_API isPlatformTypeSupported(Steinberg::FIDString type) override
   {
     if (mOwner.HasUI()) // for no editor plugins
@@ -45,7 +46,7 @@ public:
 #ifdef OS_WIN
       if (strcmp(type, Steinberg::kPlatformTypeHWND) == 0)
         return Steinberg::kResultTrue;
-      
+
 #elif defined OS_MAC
       if (strcmp (type, Steinberg::kPlatformTypeNSView) == 0)
         return Steinberg::kResultTrue;
@@ -54,31 +55,31 @@ public:
         return Steinberg::kResultTrue;
 #endif
     }
-    
+
     return Steinberg::kResultFalse;
   }
-    
+
   Steinberg::tresult PLUGIN_API onSize(Steinberg::ViewRect* pSize) override
   {
     TRACE
-    
+
     if (pSize)
     {
       rect = *pSize;
       mOwner.OnParentWindowResize(rect.getWidth(), rect.getHeight());
     }
-    
+
     return Steinberg::kResultTrue;
   }
-  
+
   Steinberg::tresult PLUGIN_API getSize(Steinberg::ViewRect* pSize) override
   {
     TRACE
-    
+
     if (mOwner.HasUI())
     {
       *pSize = Steinberg::ViewRect(0, 0, mOwner.GetEditorWidth(), mOwner.GetEditorHeight());
-      
+
       return Steinberg::kResultTrue;
     }
     else
@@ -86,31 +87,31 @@ public:
       return Steinberg::kResultFalse;
     }
   }
-  
+
   Steinberg::tresult PLUGIN_API canResize() override
   {
     if (mOwner.HasUI() && mOwner.GetHostResizeEnabled())
     {
       return Steinberg::kResultTrue;
     }
-    
+
     return Steinberg::kResultFalse;
   }
-  
+
   Steinberg::tresult PLUGIN_API checkSizeConstraint(Steinberg::ViewRect* pRect) override
   {
     int w = pRect->getWidth();
     int h = pRect->getHeight();
-    
+
     if(!mOwner.ConstrainEditorResize(w, h))
     {
       pRect->right = pRect->left + w;
       pRect->bottom = pRect->top + h;
     }
-    
+
     return Steinberg::kResultTrue;
   }
-  
+
   Steinberg::tresult PLUGIN_API attached(void* pParent, Steinberg::FIDString type) override
   {
     if (mOwner.HasUI())
@@ -132,17 +133,17 @@ public:
 #endif
       return Steinberg::kResultTrue;
     }
-    
+
     return Steinberg::kResultFalse;
   }
-    
+
   Steinberg::tresult PLUGIN_API removed() override
   {
     if (mOwner.HasUI())
     {
       mOwner.CloseWindow();
     }
-    
+
     return CPluginView::removed();
   }
 
@@ -153,14 +154,14 @@ public:
     return Steinberg::kResultOk;
   }
 
-  Steinberg::tresult PLUGIN_API setFrame (Steinberg::IPlugFrame* frame) override 
-  { 
+  Steinberg::tresult PLUGIN_API setFrame (Steinberg::IPlugFrame* frame) override
+  {
   #ifdef OS_LINUX
     auto rloop = iplug::IPlugVST3_RunLoop::Create(frame);
     rloop->CreateTimer([&]() { mOwner.OnIdle(); }, 10);
     mOwner.SetIntegration(rloop);
   #endif
-  
+
     return CPluginView::setFrame(frame);
   }
 
@@ -192,7 +193,7 @@ public:
     return iplug::kVK_NONE;
   #endif
   }
-  
+
   static int VSTKeyCodeToVK (Steinberg::int16 code, char ascii)
   {
     // If the keycode provided by the host is 0, we can still calculate the VK from the ascii value
@@ -201,7 +202,7 @@ public:
     {
       return AsciiToVK(ascii);
     }
-    
+
     using namespace Steinberg;
     using namespace iplug;
 
@@ -271,7 +272,7 @@ public:
 
     return kVK_NONE;
   };
-  
+
   static iplug::IKeyPress translateKeyMessage (Steinberg::char16 key, Steinberg::int16 keyMsg, Steinberg::int16 modifiers)
   {
     WDL_String str;
@@ -280,7 +281,7 @@ public:
     {
       key = Steinberg::VirtualKeyCodeToChar((Steinberg::uint8) keyMsg);
     }
-    
+
     if (key)
     {
       Steinberg::String keyStr(STR (" "));
@@ -296,26 +297,26 @@ public:
       static_cast<bool>(modifiers & Steinberg::kShiftKey),
       static_cast<bool>(modifiers & Steinberg::kCommandKey),
       static_cast<bool>(modifiers & Steinberg::kAlternateKey)};
-    
+
     return keyPress;
   }
-  
+
   Steinberg::tresult PLUGIN_API onKeyDown (Steinberg::char16 key, Steinberg::int16 keyMsg, Steinberg::int16 modifiers) override
   {
     return mOwner.OnKeyDown(translateKeyMessage(key, keyMsg, modifiers)) ? Steinberg::kResultTrue : Steinberg::kResultFalse;
   }
-  
+
   Steinberg::tresult PLUGIN_API onKeyUp (Steinberg::char16 key, Steinberg::int16 keyMsg, Steinberg::int16 modifiers) override
   {
     return mOwner.OnKeyUp(translateKeyMessage(key, keyMsg, modifiers)) ? Steinberg::kResultTrue : Steinberg::kResultFalse;
   }
-  
+
   DELEGATE_REFCOUNT(Steinberg::CPluginView)
 
   void Resize(int w, int h)
   {
     TRACE
-    
+
     Steinberg::ViewRect newSize = Steinberg::ViewRect(0, 0, w, h);
     plugFrame->resizeView(this, &newSize);
   }

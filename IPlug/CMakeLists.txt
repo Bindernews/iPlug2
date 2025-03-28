@@ -1,0 +1,152 @@
+cmake_minimum_required(VERSION 3.20)
+cmake_policy(SET CMP0076 NEW)
+# Only interpret if() arguments as variables or keywords when unquoted
+cmake_policy(SET CMP0054 NEW)
+# So we can check for optimization flags
+include(CheckCXXCompilerFlag)
+
+# Load helper functions
+include(${CMAKE_CURRENT_LIST_DIR}/Functions.cmake)
+
+if (CMAKE_SYSTEM_NAME MATCHES "Windows")
+  # Need to determine processor arch for postbuild-win.bat
+  if (CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64")
+    set(PROCESSOR_ARCH "x64" CACHE STRING "Processor architecture")
+  else()
+    set(PROCESSOR_ARCH "Win32" CACHE STRING "Processor architecture")
+  endif()
+  set(IPLUG_OS "Windows" CACHE STRING "OS name" FORCE)
+
+elseif (CMAKE_SYSTEM_NAME MATCHES "Darwin")
+  find_program(IBTOOL ibtool HINTS "/usr/bin" "${OSX_DEVELOPER_ROOT}/usr/bin")
+  if (${IBTOOL} STREQUAL "IBTOOL-NOTFOUND" )
+    message(FATAL_ERROR "ibtool can not be found")
+  endif()
+  set(IPLUG_OS "Darwin" CACHE STRING "OS name" FORCE)
+
+elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
+  set(IPLUG_OS "Linux" CACHE STRING "OS name" FORCE)
+
+else()
+  message(FATAL_ERROR "Unsupported platform ${CMAKE_SYSTEM_NAME}")
+endif()
+
+# These functions MUST be run in global scope
+CHECK_CXX_COMPILER_FLAG("-march=native" COMPILER_OPT_ARCH_NATIVE_SUPPORTED)
+CHECK_CXX_COMPILER_FLAG("/arch:AVX" COMPILER_OPT_ARCH_AVX_SUPPORTED)
+
+# Add .gitignore to the build root
+write_file(${CMAKE_BINARY_DIR}/.gitignore "*\n")
+
+#########################
+# iPlug2 Core Interface #
+#########################
+
+# Core iPlug2 interface. All targets MUST link to this.
+add_library(iPlug2_Core INTERFACE)
+
+set(IPLUG_SRC ${IPLUG2_SDK_PATH}/IPlug)
+set(IGRAPHICS_SRC ${IPLUG2_SDK_PATH}/IGraphics)
+set(WDL_DIR ${IPLUG2_SDK_PATH}/WDL)
+set(IPLUG_DEPS ${IPLUG2_SDK_PATH}/Dependencies/IPlug)
+set(IGRAPHICS_DEPS ${IPLUG2_SDK_PATH}/Dependencies/IGraphics)
+set(BUILD_DEPS ${IPLUG2_SDK_PATH}/Dependencies/Build)
+
+set(cwd ${CMAKE_CURRENT_LIST_DIR})
+
+# Make sure we define DEBUG for debug builds
+set(_def
+  # Required for SWELL and MSVC builds
+  NOMINMAX
+  $<$<CONFIG:Debug>:DEBUG>
+)
+set(_opt "")
+set(_lib "")
+set(_inc
+  ${cwd}
+  ${cwd}/Extras
+  # iPlug2
+  ${WDL_DIR}
+  ${WDL_DIR}/libpng
+  ${WDL_DIR}/zlib
+)
+set(_src
+  ${cwd}/IPlugAPIBase.h
+  ${cwd}/IPlugAPIBase.cpp
+  ${cwd}/IPlugConstants.h
+  ${cwd}/IPlugEditorDelegate.h
+  ${cwd}/IPlugLogger.h
+  ${cwd}/IPlugMidi.h
+  ${cwd}/IPlugParameter.h
+  ${cwd}/IPlugParameter.cpp
+  ${cwd}/IPlugPaths.h
+  ${cwd}/IPlugPaths.cpp
+  ${cwd}/IPlugPlatform.h
+  ${cwd}/IPlugPluginBase.h
+  ${cwd}/IPlugPluginBase.cpp
+  ${cwd}/IPlugProcessor.h
+  ${cwd}/IPlugProcessor.cpp
+  ${cwd}/IPlugQueue.h
+  ${cwd}/IPlugStructs.h
+  ${cwd}/IPlugTimer.h
+  ${cwd}/IPlugTimer.cpp
+  ${cwd}/IPlugUtilities.h
+)
+
+
+# Platform Settings
+if (IPLUG_OS MATCHES "Windows")
+  list(APPEND _lib
+    "Shlwapi.lib"
+    "comctl32.lib"
+    "wininet.lib")
+
+  # postbuild-win.bat is used by VST2/VST3/AAX on Windows, so we just always configure it on Windows
+  # Note: For visual studio, we COULD use $(TargetPath) for the target, but for all other generators, no.
+  set(plugin_build_dir "${CMAKE_BINARY_DIR}/out")
+  set(create_bundle_script "${IPLUG2_SDK_PATH}/Scripts/create_bundle.bat")
+  configure_file("${IPLUG2_SDK_PATH}/Scripts/postbuild-win.bat.in" "${CMAKE_BINARY_DIR}/postbuild-win.bat")
+
+elseif (IPLUG_OS MATCHES "Linux")
+  list(APPEND _inc ${WDL_DIR}/swell)
+  list(APPEND _lib "pthread" "rt")
+  list(APPEND _opt "-Wno-multichar")
+
+elseif (IPLUG_OS MATCHES "Darwin")
+  list(APPEND _src
+    ${IPLUG_SRC}/IPlugPaths.mm)
+  list(APPEND _inc
+    ${WDL_DIR}/swell)
+  list(APPEND _lib
+    "-framework CoreFoundation"
+    "-framework CoreData"
+    "-framework Foundation"
+    "-framework CoreServices")
+  list(APPEND _opts
+    "-Wno-deprecated-declarations"
+    "-Wno-c++11-narrowing")
+endif()
+
+if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+  list(APPEND _def "_CRT_SECURE_NO_WARNINGS" "_CRT_SECURE_NO_DEPRECATE" "_CRT_NONSTDC_NO_DEPRECATE" "NOMINMAX" "_MBCS")
+  list(APPEND _opt "/wd4996" "/wd4250" "/wd4018" "/wd4267" "/wd4068" "/MT$<$<CONFIG:Debug>:d>")
+endif()
+
+# Set certain compiler flags, specifically errors if there are undefined symbols
+if ((CMAKE_CXX_COMPILER_ID MATCHES "Clang") OR (CMAKE_CXX_COMPILER_ID MATCHES "GNU"))
+  list(APPEND _opt "-Wl,--no-undefined")
+endif()
+
+# Use advanced SIMD instructions when available.
+if (COMPILER_OPT_ARCH_NATIVE_SUPPORTED)
+  list(APPEND _opt "-march=native")
+elseif(COMPILER_OPT_ARCH_AVX_SUPPORTED)
+  list(APPEND _opt "/arch:AVX")
+endif()
+
+source_group(TREE ${IPLUG2_SDK_PATH} PREFIX "IPlug" FILES ${_src})
+iplug_target_add(iPlug2_Core INTERFACE
+  DEFINE ${_def} INCLUDE ${_inc} SOURCE ${_src} OPTION ${_opt} LINK ${_lib} FEATURE cxx_std_17)
+
+# Load extras libraries
+add_subdirectory(Extras)

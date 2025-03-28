@@ -1,10 +1,10 @@
 /*
  ==============================================================================
- 
- This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers. 
- 
+
+ This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers.
+
  See LICENSE.txt for  more info.
- 
+
  ==============================================================================
 */
 #include "IPlugLV2.h"
@@ -22,7 +22,7 @@
 
 #define NOTIMP printf("%s: not implemented\n", __FUNCTION__);
 // Maximum number of DIGITS for IO configs (e.g. 9999 = 4 digits)
-#define MAX_CONFIG_DIGITS (4) 
+#define MAX_CONFIG_DIGITS (4)
 
 int parse_config_index(const char *uri)
 {
@@ -58,7 +58,7 @@ int binary_find(const T* ar, size_t len, const T* test, Compare comp)
 
 BEGIN_IPLUG_NAMESPACE
 
-#ifdef IPLUG_DSP
+#if IPLUG_DSP
 
 IPlugLV2DSP::IPlugLV2DSP(const InstanceInfo &info, const Config& config)
   : IPlugAPIBase(config, kAPILV2)
@@ -67,18 +67,18 @@ IPlugLV2DSP::IPlugLV2DSP(const InstanceInfo &info, const Config& config)
   , mMap(nullptr)
 {
   // maybe: info.descriptor should match our expectation, should we check that?
- 
+
   Trace(TRACELOC, "%s", config.pluginName);
-  
+
   // Allocate port pointers
   mPorts.Resize(2);
   mIOPorts.Resize( MaxNChannels(ERoute::kInput) + MaxNChannels(ERoute::kOutput) );
   mControlPorts.Resize( NParams() );
-  
+
   SetSampleRate(info.rate);
-  
+
   int block_size = DEFAULT_BLOCK_SIZE; // that can lead to allocation in RT, but there is no workaround in case host does not specify it
-  
+
   bool validInstance = true;
 
   //LV2_URID_Unmap *urid_unmap = nullptr;
@@ -144,8 +144,8 @@ IPlugLV2DSP::IPlugLV2DSP(const InstanceInfo &info, const Config& config)
     SetChannelConnections(ERoute::kInput, 0, MaxNChannels(ERoute::kInput), false);
     SetChannelConnections(ERoute::kOutput, 0, MaxNChannels(ERoute::kOutput), false);
   }
-    
-  
+
+
   // TODO: CreateTimer();
 }
 
@@ -242,7 +242,7 @@ void IPlugLV2DSP::run(uint32_t n_samples)
   if(GetBlockSize() < n_samples)
   {
     // if host has no maxBlockLength, we can get there. Strictly speaking we violate hardRT by allocation,
-    // but what else can we do in such case? Make the feature "required" and so do not support this host at all? 
+    // but what else can we do in such case? Make the feature "required" and so do not support this host at all?
     SetBlockSize(n_samples);
   }
 
@@ -285,7 +285,7 @@ void IPlugLV2DSP::run(uint32_t n_samples)
         HandleAtomUIMessage(obj);
       }
     }
-    
+
     // Handle MIDI messages
     if (atom_type == mURIs.midi_MidiEvent)
     {
@@ -301,7 +301,7 @@ void IPlugLV2DSP::run(uint32_t n_samples)
     }
   }
   // END LV2_ATOM_SEQUENCE_FOREACH
-       
+
 #ifdef LV2_CONTROL_PORTS
   ENTER_PARAMS_MUTEX;
   for (int i = 0; i < nParams; ++i)
@@ -421,26 +421,26 @@ IPlugLV2DSP::descriptor(uint32_t index, LV2_InstantiateFn instantiate)
   }
 }
 
-#endif
+#endif // IPLUG_DSP
 
-#ifdef IPLUG_EDITOR
+#if IPLUG_EDITOR
 
 IPlugLV2Editor::IPlugLV2Editor(const InstanceInfo &info, const Config& config) : IPlugAPIBase(config, kAPILV2)
 , mHostSupportIdle(false), mHostWidget(nullptr), mHostResize(nullptr)
-{ 
+{
   Trace(TRACELOC, "%s", config.pluginName);
 
   WDL_PtrList<IOConfig> IOConfigs;
   int totalNInChans, totalNOutChans;
   int totalNInBuses, totalNOutBuses;
   IPlugProcessor::ParseChannelIOStr(config.channelIOStr, IOConfigs, totalNInChans, totalNOutChans, totalNInBuses, totalNOutBuses);
-  
+
   mParameterPortOffset = totalNInChans + totalNOutChans;
 
 #ifdef OS_LINUX
   mEmbed = xcbt_embed_idle();
 #endif
- 
+
   mHostWrite      = info.write_function;
   mHostController = info.controller;
 
@@ -473,7 +473,7 @@ IPlugLV2Editor::IPlugLV2Editor(const InstanceInfo &info, const Config& config) :
     }
   }
 
-     
+
   // TODO: CreateTimer();
 }
 
@@ -503,9 +503,9 @@ void IPlugLV2Editor::InformHostOfParamChange(int idx, double normalizedValue)
   ENTER_PARAMS_MUTEX_STATIC;
   float value = GetParam(idx)->Value();
   LEAVE_PARAMS_MUTEX_STATIC;
-  
+
   uint32_t port_index = mParameterPortOffset + idx;
-  
+
   if (mHostWrite)
   {
     mHostWrite(mHostController, port_index, sizeof(float), 0, &value);
@@ -540,7 +540,7 @@ void IPlugLV2Editor::port_event(uint32_t port_index, uint32_t buffer_size, uint3
   if (port_index == 1 && format == mURIs.atom_eventTransfer)
   {
     auto atom = reinterpret_cast<const LV2_Atom*>(buffer);
-    
+
     if (atom->type == mURIs.atom_Object)
     {
       const LV2_Atom_Object* obj = reinterpret_cast<const LV2_Atom_Object*>(((const uint8_t*)buffer) + sizeof(LV2_Atom));
@@ -557,7 +557,7 @@ void IPlugLV2Editor::port_event(uint32_t port_index, uint32_t buffer_size, uint3
         HandleAtomUIMessage(obj);
       }
     }
-    
+
     // Handle MIDI messages
     if (atom->type == mURIs.midi_MidiEvent)
     {
@@ -608,7 +608,7 @@ bool IPlugLV2Editor::EditorResizeFromUI(int viewWidth, int viewHeight, bool need
 }
 
 
-#endif
+#endif // IPLUG_DSP
 
 
 /////////////////

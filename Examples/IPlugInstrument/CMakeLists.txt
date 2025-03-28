@@ -11,38 +11,63 @@ cmake_minimum_required(VERSION 3.16 FATAL_ERROR)
 # To build the VST3 version:
 #   cmake --build build-linux --target IPlugInstrument_VST3
 
-project(IPlugInstrument VERSION 1.0.0)
+project(IPlugInstrument VERSION 1.0.0 LANGUAGES C CXX)
 
-set(IPLUG2_SDK_PATH ${CMAKE_SOURCE_DIR}/../..)
+if (NOT IPLUG2_SDK_PATH)
+  set(IPLUG2_SDK_PATH ${CMAKE_SOURCE_DIR}/../../)
+endif()
 include(${IPLUG2_SDK_PATH}/iPlug2.cmake)
-find_package(iPlug2 REQUIRED)
-
-set(dir "${CMAKE_SOURCE_DIR}")
-set(SRC_FILES
-  "${dir}/config.h"
-  "${dir}/IPlugInstrument.h"
-  "${dir}/IPlugInstrument.cpp"
-  "${dir}/IPlugInstrument_DSP.h"
-)
-source_group(TREE ${dir} FILES ${SRC_FILES})
-set(RES_FILES
-  "${dir}/resources/fonts/Roboto-Regular.ttf"
-)
-source_group(TREE "${dir}/resources" PREFIX Resources FILES ${RES_FILES})
 
 # Disable compiler-dependent C++ extension features (optional, but recommended for code portability)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-iplug_add_plugin(IPlugInstrument
-  PLUGIN_NAME "IPlugInstrument"
-  GRAPHICS NANOVG_GL2
-  FORMATS APP LV2 VST2 VST3 AU2 AU3
-  RESOURCES ${RES_FILES}
-  COPY_AFTER_BUILD
+# Setup the plugin base library. This contains the user's source code
+# and will be linked to different targets for each output format.
+# The plugin base target MUST be an interface library.
+add_library(plugin_base INTERFACE)
+
+# Shorthand for the current directory
+set(cwd "${CMAKE_CURRENT_LIST_DIR}")
+
+# Absolute paths are not required for sources or resources.
+set(_src
+  config.h
+  IPlugInstrument.h
+  IPlugInstrument.cpp
+  IPlugInstrument_DSP.h
 )
-target_link_libraries(IPlugInstrument INTERFACE iPlug2_Synth)
-target_compile_features(IPlugInstrument INTERFACE cxx_std_17)
-target_sources(IPlugInstrument INTERFACE ${SRC_FILES} ${RES_FILES})
-target_include_directories(IPlugInstrument INTERFACE "." "./resources")
-# iplug_add_resources(IPlugInstrument RESOURCES ${RES_FILES})
-# iplug_finish_plugin(IPlugInstrument)
+# List of resources to include. These may also be added directly
+# with iplug_target_add(<target> INTERFACE RESOURCE <file1> <files...>).
+set(_res
+  resources/fonts/Roboto-Regular.ttf
+)
+# List of libraries to link with
+set(_lib
+  # This is an instrument, so we link to Synth to help generate output
+  iPlug2_Synth
+)
+
+iplug_target_add(plugin_base INTERFACE
+  SOURCE ${_src}
+  RESOURCE ${_res}
+  LINK ${_lib}
+  FEATURE cxx_std_17
+  INCLUDE
+    ${cwd}
+    ${cwd}/resources
+)
+# Configure the plugin with the default name and version
+# from the project, using NanoVG with OpenGL 3 as the backend.
+iplug_setup_plugin(plugin_base GRAPHICS NanoVG GL3)
+
+# Make things pretty in IDEs.
+source_group(TREE ${cwd} FILES ${_src})
+source_group(TREE "${cwd}/resources" PREFIX Resources FILES ${_res})
+
+# Add the various output formats we want to use
+iplug_add_format(plugin_base vst2 COPY_AFTER_BUILD)
+iplug_add_format(plugin_base vst3 COPY_AFTER_BUILD)
+iplug_add_format(plugin_base app)
+iplug_add_format(plugin_base au2 COPY_AFTER_BUILD)
+iplug_add_format(plugin_base lv2)
+# iplug_add_format(plugin_base web)

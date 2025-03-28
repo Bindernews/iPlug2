@@ -1,10 +1,10 @@
 /*
  ==============================================================================
- 
- This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers. 
- 
+
+ This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers.
+
  See LICENSE.txt for  more info.
- 
+
  ==============================================================================
 */
 
@@ -238,7 +238,7 @@
         }
       });
     }
-    
+
     EMSCRIPTEN_KEEPALIVE void iplug_fsready()
     {
       gPlug = std::unique_ptr<iplug::IPlugWeb>(iplug::MakePlug(InstanceInfo()));
@@ -269,7 +269,7 @@
 
     // TODO: this code never runs, so when do we delete?!
     gPlug = nullptr;
-    
+
     return 0;
   }
 #elif defined AUv3_API || defined AAX_API || defined APP_API
@@ -279,7 +279,7 @@
 
 extern "C" {
 
-#ifdef IPLUG_DSP
+#if IPLUG_DSP
 
 static LV2_Handle instantiate(const LV2_Descriptor *descriptor, double rate, const char* bundle_path, const LV2_Feature* const* features)
 {
@@ -293,7 +293,7 @@ LV2_SYMBOL_EXPORT const LV2_Descriptor* lv2_descriptor(uint32_t index)
 }
 #endif
 
-#ifdef IPLUG_EDITOR
+#if IPLUG_EDITOR
 
 static LV2UI_Handle ui_instantiate(const LV2UI_Descriptor*   descriptor,
                                 const char*               plugin_uri,
@@ -360,7 +360,7 @@ static const void *ui_extension_data(const char *uri)
   return nullptr;
 }
 
-static const LV2UI_Descriptor ui_descriptor = 
+static const LV2UI_Descriptor ui_descriptor =
 {
   PLUG_UI_URI,
   ui_instantiate,
@@ -401,7 +401,7 @@ Plugin* MakePlug(const InstanceInfo& info)
   // From VST3 - is this necessary?
   static WDL_Mutex sMutex;
   WDL_MutexLock lock(&sMutex);
-  
+
   return new PLUG_CLASS_NAME(info);
 }
 
@@ -412,7 +412,7 @@ Plugin* MakePlug(void* pMemory)
 {
   InstanceInfo info;
   info.mCocoaViewFactoryClassName.Set(AUV2_VIEW_CLASS_STR);
-    
+
   if (pMemory)
     return new(pMemory) PLUG_CLASS_NAME(info);
   else
@@ -428,7 +428,7 @@ Steinberg::FUnknown* MakeController()
   WDL_MutexLock lock(&sMutex);
   IPlugVST3Controller::InstanceInfo info;
   info.mOtherGUID = Steinberg::FUID(VST3_PROCESSOR_UID);
-  // If you are trying to build a distributed VST3 plug-in and you hit an error here like "no matching constructor..." or 
+  // If you are trying to build a distributed VST3 plug-in and you hit an error here like "no matching constructor..." or
   // "error: unknown type name 'VST3Controller'", you need to replace all instances of the name of your plug-in class (e.g. IPlugEffect)
   // with the macro PLUG_CLASS_NAME, as defined in your plug-ins config.h, so IPlugEffect::IPlugEffect() {} becomes PLUG_CLASS_NAME::PLUG_CLASS_NAME().
   return static_cast<Steinberg::Vst::IEditController*>(new PLUG_CLASS_NAME(info));

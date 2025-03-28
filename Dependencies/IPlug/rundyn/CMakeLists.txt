@@ -6,3 +6,7 @@ if (WIN32)
 else()
   target_link_libraries(rundyn PRIVATE "dl")
 endif()
+set_target_properties(
+  rundyn PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/$<CONFIG>/
+)
