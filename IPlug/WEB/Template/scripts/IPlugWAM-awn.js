@@ -1,6 +1,6 @@
-/* Declares the NAME_PLACEHOLDER Audio Worklet Node */
+/* Declares the @NAME_PLACEHOLDER@ Audio Worklet Node */
 
-class NAME_PLACEHOLDERController extends WAMController
+class @NAME_PLACEHOLDER@Controller extends WAMController
 {
   constructor (actx, options) {
     options = options || {};
@@ -10,16 +10,16 @@ class NAME_PLACEHOLDERController extends WAMController
     if (options.processorOptions.inputChannelCount === undefined) options.processorOptions = {inputChannelCount:[]};
 
     options.buflenSPN = 1024;
-    super(actx, "NAME_PLACEHOLDER", options);
+    super(actx, "@NAME_PLACEHOLDER@", options);
   }
 
   static importScripts (actx) {
     var origin = "ORIGIN_PLACEHOLDER";
 
     return new Promise( (resolve) => {
-      actx.audioWorklet.addModule(origin + "scripts/NAME_PLACEHOLDER-wam.js").then(() => {
+      actx.audioWorklet.addModule(origin + "scripts/@NAME_PLACEHOLDER@-wam.js").then(() => {
       actx.audioWorklet.addModule(origin + "scripts/wam-processor.js").then(() => {
-      actx.audioWorklet.addModule(origin + "scripts/NAME_PLACEHOLDER-awp.js").then(() => {
+      actx.audioWorklet.addModule(origin + "scripts/@NAME_PLACEHOLDER@-awp.js").then(() => {
         resolve();
       }) }) });
     })

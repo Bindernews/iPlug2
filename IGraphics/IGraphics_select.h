@@ -60,7 +60,7 @@
      #include "IGraphicsCanvas.h"
      #define IGRAPHICS_DRAW_CLASS_TYPE IGraphicsCanvas
     #if defined IGRAPHICS_GL || defined IGRAPHICS_METAL
-      #error "When using IGRAPHICS_CANVAS, don't define IGRAPHICS_METAL or IGRAPHICS_GL*"
+      // #error "When using IGRAPHICS_CANVAS, don't define IGRAPHICS_METAL or IGRAPHICS_GL*"
     #endif
   #else
     #error NO IGRAPHICS_MODE defined

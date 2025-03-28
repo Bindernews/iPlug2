@@ -2,7 +2,7 @@
   <head>
     <meta charset="utf-8">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>NAME_PLACEHOLDER WAM</title>
+    <title>@NAME_PLACEHOLDER@ WAM</title>
     <link href="styles/style.css" rel="stylesheet" type="text/css"/>
     <script src="scripts/audioworklet.js"></script>
     <script src="scripts/websocket.js"></script>
@@ -10,7 +10,7 @@
     <script async src="svgs.js"></script>
     <script async src="imgs.js"></script>
     <script async src="imgs@2x.js"></script>
-    <script async src="scripts/NAME_PLACEHOLDER-web.js"></script>
+    <script async src="scripts/@NAME_PLACEHOLDER@-web.js"></script>
   </head>
   <body>
     <div id="main"></div>
@@ -25,12 +25,12 @@
         <div id="status">downloading...</div>
       </div>
       <div id="wam" hidden=true>
-        <!-- <div id="wamheader">NAME_PLACEHOLDER WAM</div> -->
+        <!-- <div id="wamheader">@NAME_PLACEHOLDER@ WAM</div> -->
         <canvas class="pluginArea" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
       </div>
     <script type='text/javascript'>
       var NAME_PLACEHOLDER_WAM; // the WAM controller
-      let WEBSOCKET_MODE=false; // this constant will be set by the makedist-web.sh script 
+      let WEBSOCKET_MODE=false; // this constant will be set by the makedist-web.sh script
 
       if(WEBSOCKET_MODE==true) {
         document.getElementById('buttons').style.display = 'none';
@@ -100,7 +100,7 @@
       function initMidiComboBox (isOutput, element) {
         let combo = document.querySelector(element);
         combo.options.length = 0;
-        
+
         if (navigator.requestMIDIAccess) {
           navigator.requestMIDIAccess().then((midiIF) => {
             if(isOutput) {
@@ -154,33 +154,33 @@
       function startWebAudio() {
         var actx = new AudioContext();
         safariUnlock(actx);
-        
+
         AWPF.polyfill(actx).then( function () {
           var script1 = document.createElement("script");
           script1.src = "scripts/wam-controller.js";
           script1.onload = () => {
             var script2 = document.createElement("script");
-            script2.src = "scripts/NAME_PLACEHOLDER-awn.js";
+            script2.src = "scripts/@NAME_PLACEHOLDER@-awn.js";
             script2.onload = () => {
 
               if(AWPF.isAudioWorkletPolyfilled)
                 console.log("AudioWorklet NOT Supported");
               else
                 console.log("AudioWorklet Supported");
-              
+
               let inputBuses = [MAXNINPUTS_PLACEHOLDER];
               let outputBuses = [MAXNOUTPUTS_PLACEHOLDER];
-              let options = {numberOfInputs: inputBuses.length, inputChannelCount: inputBuses, 
+              let options = {numberOfInputs: inputBuses.length, inputChannelCount: inputBuses,
                              numberOfOutputs: outputBuses.length, outputChannelCount: outputBuses,
                              processorOptions: {inputChannelCount: inputBuses}};
 
               NAME_PLACEHOLDERController.importScripts(actx).then(() => {
-                NAME_PLACEHOLDER_WAM = new NAME_PLACEHOLDERController(actx, options);
+                NAME_PLACEHOLDER_WAM = new @NAME_PLACEHOLDER@Controller(actx, options);
 
                 if(NAME_PLACEHOLDER_WAM !== undefined) {
 
                   let NInputs = AWPF.isAudioWorkletPolyfilled ? NAME_PLACEHOLDER_WAM.input.numberOfInputs : NAME_PLACEHOLDER_WAM.numberOfInputs;
-                  
+
                   if(NInputs > 0) {
                     var constraints = { audio: true, video:false }
                     navigator.mediaDevices.getUserMedia(constraints)
@@ -200,7 +200,7 @@
                       console.log('Error initializing user media stream: ' + err);
                     });
                   }
-                  else 
+                  else
                   {
                     NAME_PLACEHOLDER_WAM.connect(actx.destination); // connect WAM output to speakers
                     connectionsDone();
@@ -222,7 +222,7 @@
         let propArg = String(msgTag + ":" + ctrlTag);
         NAME_PLACEHOLDER_WAM.port.postMessage({ "type": "msg", "verb": "SAMFUI", "prop": propArg, "data": data });
       }
-      
+
       var statusElement = document.getElementById('status');
       var progressElement = document.getElementById('progress');
 
@@ -232,7 +232,7 @@
           document.getElementById('startWebAudioButton').removeAttribute("disabled");
         },
         onRuntimeInitialized: function() {
-          
+
           if(WEBSOCKET_MODE==true) {
             setupWebSocket(function() {
               document.getElementById('wam').hidden = false;

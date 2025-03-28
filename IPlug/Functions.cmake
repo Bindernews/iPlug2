@@ -269,6 +269,31 @@ function(iplug_add_post_build_copy target src_dir dest_dir)
 endfunction(iplug_add_post_build_copy)
 
 #[===[.rst:
+
+.. code-block:: cmake
+
+  iplug_list_to_js_list(<dst_var> <items...>)
+
+Convert a CMake list into a JS list of strings. The output variable
+will be a single string that appears as a JavaScript list.
+
+`<dst_var>`
+  Destination variable name
+
+`<items...>`
+  List of items to convert. If you have an existing list variable
+  it should be included without quotes.
+
+#]===]
+function(iplug_list_to_js_list dst_var)
+  # Convert web exports into a JS string array
+  set(tmp_list ${ARGN})
+  list(JOIN tmp_list "','" tmp)
+  set(${dst_var} "['${tmp}']" PARENT_SCOPE)
+endfunction(iplug_list_to_js_list)
+
+
+#[===[.rst:
 .. code-block:: cmake
 
   iplug_setup_plugin(
@@ -419,7 +444,7 @@ function(iplug_add_format base_target format)
   cmake_parse_arguments(arg "COPY_AFTER_BUILD" "TARGET" "" ${ARGN})
 
   # List of all valid plugin formats
-  set(VALID_FORMATS "aax;app;au2;au3;lv2;vst2;vst3;web")
+  set(VALID_FORMATS "aax;app;au2;au3;lv2;vst2;vst3;wam")
   # Directory to load for each format in VALID_FORMATS
   set(FORMAT_DIRS "AAX;APP;AUv2;AUv3;LV2;VST2;VST3;WEB")
 
@@ -433,11 +458,13 @@ function(iplug_add_format base_target format)
   set(ok_formats ${VALID_FORMATS})
   if (NOT IPLUG_OS MATCHES "Darwin")
     list(REMOVE_ITEM ok_formats "au2" "au3")
-  elseif (NOT IPLUG_OS MATCHES "Linux")
+  endif()
+  if (NOT IPLUG_OS MATCHES "Linux")
     list(REMOVE_ITEM ok_formats "lv2")
-  elseif (CMAKE_SYSTEM_NAME MATCHES "Emscripten")
+  endif()
+  if (CMAKE_SYSTEM_NAME MATCHES "Emscripten")
     # Straight up override the valid formats
-    set(ok_formats web)
+    set(ok_formats wam)
   endif()
   # Check if the format is valid
   if (NOT ${format} IN_LIST ok_formats)
@@ -460,24 +487,6 @@ function(iplug_add_format base_target format)
     set(target ${arg_TARGET})
   endif()
 
-  # Automatically create target if required
-
-  # if (NOT TARGET ${target})
-  #   add_library(${target})
-  #   if (${format} MATCHES "app")
-  #     add_executable(${target} WIN32 MACOSX_BUNDLE)
-  #   else()
-  #     add_library(${target} MODULE)
-  #   endif()
-  # endif()
-
-  # # Copy list of resources and other properties to the output target
-  # iplug_copy_properties(${target} ${base_target}
-  #   "IPLUG_RESOURCES;IPLUG_PLUGIN_NAME;IPLUG_PLUGIN_VERSION;IPLUG_PLUGIN_GRAPHICS")
-
-  # # Link our output target to the base target
-  # target_link_libraries(${target} PUBLIC ${base_target})
-
   # Dynamically load the configure command
   set(configure_command "iplug_configure_${format}")
   if (NOT COMMAND ${configure_command})
@@ -492,6 +501,7 @@ function(iplug_add_format base_target format)
   cmake_language(CALL ${configure_command} ${base_target} ${target})
 
   # Platform-handling for all formats.
+  # This happens *after* calling the configure command so that the target exists.
   if (IPLUG_OS MATCHES "Windows")
     # On Windows ours fonts are included in the RC file, meaning we need to include main.rc
     # in ALL our builds. Yay for platform-specific bundling!

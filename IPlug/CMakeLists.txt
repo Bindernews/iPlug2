@@ -15,21 +15,26 @@ if (CMAKE_SYSTEM_NAME MATCHES "Windows")
   else()
     set(PROCESSOR_ARCH "Win32" CACHE STRING "Processor architecture")
   endif()
-  set(IPLUG_OS "Windows" CACHE STRING "OS name" FORCE)
+  set(IPLUG_OS "Windows")
 
 elseif (CMAKE_SYSTEM_NAME MATCHES "Darwin")
   find_program(IBTOOL ibtool HINTS "/usr/bin" "${OSX_DEVELOPER_ROOT}/usr/bin")
   if (${IBTOOL} STREQUAL "IBTOOL-NOTFOUND" )
     message(FATAL_ERROR "ibtool can not be found")
   endif()
-  set(IPLUG_OS "Darwin" CACHE STRING "OS name" FORCE)
+  set(IPLUG_OS "Darwin")
 
 elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
-  set(IPLUG_OS "Linux" CACHE STRING "OS name" FORCE)
+  set(IPLUG_OS "Linux")
+
+elseif (CMAKE_SYSTEM_NAME MATCHES "Emscripten")
+  set(IPLUG_OS "Emscripten")
 
 else()
   message(FATAL_ERROR "Unsupported platform ${CMAKE_SYSTEM_NAME}")
 endif()
+# Force-set it as a cache variable
+set(IPLUG_OS ${IPLUG_OS} CACHE STRING "OS name" FORCE)
 
 # These functions MUST be run in global scope
 CHECK_CXX_COMPILER_FLAG("-march=native" COMPILER_OPT_ARCH_NATIVE_SUPPORTED)
@@ -133,7 +138,7 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
 endif()
 
 # Set certain compiler flags, specifically errors if there are undefined symbols
-if ((CMAKE_CXX_COMPILER_ID MATCHES "Clang") OR (CMAKE_CXX_COMPILER_ID MATCHES "GNU"))
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND NOT IPLUG_OS MATCHES "Emscripten")
   list(APPEND _opt "-Wl,--no-undefined")
 endif()
 
@@ -146,7 +151,13 @@ endif()
 
 source_group(TREE ${IPLUG2_SDK_PATH} PREFIX "IPlug" FILES ${_src})
 iplug_target_add(iPlug2_Core INTERFACE
-  DEFINE ${_def} INCLUDE ${_inc} SOURCE ${_src} OPTION ${_opt} LINK ${_lib} FEATURE cxx_std_17)
+  DEFINE ${_def}
+  INCLUDE ${_inc}
+  SOURCE ${_src}
+  OPTION ${_opt}
+  LINK ${_lib}
+  FEATURE cxx_std_17
+)
 
 # Load extras libraries
 add_subdirectory(Extras)

@@ -251,6 +251,35 @@ iplug_target_add(iPlug2_NanoVG INTERFACE
   LINK ${_lib}
 )
 
+#######################
+# Canvas Graphics API #
+#######################
+
+set(tgt iPlug2_WebCanvas)
+add_library(iPlug2_WebCanvas INTERFACE)
+# Only do this for emscripten builds
+if (CMAKE_SYSTEM_NAME MATCHES "Emscripten")
+  iplug_target_add(
+    iPlug2_WebCanvas INTERFACE
+    DEFINE
+      # Using canvas graphics backend
+      IGRAPHICS_CANVAS
+      # Force using GLES2
+      IGRAPHICS_GLES2
+    SOURCE
+      ${cwd}/Drawing/IGraphicsCanvas.h
+      # ${cwd}/Drawing/IGraphicsCanvas.cpp
+      ${cwd}/Platforms/IGraphicsWeb.h
+      ${cwd}/Platforms/IGraphicsWeb.cpp
+    INCLUDE
+      # Include NanoVG directorys, not sure why
+      ${deps_dir}/NanoVG/src
+      ${deps_dir}/NanoSVG/src
+    LINK
+      iPlug2_IGraphicsCore
+  )
+endif()
+
 ########
 # Skia #
 ########

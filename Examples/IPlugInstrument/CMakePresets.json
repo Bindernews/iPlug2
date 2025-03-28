@@ -1,0 +1,29 @@
+{
+  "version": 2,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 20,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "default",
+      "displayName": "Default Configuration",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/default/",
+      "cacheVariables": {
+        "IPLUG_APP_JACK": "OFF"
+      }
+    },
+    {
+      "name": "web",
+      "displayName": "Web Audio Module",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/web/",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
+        "CMAKE_CROSSCOMPILING_EMULATOR": "$env{EMSDK_NODE}"
+      }
+    }
+  ]
+}
