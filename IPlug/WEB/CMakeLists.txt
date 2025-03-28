@@ -143,10 +143,7 @@ target_link_options(iPlug2_WAM INTERFACE
 
 
 function(iplug_configure_wam base_plugin target)
-
-  get_target_property(plugin_name ${base_plugin} IPLUG_PLUGIN_NAME)
-  get_target_property(gui_libraries ${base_plugin} IPLUG_PLUGIN_GRAPHICS)
-  set(output_dir "${CMAKE_BINARY_DIR}/WAM/${plugin_name}")
+  iplug_get_common_plugin_variables(wam)
 
   # Do the DSP portion first
   add_executable(${target})

@@ -1,15 +1,16 @@
 /*
  ==============================================================================
- 
- This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers. 
- 
+
+ This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers.
+
  See LICENSE.txt for  more info.
- 
+
  ==============================================================================
 */
 
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include "wdltypes.h"
 #include "wdlstring.h"
 
@@ -38,18 +39,18 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdPa
   {
 #ifndef APP_ALLOW_MULTIPLE_INSTANCES
     HANDLE hMutex = OpenMutex(MUTEX_ALL_ACCESS, 0, BUNDLE_NAME); // BUNDLE_NAME used because it won't have spaces in it
-    
+
     if (!hMutex)
       hMutex = CreateMutex(0, 0, BUNDLE_NAME);
     else
     {
       HWND hWnd = FindWindow(0, BUNDLE_NAME);
       SetForegroundWindow(hWnd);
-      return 0; // should return 1?
+      return 0;
     }
 #endif
     gHINSTANCE = hInstance;
-    
+
     InitCommonControls();
     gScrollMessage = RegisterWindowMessage("MSWHEEL_ROLLMSG");
 
@@ -60,8 +61,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdPa
     HACCEL hAccel = LoadAccelerators(gHINSTANCE, MAKEINTRESOURCE(IDR_ACCELERATOR1));
 
     static UINT(WINAPI *__SetProcessDpiAwarenessContext)(DPI_AWARENESS_CONTEXT);
-
-    double scale = 1.;
 
     if (!__SetProcessDpiAwarenessContext)
     {
@@ -77,7 +76,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdPa
 
     CreateDialog(gHINSTANCE, MAKEINTRESOURCE(IDD_DIALOG_MAIN), GetDesktopWindow(), IPlugAPPHost::MainDlgProc);
 
-#ifndef _DEBUG
+#if !defined _DEBUG || defined NO_IGRAPHICS
     HMENU menu = GetMenu(gHWND);
     RemoveMenu(menu, 1, MF_BYPOSITION);
     DrawMenuBar(gHWND);
@@ -87,29 +86,29 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdPa
     {
       MSG msg= {0,};
       int vvv = GetMessage(&msg, NULL, 0, 0);
-      
+
       if (!vvv)
         break;
-      
+
       if (vvv < 0)
       {
         Sleep(10);
         continue;
       }
-      
+
       if (!msg.hwnd)
       {
         DispatchMessage(&msg);
         continue;
       }
-      
+
       if (gHWND && (TranslateAccelerator(gHWND, hAccel, &msg) || IsDialogMessage(gHWND, &msg)))
         continue;
-      
+
       // default processing for other dialogs
       HWND hWndParent = NULL;
       HWND temphwnd = msg.hwnd;
-      
+
       do
       {
         if (GetClassLong(temphwnd, GCW_ATOM) == (INT)32770)
@@ -120,25 +119,26 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdPa
         }
       }
       while (temphwnd = GetParent(temphwnd));
-      
+
       if (hWndParent && IsDialogMessage(hWndParent,&msg))
         continue;
 
       TranslateMessage(&msg);
       DispatchMessage(&msg);
     }
-    
+
     // in case gHWND didnt get destroyed -- this corresponds to SWELLAPP_DESTROY roughly
     if (gHWND)
       DestroyWindow(gHWND);
-    
+
 #ifndef APP_ALLOW_MULTIPLE_INSTANCES
     ReleaseMutex(hMutex);
 #endif
   }
-  catch(...)
+  catch(std::exception e)
   {
-    DBGMSG("another instance running\n");
+    DBGMSG("Exception: %s", e.what());
+    return 1;
   }
   return 0;
 }
@@ -157,7 +157,7 @@ int main(int argc, char *argv[])
   //if invoked with an argument registerauv3 use plug-in kit to explicitly register auv3 app extension (doesn't happen from debugger)
   if(strcmp(argv[2], "registerauv3"))
   {
-    WDL_String appexPath(argv[0]);
+    WDL_String appexPath;
     appexPath.SetFormatted(1024, "pluginkit -a %s%s%s.appex", argv[0], "/../../Plugins/", appexPath.get_filepart());
     if(system(appexPath.Get()) > -1)
       NSLog(@"Registered audiounit app extension\n");
@@ -165,17 +165,17 @@ int main(int argc, char *argv[])
       NSLog(@"Failed to register audiounit app extension\n");
   }
 #endif
-  
+
   if(AppIsSandboxed())
     DBGMSG("App is sandboxed, file system access etc restricted!\n");
-  
+
   return NSApplicationMain(argc,  (const char **) argv);
 }
 
 INT_PTR SWELLAppMain(int msg, INT_PTR parm1, INT_PTR parm2)
 {
   IPlugAPPHost* pAppHost = nullptr;
-  
+
   switch (msg)
   {
     case SWELLAPP_ONLOAD:
@@ -198,7 +198,7 @@ INT_PTR SWELLAppMain(int msg, INT_PTR parm1, INT_PTR parm2)
         for (int x = 0; x < GetMenuItemCount(src)-1; x++)
         {
           HMENU sm = GetSubMenu(src,x);
-          
+
           if (sm)
           {
             char str[1024];
@@ -227,7 +227,7 @@ INT_PTR SWELLAppMain(int msg, INT_PTR parm1, INT_PTR parm2)
 
         DeleteMenu(menu, 1, MF_BYPOSITION); // delete file menu
       }
-#ifndef _DEBUG
+#if !defined _DEBUG || defined NO_IGRAPHICS
       if (menu)
       {
         HMENU sm = GetSubMenu(menu, 1);
@@ -274,13 +274,13 @@ INT_PTR SWELLAppMain(int msg, INT_PTR parm1, INT_PTR parm2)
       NSView* pContentView = (NSView*) pMSG->hwnd;
       NSEvent* pEvent = (NSEvent*) parm2;
       int etype = (int) [pEvent type];
-          
+
       bool textField = [pContentView isKindOfClass:[NSText class]];
-          
+
       if (!textField && etype == NSKeyDown)
       {
         int flag, code = SWELL_MacKeyToWindowsKey(pEvent, &flag);
-        
+
         if (!(flag&~FVIRTKEY) && (code == VK_RETURN || code == VK_ESCAPE))
         {
           [pContentView keyDown: pEvent];

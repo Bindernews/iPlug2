@@ -28,6 +28,7 @@ public:
   virtual ~IGraphicsIOS();
   
   void SetBundleID(const char* bundleID) { mBundleID.Set(bundleID); }
+  void SetAppGroupID(const char* appGroupID) { mAppGroupID.Set(appGroupID); }
 
   void* OpenWindow(void* pWindow) override;
   void CloseWindow() override;
@@ -35,18 +36,19 @@ public:
   void PlatformResize(bool parentHasResized) override;
   void AttachPlatformView(const IRECT& r, void* pView) override;
   void RemovePlatformView(void* pView) override;
+  void HidePlatformView(void* pView, bool hide) override;
 
   void GetMouseLocation(float& x, float&y) const override;
 
-  EMsgBoxResult ShowMessageBox(const char* str, const char* caption, EMsgBoxType type, IMsgBoxCompletionHanderFunc completionHandler) override;
+  EMsgBoxResult ShowMessageBox(const char* str, const char* title, EMsgBoxType type, IMsgBoxCompletionHandlerFunc completionHandler) override;
   void ForceEndUserEdit() override;
 
   const char* GetPlatformAPIStr() override;
 
   void UpdateTooltips() override {};
 
-  void PromptForFile(WDL_String& fileName, WDL_String& path, EFileAction action, const char* ext) override;
-  void PromptForDirectory(WDL_String& dir) override;
+  void PromptForFile(WDL_String& fileName, WDL_String& path, EFileAction action, const char* ext, IFileDialogCompletionHandlerFunc completionHandler) override;
+  void PromptForDirectory(WDL_String& dir, IFileDialogCompletionHandlerFunc completionHandler) override;
   bool PromptForColor(IColor& color, const char* str, IColorPickerHandlerFunc func) override;
   
   void HideMouseCursor(bool hide, bool lock) override {}; // NOOP
@@ -56,7 +58,9 @@ public:
   
   void* GetWindow() override;
   
-  const char* GetBundleID() override { return mBundleID.Get(); }
+  const char* GetBundleID() const override { return mBundleID.Get(); }
+  const char* GetAppGroupID() const override { return mAppGroupID.Get(); }
+
   static int GetUserOSVersion();
   
   bool GetTextFromClipboard(WDL_String& str) override;
@@ -76,12 +80,13 @@ protected:
   PlatformFontPtr LoadPlatformFont(const char* fontID, void* pData, int dataSize) override;
   void CachePlatformFont(const char* fontID, const PlatformFontPtr& font) override;
   
-  IPopupMenu* CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT& bounds, bool& isAsync) override;
+  IPopupMenu* CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT bounds, bool& isAsync) override;
   void CreatePlatformTextEntry(int paramIdx, const IText& text, const IRECT& bounds, int length, const char* str) override;
 
 private:
   void* mView = nullptr;
   WDL_String mBundleID;
+  WDL_String mAppGroupID;
 };
 
 END_IGRAPHICS_NAMESPACE

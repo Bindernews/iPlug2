@@ -187,7 +187,7 @@ int SWELL_MacKeyToWindowsKeyEx(void *nsevent, int *flags, int mode)
       {
         if (code >= 'a' && code <= 'z') code+='A'-'a';
         if (code == 25 && (flag&FSHIFT)) code=VK_TAB;
-        if (isalnum(code)||code==' ' || code == '\r' || code == '\n' || code ==27 || code == VK_TAB) flag|=FVIRTKEY;
+        if (isalnum_safe(code)||code==' ' || code == '\r' || code == '\n' || code ==27 || code == VK_TAB) flag|=FVIRTKEY;
       }
     }
   }
@@ -601,8 +601,8 @@ void GetCursorPos(POINT *pt)
     return;
   }
   NSPoint localpt=[NSEvent mouseLocation];
-  pt->x=(int)floor(localpt.x);
-  pt->y=-(int)floor(-localpt.y); // floor() is used with negative sign, effectively ceil(), because screen coordinates are flipped and everywhere else we use nonflipped rounding
+  pt->x=(int)floor(localpt.x + 0.5);
+  pt->y=(int)floor(localpt.y + 0.5);
 }
 
 DWORD GetMessagePos()
@@ -612,7 +612,7 @@ DWORD GetMessagePos()
     return MAKELONG((int)g_swell_mouse_relmode_curpos.x,(int)g_swell_mouse_relmode_curpos.y);
   }
   NSPoint localpt=[NSEvent mouseLocation];
-  return MAKELONG((int)floor(localpt.x), -(int)floor(-localpt.y)); // floor() is used with negative sign, effectively ceil(), because screen coordinates are flipped and everywhere else we use nonflipped rounding
+  return MAKELONG((int)floor(localpt.x + 0.5), (int)floor(localpt.y + 0.5));
 }
 
 

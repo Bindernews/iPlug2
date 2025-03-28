@@ -10,16 +10,17 @@
       "name": "default",
       "displayName": "Default Configuration",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/default/",
+      "binaryDir": "${sourceDir}/build-default/",
       "cacheVariables": {
-        "IPLUG_APP_JACK": "OFF"
+        "IPLUG_APP_JACK": "OFF",
+        "CMAKE_BUILD_TYPE": "Debug"
       }
     },
     {
       "name": "web",
       "displayName": "Web Audio Module",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/web/",
+      "binaryDir": "${sourceDir}/build-web/",
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
         "CMAKE_CROSSCOMPILING_EMULATOR": "$env{EMSDK_NODE}"

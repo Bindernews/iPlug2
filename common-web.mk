@@ -11,7 +11,6 @@ DRAWING_PATH = $(IGRAPHICS_PATH)/Drawing
 IGRAPHICS_EXTRAS_PATH = $(IGRAPHICS_PATH)/Extras
 IPLUG_EXTRAS_PATH = $(IPLUG_PATH)/Extras
 IPLUG_SYNTH_PATH = $(IPLUG_EXTRAS_PATH)/Synth
-IPLUG_FAUST_PATH = $(IPLUG_EXTRAS_PATH)/Faust
 IPLUG_WEB_PATH = $(IPLUG_PATH)/WEB
 NANOVG_PATH = $(DEPS_PATH)/IGraphics/NanoVG/src
 NANOSVG_PATH = $(DEPS_PATH)/IGraphics/NanoSVG/src
@@ -35,7 +34,6 @@ INCLUDE_PATHS = -I$(PROJECT_ROOT) \
 -I$(SWELL_PATH) \
 -I$(IPLUG_PATH) \
 -I$(IPLUG_EXTRAS_PATH) \
--I$(IPLUG_FAUST_PATH) \
 -I$(IPLUG_WEB_PATH) \
 -I$(IGRAPHICS_PATH) \
 -I$(DRAWING_PATH) \
@@ -65,7 +63,6 @@ NANOVG_LDFLAGS = -s USE_WEBGL2=0 -s FULL_ES3=1
 
 # CFLAGS for both WAM and WEB targets
 CFLAGS = $(INCLUDE_PATHS) \
--std=c++17  \
 -Wno-bitwise-op-parentheses \
 -DWDL_NO_DEFINE_MINMAX \
 -DNDEBUG=1
@@ -79,12 +76,12 @@ WEB_CFLAGS = -DWEB_API \
 -DIPLUG_EDITOR=1
 
 WAM_EXPORTS = "[\
-  '_createModule','_wam_init','_wam_terminate','_wam_resize', \
+  '_malloc', '_free', '_createModule','_wam_init','_wam_terminate','_wam_resize', \
   '_wam_onprocess', '_wam_onmidi', '_wam_onsysex', '_wam_onparam', \
   '_wam_onmessageN', '_wam_onmessageS', '_wam_onmessageA', '_wam_onpatch' \
   ]"
 
-WEB_EXPORTS = "['_main', '_iplug_fsready', '_iplug_syncfs']"
+WEB_EXPORTS = "['_malloc', '_free', '_main', '_iplug_fsready', '_iplug_syncfs']"
 
 # LDFLAGS for both WAM and WEB targets
 LDFLAGS = -s ALLOW_MEMORY_GROWTH=1 --bind
@@ -94,13 +91,15 @@ LDFLAGS = -s ALLOW_MEMORY_GROWTH=1 --bind
 # The following settings mean the WASM is delivered as BASE64 and included in the MyPluginName-wam.js file.
 WAM_LDFLAGS = -s EXPORTED_RUNTIME_METHODS="['ccall', 'cwrap', 'setValue', 'UTF8ToString']" \
 -s BINARYEN_ASYNC_COMPILATION=0 \
--s SINGLE_FILE=1
+-s SINGLE_FILE=1 \
+--pre-js=$(IPLUG2_ROOT)/IPlug/WEB/Template/scripts/atob-polyfill.js
 #-s ENVIRONMENT=worker
 
 WEB_LDFLAGS = -s EXPORTED_FUNCTIONS=$(WEB_EXPORTS) \
--s EXPORTED_RUNTIME_METHODS="['UTF8ToString']" \
+-s EXPORTED_RUNTIME_METHODS="['ccall', 'UTF8ToString']" \
 -s BINARYEN_ASYNC_COMPILATION=1 \
 -s FORCE_FILESYSTEM=1 \
 -s ENVIRONMENT=web \
+-s DEFAULT_LIBRARY_FUNCS_TO_INCLUDE="['\$$Browser']" \
 -lidbfs.js
 

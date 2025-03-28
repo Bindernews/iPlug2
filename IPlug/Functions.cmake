@@ -274,8 +274,8 @@ endfunction(iplug_add_post_build_copy)
 
   iplug_list_to_js_list(<dst_var> <items...>)
 
-Convert a CMake list into a JS list of strings. The output variable
-will be a single string that appears as a JavaScript list.
+Convert a CMake list into a JS list of strings. The output variable will be a
+single string that appears as a JavaScript list. This is used for WAM output.
 
 `<dst_var>`
   Destination variable name
@@ -291,6 +291,20 @@ function(iplug_list_to_js_list dst_var)
   list(JOIN tmp_list "','" tmp)
   set(${dst_var} "['${tmp}']" PARENT_SCOPE)
 endfunction(iplug_list_to_js_list)
+
+# Sets `plugin_name`, `gui_libraries`, and `output_dir` in
+# the parent scope. These are common variables used by most/all output formats.
+function(iplug_get_common_plugin_variables format)
+  if (NOT TARGET ${base_plugin})
+    message(FATAL_ERROR "iplug_get_common_plugin_variables called but 'base_plugin' not defined.\n
+    This is an error in the output format function.")
+  endif()
+  get_target_property(plugin_name ${base_plugin} IPLUG_PLUGIN_NAME)
+  get_target_property(gui_libraries ${base_plugin} IPLUG_PLUGIN_GRAPHICS)
+  set(output_dir "${CMAKE_BINARY_DIR}/${plugin_name}/${format}" PARENT_SCOPE)
+  set(plugin_name ${plugin_name} PARENT_SCOPE)
+  set(gui_libraries ${gui_libraries} PARENT_SCOPE)
+endfunction(iplug_get_common_plugin_variables)
 
 
 #[===[.rst:
@@ -465,6 +479,8 @@ function(iplug_add_format base_target format)
   if (CMAKE_SYSTEM_NAME MATCHES "Emscripten")
     # Straight up override the valid formats
     set(ok_formats wam)
+  else()
+    list(REMOVE_ITEM ok_formats "wam")
   endif()
   # Check if the format is valid
   if (NOT ${format} IN_LIST ok_formats)

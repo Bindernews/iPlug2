@@ -17,13 +17,14 @@
  */
 
 #include "denormal.h"
+#include "fft.h"
 
 #include "IPlugPlatform.h"
 #include "IPlugQueue.h"
 #include <array>
 
 #if defined OS_IOS || defined OS_MAC
-#include <accelerate/accelerate.h>
+#include <Accelerate/Accelerate.h>
 #endif
 
 BEGIN_IPLUG_NAMESPACE
@@ -37,14 +38,17 @@ struct ISenderData
   int chanOffset = 0;
   std::array<T, MAXNC> vals;
   
-  ISenderData() {}
+  ISenderData()
+  : vals{}
+  {
+  }
   
   ISenderData(int ctrlTag, int nChans, int chanOffset)
   : ctrlTag(ctrlTag)
   , nChans(nChans)
   , chanOffset(chanOffset)
+  , vals{}
   {
-    memset(vals.data(), 0, sizeof(vals));
   }
   
   ISenderData(int ctrlTag, const std::array<T, MAXNC>& vals, int nChans = MAXNC, int chanOffset = 0)
@@ -69,15 +73,38 @@ public:
     mQueue.Push(d);
   }
 
+  /** This is called on the main thread and can be used to transform the data, e.g. take an FFT. */
+  virtual void PrepareDataForUI(ISenderData<MAXNC, T>& d) { /* NO-OP*/ }
+  
   /** Pops elements off the queue and sends messages to controls.
    *  This must be called on the main thread - typically in MyPlugin::OnIdle() */
   void TransmitData(IEditorDelegate& dlg)
+  {
+    while (mQueue.ElementsAvailable())
+    {
+      ISenderData<MAXNC, T> d;
+      mQueue.Pop(d);
+      assert(d.ctrlTag != kNoTag && "You must supply a control tag");
+      PrepareDataForUI(d);
+      dlg.SendControlMsgFromDelegate(d.ctrlTag, kUpdateMessage, sizeof(ISenderData<MAXNC, T>), (void*) &d);
+    }
+  }
+  
+  /** This variation can be used if you need to supply multiple controls with the same ISenderData, overriding the tags in the data packet
+   @param dlg The editor delegate
+   @param ctrlTags A list of control tags that should receive the updates from this sender */
+  void TransmitDataToControlsWithTags(IEditorDelegate& dlg, const std::initializer_list<int>& ctrlTags)
   {
     while(mQueue.ElementsAvailable())
     {
       ISenderData<MAXNC, T> d;
       mQueue.Pop(d);
-      dlg.SendControlMsgFromDelegate(d.ctrlTag, kUpdateMessage, sizeof(ISenderData<MAXNC, T>), (void*) &d);
+      
+      for (auto tag : ctrlTags)
+      {
+        d.ctrlTag = tag;
+        dlg.SendControlMsgFromDelegate(tag, kUpdateMessage, sizeof(ISenderData<MAXNC, T>), (void*) &d);
+      }
     }
   }
 
@@ -99,7 +126,6 @@ public:
     Reset(DEFAULT_SAMPLE_RATE);
   }
   
-  
   void Reset(double sampleRate)
   {
     SetWindowSizeMs(mWindowSizeMs, sampleRate);
@@ -108,12 +134,17 @@ public:
   
   void SetWindowSizeMs(double timeMs, double sampleRate)
   {
-    mWindowSizeMs = timeMs;
+    mWindowSizeMs = static_cast<float>(timeMs);
     mWindowSize = static_cast<int>(timeMs * 0.001 * sampleRate);
   }
   
-  /** Queue peaks from sample buffers into the sender. This can be called on the realtime audio thread. */
-  void ProcessBlock(sample** inputs, int nFrames, int ctrlTag, int nChans = MAXNC, int chanOffset = 0)
+  /** Queue peaks from sample buffers into the sender This can be called on the realtime audio thread.
+   @param inputs the sample buffers to analyze
+   @param nFrames the number of sample frames in the input buffers
+   @param ctrlTag a control tag to indicate which control to send the buffers to. Note: if you don't supply the control tag here, you must use TransmitDataToControlsWithTags() and specify one or more tags there
+   @param nChans the number of channels of data that should be sent
+   @param chanOffset the starting channel */
+  void ProcessBlock(sample** inputs, int nFrames, int ctrlTag = kNoTag, int nChans = MAXNC, int chanOffset = 0)
   {
     for (auto s = 0; s < nFrames; s++)
     {
@@ -138,7 +169,7 @@ public:
       
       for (auto c = chanOffset; c < (chanOffset + nChans); c++)
       {
-        mPeaks[c] += std::fabs(inputs[c][s]);
+        mPeaks[c] += std::fabs(static_cast<float>(inputs[c][s]));
       }
       
       mCount++;
@@ -220,19 +251,19 @@ public:
   
   void SetAttackTimeMs(double timeMs, double sampleRate)
   {
-    mAttackTimeMs = timeMs;
-    mAttackTimeSamples = static_cast<int>(timeMs * 0.001 * (sampleRate / mWindowSize));
+    mAttackTimeMs = static_cast<float>(timeMs);
+    mAttackTimeSamples = static_cast<float>(timeMs * 0.001 * (sampleRate / double(mWindowSize)));
   }
   
   void SetDecayTimeMs(double timeMs, double sampleRate)
   {
-    mDecayTimeMs = timeMs;
-    mDecayTimeSamples = static_cast<int>(timeMs * 0.001 * (sampleRate / mWindowSize));
+    mDecayTimeMs = static_cast<float>(timeMs);
+    mDecayTimeSamples = static_cast<float>(timeMs * 0.001 * (sampleRate / mWindowSize));
   }
   
   void SetWindowSizeMs(double timeMs, double sampleRate)
   {
-    mWindowSizeMs = timeMs;
+    mWindowSizeMs = static_cast<float>(timeMs);
     mWindowSize = static_cast<int>(timeMs * 0.001 * sampleRate);
 
     for (auto i=0; i<MAXNC; i++)
@@ -244,13 +275,18 @@ public:
   
   void SetPeakHoldTimeMs(double timeMs, double sampleRate)
   {
-    mPeakHoldTimeMs = timeMs;
+    mPeakHoldTimeMs = static_cast<float>(timeMs);
     mPeakHoldTime = static_cast<int>(timeMs * 0.001 * sampleRate);
     std::fill(mPeakHoldCounters.begin(), mPeakHoldCounters.end(), mPeakHoldTime);
   }
   
-  /** Queue peaks from sample buffers into the sender This can be called on the realtime audio thread. */
-  void ProcessBlock(sample** inputs, int nFrames, int ctrlTag, int nChans = MAXNC, int chanOffset = 0)
+  /** Queue peaks from sample buffers into the sender This can be called on the realtime audio thread.
+   @param inputs the sample buffers to analyze
+   @param nFrames the number of sample frames in the input buffers
+   @param ctrlTag a control tag to indicate which control to send the buffers to. Note: if you don't supply the control tag here, you must use TransmitDataToControlsWithTags() and specify one or more tags there
+   @param nChans the number of channels of data that should be sent
+   @param chanOffset the starting channel */
+  void ProcessBlock(sample** inputs, int nFrames, int ctrlTag = kNoTag, int nChans = MAXNC, int chanOffset = 0)
   {
     for (auto s = 0; s < nFrames; s++)
     {
@@ -258,7 +294,7 @@ public:
       
       for (auto c = chanOffset; c < (chanOffset + nChans); c++)
       {
-        mBuffers[c][windowPos] = inputs[c][s];
+        mBuffers[c][windowPos] = static_cast<float>(inputs[c][s]);
       }
       
       if (mCount == 0)
@@ -391,24 +427,38 @@ template <int MAXNC = 1, int QUEUE_SIZE = 64, int MAXBUF = 128>
 class IBufferSender : public ISender<MAXNC, QUEUE_SIZE, std::array<float, MAXBUF>>
 {
 public:
-  IBufferSender(double minThresholdDb = -90.)
-  : ISender<MAXNC, QUEUE_SIZE, std::array<float, MAXBUF>>()
-  , mThreshold(static_cast<float>(DBToAmp(minThresholdDb)))
+  using TDataPacket = std::array<float, MAXBUF>;
+  using TSender = ISender<MAXNC, QUEUE_SIZE, TDataPacket>;
+  const double kNoThresholdDb = -100;
+
+  IBufferSender(double minThresholdDb = -90., int bufferSize = MAXBUF)
+  : TSender()
   {
+    if (minThresholdDb <= kNoThresholdDb)
+      mThreshold = -1.0f;
+    else
+      mThreshold = DBToAmp(minThresholdDb);
+    
+    SetBufferSize(bufferSize);
   }
 
-  /** Queue sample buffers into the sender, checking the data is over the required threshold. This can be called on the realtime audio thread. */
-  void ProcessBlock(sample** inputs, int nFrames, int ctrlTag, int nChans = MAXNC, int chanOffset = 0)
+  /** Queue sample buffers into the sender, checking the data is over the required threshold. This can be called on the realtime audio thread.
+   @param inputs the sample buffers
+   @param nFrames the number of sample frames in the input buffers
+   @param ctrlTag a control tag to indicate which control to send the buffers to. Note: if you don't supply the control tag here, you must use TransmitDataToControlsWithTags() and specify one or more tags there
+   @param nChans the number of channels of data that should be sent
+   @param chanOffset the starting channel */
+  void ProcessBlock(sample** inputs, int nFrames, int ctrlTag = kNoTag, int nChans = MAXNC, int chanOffset = 0)
   {
     for (auto s = 0; s < nFrames; s++)
     {
-      if(mBufCount == MAXBUF)
+      if (mBufCount == mBufferSize)
       {
-        float sum = 0.f;
+        float sum = 0.0f;
         for (auto c = chanOffset; c < (chanOffset + nChans); c++)
         {
           sum += mRunningSum[c];
-          mRunningSum[c] = 0.f;
+          mRunningSum[c] = 0.0f;
         }
 
         if (sum > mThreshold || mPreviousSum > mThreshold)
@@ -416,7 +466,7 @@ public:
           mBuffer.ctrlTag = ctrlTag;
           mBuffer.nChans = nChans;
           mBuffer.chanOffset = chanOffset;
-          ISender<MAXNC, QUEUE_SIZE, std::array<float, MAXBUF>>::PushData(mBuffer);
+          TSender::PushData(mBuffer);
         }
 
         mPreviousSum = sum;
@@ -425,19 +475,255 @@ public:
       
       for (auto c = chanOffset; c < (chanOffset + nChans); c++)
       {
-        mBuffer.vals[c][mBufCount] = (float) inputs[c][s];
-        mRunningSum[c] += std::fabs( (float) inputs[c][s]);
+        const float inputSample = static_cast<float>(inputs[c][s]);
+        mBuffer.vals[c][mBufCount] = inputSample;
+        mRunningSum[c] += std::fabs(inputSample);
       }
 
       mBufCount++;
     }
   }
-protected:
-  ISenderData<MAXNC, std::array<float, MAXBUF>> mBuffer;
+  
+  void SetBufferSize(int bufferSize)
+  {
+    assert(bufferSize > 0);
+    assert(bufferSize <= MAXBUF);
+
+    mBufferSize = bufferSize;
+    mBufCount = 0;
+  }
+
+  int GetBufferSize() const { return mBufferSize; }
+  
+private:
+  ISenderData<MAXNC, TDataPacket> mBuffer;
   int mBufCount = 0;
+  int mBufferSize = MAXBUF;
   std::array<float, MAXNC> mRunningSum {0.};
   float mPreviousSum = 1.f;
   float mThreshold = 0.01f;
+};
+
+/** ISpectrumSender is designed for sending Spectral Data from the plug-in to the UI */
+template <int MAXNC = 1, int QUEUE_SIZE = 64, int MAX_FFT_SIZE = 4096>
+class ISpectrumSender : public IBufferSender<MAXNC, QUEUE_SIZE, MAX_FFT_SIZE>
+{
+public:
+  using TDataPacket = std::array<float, MAX_FFT_SIZE>;
+  using TBufferSender = IBufferSender<MAXNC, QUEUE_SIZE, MAX_FFT_SIZE>;
+  
+  enum class EWindowType {
+    Hann = 0,
+    BlackmanHarris,
+    Hamming,
+    Flattop,
+    Rectangular
+  };
+  
+  enum class EOutputType {
+    Complex = 0,
+    MagPhase,
+  };
+  
+  ISpectrumSender(int fftSize = 1024, int overlap = 2, EWindowType window = EWindowType::Hann, EOutputType outputType = EOutputType::MagPhase, double minThresholdDb = -100.0)
+  : TBufferSender(minThresholdDb, fftSize)
+  , mWindowType(window)
+  , mOutputType(outputType)
+  {
+    WDL_fft_init();
+    SetFFTSizeAndOverlap(fftSize, overlap);
+  }
+
+  void SetFFTSize(int fftSize)
+  {
+    TBufferSender::SetBufferSize(fftSize);
+    SetFFTSize();
+    CalculateWindow();
+    CalculateScalingFactors();
+  }
+  
+  void SetFFTSizeAndOverlap(int fftSize, int overlap)
+  {
+    mOverlap = overlap;
+    TBufferSender::SetBufferSize(fftSize);
+    SetFFTSize();
+    CalculateWindow();
+    CalculateScalingFactors();
+  }
+  
+  void SetWindowType(EWindowType windowType)
+  {
+    mWindowType = windowType;
+    CalculateWindow();
+  }
+  
+  void SetOutputType(EOutputType outputType)
+  {
+    mOutputType = outputType;
+  }
+  
+  void PrepareDataForUI(ISenderData<MAXNC, TDataPacket>& d) override
+  {
+    auto fftSize = TBufferSender::GetBufferSize();
+
+    for (auto s = 0; s < fftSize; s++)
+    {
+      for (auto stftFrameIdx = 0; stftFrameIdx < mOverlap; stftFrameIdx++)
+      {
+        auto& stftFrame = mSTFTFrames[stftFrameIdx];
+        
+        for (auto ch = 0; ch < MAXNC; ch++)
+        {
+          auto windowedValue = (float) d.vals[ch][s] * mWindow[stftFrame.pos];
+          stftFrame.bins[ch][stftFrame.pos].re = windowedValue;
+          stftFrame.bins[ch][stftFrame.pos].im = 0.0f;
+        }
+        
+        stftFrame.pos++;
+
+        if (stftFrame.pos >= fftSize)
+        {
+          stftFrame.pos = 0;
+          
+          for (auto ch = 0; ch < MAXNC; ch++)
+          {
+            Permute(ch, stftFrameIdx);
+            memcpy(d.vals[ch].data(), mSTFTOutput[ch].data(), fftSize * sizeof(float));
+          }
+        }
+      }
+    }
+  }
+
+  int GetFFTSize() const
+  {
+    return TBufferSender::GetBufferSize();
+  }
+
+  int GetOverlap() const
+  {
+    return mOverlap;
+  }
+    
+private:
+  void SetFFTSize()
+  {
+    if (mSTFTFrames.size() != mOverlap)
+    {
+      mSTFTFrames.resize(mOverlap);
+    }
+    
+    for (auto&& frame : mSTFTFrames)
+    {
+      for (auto ch = 0; ch < MAXNC; ch++)
+      {
+        std::fill(frame.bins[ch].begin(), frame.bins[ch].end(), WDL_FFT_COMPLEX{0.0f, 0.0f});
+      }
+      
+      frame.pos = 0;
+    }
+    
+    for (auto ch = 0; ch < MAXNC; ch++)
+    {
+      std::fill(mSTFTOutput[ch].begin(), mSTFTOutput[ch].end(), 0.0f);
+    }
+  }
+  
+  void CalculateWindow()
+  {
+    const auto fftSize = TBufferSender::GetBufferSize();
+
+    const float M = static_cast<float>(fftSize - 1);
+    
+    switch (mWindowType)
+    {
+      case EWindowType::Hann:
+        for (auto i = 0; i < fftSize; i++) { mWindow[i] = 0.5f * (1.0f - std::cos(PI * 2.0f * i / M)); }
+        break;
+      case EWindowType::BlackmanHarris:
+        for (auto i = 0; i < fftSize; i++) {
+          mWindow[i] = 0.35875 - (0.48829f * std::cos(2.0f * PI * i / M)) +
+                                 (0.14128f * std::cos(4.0f * PI * i / M)) -
+                                 (0.01168f * std::cos(6.0f * PI * i / M));
+        }
+        break;
+      case EWindowType::Hamming:
+        for (auto i = 0; i < fftSize; i++) { mWindow[i] = 0.54f - 0.46f * std::cos(2.0f * PI * i / M); }
+        break;
+      case EWindowType::Flattop:
+        for (auto i = 0; i < fftSize; i++) {
+          mWindow[i] = 0.21557895f - 0.41663158f * std::cos(2.0f * PI * i / M) +
+                                    0.277263158f * std::cos(4.0f * PI * i / M) -
+                                    0.083578947f * std::cos(6.0f * PI * i / M) +
+                                    0.006947368f * std::cos(8.0f * PI * i / M);
+        }
+        break;
+      case EWindowType::Rectangular:
+        std::fill(mWindow.begin(), mWindow.end(), 1.0f);
+        break;
+      default:
+        break;
+    }
+  }
+  
+  void CalculateScalingFactors()
+  {
+    const auto fftSize = TBufferSender::GetBufferSize();
+    const float M = static_cast<float>(fftSize - 1);
+
+    auto scaling = 0.0f;
+    
+    for (auto i = 0; i < fftSize; i++)
+    {
+      auto v = 0.5f * (1.0f - std::cos(2.0f * PI * i / M));
+      scaling += v;
+    }
+    
+    mScalingFactor = scaling * scaling;
+  }
+  
+  void Permute(int ch, int frameIdx)
+  {
+    const auto fftSize = TBufferSender::GetBufferSize();
+    WDL_fft(mSTFTFrames[frameIdx].bins[ch].data(), fftSize, false);
+
+    if (mOutputType == EOutputType::Complex)
+    {
+      auto nBins = fftSize/2;
+      for (auto i = 0; i < nBins; ++i)
+      {
+        int sortIdx = WDL_fft_permute(fftSize, i);
+        mSTFTOutput[ch][i] = mSTFTFrames[frameIdx].bins[ch][sortIdx].re;
+        mSTFTOutput[ch][i + nBins] = mSTFTFrames[frameIdx].bins[ch][sortIdx].im;
+      }
+    }
+    else // magPhase
+    {
+      auto nBins = fftSize/2;
+      for (auto i = 0; i < nBins; ++i)
+      {
+        int sortIdx = WDL_fft_permute(fftSize, i);
+        auto re = mSTFTFrames[frameIdx].bins[ch][sortIdx].re;
+        auto im = mSTFTFrames[frameIdx].bins[ch][sortIdx].im;
+        mSTFTOutput[ch][i] = std::sqrt(2.0f * (re * re + im * im) / mScalingFactor);
+        mSTFTOutput[ch][i + nBins] = std::atan2(im, re);
+      }
+    }
+  }
+  
+  struct STFTFrame
+  {
+    int pos;
+    std::array<std::array<WDL_FFT_COMPLEX, MAX_FFT_SIZE>, MAXNC> bins;
+  };
+  
+  int mOverlap = 2;
+  EWindowType mWindowType;
+  EOutputType mOutputType;
+  std::array<float, MAX_FFT_SIZE> mWindow;
+  std::vector<STFTFrame> mSTFTFrames;
+  std::array<std::array<float, MAX_FFT_SIZE>, MAXNC> mSTFTOutput;
+  float mScalingFactor = 0.0f;
 };
 
 END_IPLUG_NAMESPACE

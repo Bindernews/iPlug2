@@ -295,7 +295,7 @@ void IParam::GetDisplay(double value, bool normalized, WDL_String& str, bool wit
   else if ((mFlags & kFlagSignDisplay) && displayValue)
   {
     char fmt[16];
-    sprintf(fmt, "%%+.%df", mDisplayPrecision);
+    snprintf(fmt, 16, "%%+.%df", mDisplayPrecision);
     str.SetFormatted(MAX_PARAM_DISPLAY_LEN, fmt, displayValue);
   }
   else
@@ -410,6 +410,7 @@ void IParam::GetJSON(WDL_String& json, int idx) const
   json.AppendFormatted(8192, "\"min\":%f, ", GetMin());
   json.AppendFormatted(8192, "\"max\":%f, ", GetMax());
   json.AppendFormatted(8192, "\"default\":%f, ", GetDefault());
+  json.AppendFormatted(8192, "\"display_type\":%i, ", mShape->GetDisplayType());
   json.AppendFormatted(8192, "\"rate\":\"control\"");
   json.AppendFormatted(8192, "}");
 }
@@ -418,3 +419,24 @@ void IParam::PrintDetails() const
 {
   DBGMSG("%s %f", GetName(), Value());
 }
+
+IParam::EShapeIDs IParam::GetShapeID() const
+{
+  if (dynamic_cast<IParam::ShapeLinear*>(mShape.get()))
+    return IParam::EShapeIDs::kShapeLinear;
+  else if (dynamic_cast<IParam::ShapePowCurve*>(mShape.get()))
+    return IParam::EShapeIDs::kShapePowCurve;
+  else if (dynamic_cast<IParam::ShapeExp*>(mShape.get()))
+    return IParam::EShapeIDs::kShapeExponential;
+  else
+    return IParam::EShapeIDs::kShapeUnknown;
+}
+
+double IParam::GetShapeValue() const
+{
+  if (auto* pShapePowCurve = dynamic_cast<IParam::ShapePowCurve*>(mShape.get()))
+    return pShapePowCurve->mShape;
+  else
+    return 0.0;
+}
+

@@ -1,10 +1,10 @@
 /*
  ==============================================================================
- 
- This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers. 
- 
+
+ This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers.
+
  See LICENSE.txt for  more info.
- 
+
  ==============================================================================
 */
 
@@ -61,7 +61,6 @@ enum EVST3ParamIDs
 #endif
 };
 
-//TODO: these should be in a namespace, to avoid conflicts with third-party libraries
 static const double PI = 3.1415926535897932384626433832795;
 
 /** @brief Magic number for gain to dB conversion.
@@ -81,7 +80,6 @@ static const int MAX_PRESET_NAME_LEN = 256;
 
 #define AU_MAX_IO_CHANNELS 128
 
-//TODO: check this shit really?
 #define MAX_MACOS_PATH_LEN 1024
 #define MAX_WIN32_PATH_LEN 256
 #define MAX_WIN32_PARAM_LEN 256
@@ -157,7 +155,7 @@ enum EParamSource
   kPresetRecall,
   kUI,
   kDelegate,
-  kRecompile, // for FAUST JIT
+  kRecompile, // for JIT
   kUnknown,
   kNumParamSources
 };
@@ -185,7 +183,8 @@ enum EAPI
   kAPIAPP = 5,
   kAPIWAM = 6,
   kAPIWEB = 7,
-  kAPILV2 = 8
+  kAPICLAP = 8,
+  kAPILV2 = 9
 };
 
 /** @enum EHost
@@ -230,7 +229,7 @@ enum EHost
   kHostTwistedWave,
   kHostBitwig,
   kHostWWW,
-  
+
   kHostReason,
   kHostGoldWave5x,
   kHostWaveform,

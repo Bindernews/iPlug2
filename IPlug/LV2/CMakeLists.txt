@@ -86,16 +86,13 @@ endfunction(_iplug_load_module_lv2)
 _iplug_load_module_lv2()
 
 function(iplug_configure_lv2 base_plugin target)
-  get_target_property(plugin_name ${base_plugin} IPLUG_PLUGIN_NAME)
-  get_target_property(gui_libraries ${base_plugin} IPLUG_PLUGIN_GRAPHICS)
-
-  set(out_dir "${CMAKE_BINARY_DIR}/${target}")
+  iplug_get_common_plugin_variables(lv2)
   set(install_dir "${LV2_INSTALL_PATH}/${plugin_name}.lv2")
 
   add_library(${target} MODULE)
   iplug_target_add(${target} PUBLIC LINK iPlug2_LV2_DSP iPlug2_NoGraphics ${base_plugin})
 
-  set(res_dir "${out_dir}/resources")
+  set(res_dir "${output_dir}/resources")
   if (IPLUG_OS MATCHES "Windows")
     set(suffix ".dll")
   elseif (IPLUG_OS MATCHES "Darwin")
@@ -108,7 +105,7 @@ function(iplug_configure_lv2 base_plugin target)
   set_target_properties(
     ${target} PROPERTIES
     OUTPUT_NAME "${plugin_name}"
-    LIBRARY_OUTPUT_DIRECTORY "${out_dir}"
+    LIBRARY_OUTPUT_DIRECTORY "${output_dir}"
     PREFIX ""
     SUFFIX ${suffix}
   )
@@ -116,7 +113,7 @@ function(iplug_configure_lv2 base_plugin target)
   # Add TTL generator command
   add_custom_command(
     TARGET ${target} POST_BUILD
-    COMMAND rundyn "$<TARGET_FILE:${target}>,write_ttl" "${out_dir}"
+    COMMAND rundyn "$<TARGET_FILE:${target}>,write_ttl" "${output_dir}"
     COMMENT "Generating TTL file for ${target}"
   )
   # add_dependencies(${target} rundyn)
@@ -127,7 +124,7 @@ function(iplug_configure_lv2 base_plugin target)
   endif()
 
   # After building copy to the correct directory
-  iplug_add_post_build_copy(${target} "${out_dir}" "${install_dir}")
+  iplug_add_post_build_copy(${target} "${output_dir}" "${install_dir}")
 
   # Add ui library
   if (NOT gui_libraries STREQUAL iPlug2_NoGraphics)
@@ -136,7 +133,7 @@ function(iplug_configure_lv2 base_plugin target)
     target_link_libraries(${target_ui} PUBLIC iPlug2_LV2_UI ${base_plugin} ${gui_libraries})
     set_target_properties(${target_ui} PROPERTIES
       OUTPUT_NAME "${plugin_name}_ui"
-      LIBRARY_OUTPUT_DIRECTORY "${out_dir}"
+      LIBRARY_OUTPUT_DIRECTORY "${output_dir}"
       PREFIX ""
       SUFFIX ${suffix}
     )

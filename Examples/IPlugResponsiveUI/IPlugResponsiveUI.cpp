@@ -13,7 +13,7 @@ IPlugResponsiveUI::IPlugResponsiveUI(const InstanceInfo& info)
 #ifdef OS_WEB
     int w, h;
     GetScreenDimensions(w, h);
-    return MakeGraphics(*this, w, h, 1.f);
+    return MakeGraphics(*this, w, h, PLUG_FPS, 1.f);
 #else
     return MakeGraphics(*this, PLUG_WIDTH, PLUG_HEIGHT, PLUG_FPS);
 #endif
@@ -23,7 +23,7 @@ IPlugResponsiveUI::IPlugResponsiveUI(const InstanceInfo& info)
     const IRECT b = pGraphics->GetBounds();
 
     auto GetBounds = [pGraphics](int ctrlIdx, const IRECT& b) {
-      IRECT main = b.GetPadded(-40.f);
+      IRECT main = b.GetPadded(-5.f);
       IRECT keys = main.FracRectVertical(0.25, false);
       IRECT scope = main.FracRectVertical(0.75, true).GetPadded(-10.f);
       IRECT gain = scope.ReduceFromRight(100.f);
@@ -61,8 +61,19 @@ IPlugResponsiveUI::IPlugResponsiveUI(const InstanceInfo& info)
 #if IPLUG_EDITOR
 void IPlugResponsiveUI::OnParentWindowResize(int width, int height)
 {
-  if(GetUI())
+  if (GetUI())
     GetUI()->Resize(width, height, 1.f, false);
+}
+
+bool IPlugResponsiveUI::OnHostRequestingSupportedViewConfiguration(int width, int height)
+{
+  return ConstrainEditorResize(width, height);
+}
+
+void IPlugResponsiveUI::OnHostSelectedViewConfiguration(int width, int height)
+{
+  if (GetUI())
+    GetUI()->Resize(width, height, 1.f, true);
 }
 #endif
 

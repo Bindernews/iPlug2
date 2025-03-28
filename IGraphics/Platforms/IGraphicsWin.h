@@ -51,7 +51,7 @@ public:
   
   void GetMouseLocation(float& x, float&y) const override;
 
-  EMsgBoxResult ShowMessageBox(const char* str, const char* caption, EMsgBoxType type, IMsgBoxCompletionHanderFunc completionHandler) override;
+  EMsgBoxResult ShowMessageBox(const char* str, const char* title, EMsgBoxType type, IMsgBoxCompletionHandlerFunc completionHandler) override;
 
   void* OpenWindow(void* pParent) override;
   void CloseWindow() override;
@@ -60,31 +60,27 @@ public:
   void UpdateTooltips() override {}
 
   bool RevealPathInExplorerOrFinder(WDL_String& path, bool select) override;
-  void PromptForFile(WDL_String& fileName, WDL_String& path, EFileAction action, const char* ext) override;
-  void PromptForDirectory(WDL_String& dir) override;
+  void PromptForFile(WDL_String& fileName, WDL_String& path, EFileAction action, const char* ext, IFileDialogCompletionHandlerFunc completionHandler) override;
+  void PromptForDirectory(WDL_String& dir, IFileDialogCompletionHandlerFunc completionHandler) override;
   bool PromptForColor(IColor& color, const char* str, IColorPickerHandlerFunc func) override;
 
   IPopupMenu* GetItemMenu(long idx, long& idxInMenu, long& offsetIdx, IPopupMenu& baseMenu);
   HMENU CreateMenu(IPopupMenu& menu, long* pOffsetIdx);
 
-  bool OpenURL(const char* url, const char* msgWindowTitle, const char* confirmMsg, const char* errMsgOnFailure);
+  bool OpenURL(const char* url, const char* msgWindowTitle, const char* confirmMsg, const char* errMsgOnFailure) override;
 
   void* GetWindow() override { return mPlugWnd; }
-  HWND GetParentWindow() const { return mParentWnd; }
-  HWND GetMainWnd();
-  void SetMainWndClassName(const char* name) { mMainWndClassName.Set(name); }
-//  void GetMainWndClassName(char* name) { strcpy(name, mMainWndClassName.Get()); }
-  IRECT GetWindowRECT();
-  void SetWindowTitle(const char* str);
 
   const char* GetPlatformAPIStr() override { return "win32"; };
 
   bool GetTextFromClipboard(WDL_String& str) override;
   bool SetTextInClipboard(const char* str) override;
+  bool SetFilePathInClipboard(const char* path) override;
+
+  bool InitiateExternalFileDragDrop(const char* path, const IRECT& iconBounds) override;
 
   bool PlatformSupportsMultiTouch() const override;
 
-  
   static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
   static LRESULT CALLBACK ParamEditProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
   static BOOL CALLBACK FindMainWindow(HWND hWnd, LPARAM lParam);
@@ -92,12 +88,15 @@ public:
   DWORD OnVBlankRun();
 
 protected:
-  IPopupMenu* CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT& bounds, bool& isAsync) override;
+  IPopupMenu* CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT bounds, bool& isAsync) override;
   void CreatePlatformTextEntry(int paramIdx, const IText& text, const IRECT& bounds, int length, const char* str) override;
 
   void SetTooltip(const char* tooltip);
   void ShowTooltip();
   void HideTooltip();
+    
+  HWND GetMainWnd();
+  IRECT GetWindowRECT();
 
 private:
 
@@ -146,6 +145,7 @@ private:
   void StartVBlankThread(HWND hWnd);
   void StopVBlankThread();
   void VBlankNotify();
+    
   HWND mVBlankWindow = 0; // Window to post messages to for every vsync
   volatile bool mVBlankShutdown = false; // Flag to indiciate that the vsync thread should shutdown
   HANDLE mVBlankThread = INVALID_HANDLE_VALUE; //ID of thread.

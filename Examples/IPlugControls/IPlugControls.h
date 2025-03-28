@@ -31,8 +31,11 @@ enum EControlTags
   kCtrlTagRedLED,
   kCtrlTagGreenLED,
   kCtrlTagBlueLED,
+  kCtrlTagAboutBox,
   kCtrlTags
 };
+
+static constexpr int kScopeBufferSize = 128;
 
 using namespace iplug;
 using namespace igraphics;
@@ -57,7 +60,8 @@ public:
   void OnIdle() override;
   void OnReset() override;
 private:
-  IBufferSender<2> mScopeSender;
+  
+  IBufferSender<2, kScopeBufferSize, kScopeBufferSize*2> mScopeSender;
   IBufferSender<1> mDisplaySender;
   IPeakSender<2> mMeterSender;
   ISender<1> mRTTextSender;

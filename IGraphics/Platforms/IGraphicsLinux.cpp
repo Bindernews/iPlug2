@@ -1133,7 +1133,7 @@ void IGraphicsLinux::MoveMouseCursor(float x, float y)
   mCursorY = mMouseLockPos.y;
 }
 
-EMsgBoxResult IGraphicsLinux::ShowMessageBox(const char* text, const char* caption, EMsgBoxType type, IMsgBoxCompletionHanderFunc completionHandler)
+EMsgBoxResult IGraphicsLinux::ShowMessageBox(const char* text, const char* caption, EMsgBoxType type, IMsgBoxCompletionHandlerFunc completionHandler)
 {
   WDL_String command;
   WDL_String argument;
@@ -1282,7 +1282,12 @@ bool IGraphicsLinux::RevealPathInExplorerOrFinder(WDL_String& path, bool select)
   return true;
 }
 
-void IGraphicsLinux::PromptForFile(WDL_String& fileName, WDL_String& path, EFileAction action, const char* extensions)
+void IGraphicsLinux::PromptForFile(
+  WDL_String& fileName,
+  WDL_String& path,
+  EFileAction action,
+  const char* extensions,
+  IFileDialogCompletionHandlerFunc completionHandler)
 {
   if (!WindowIsOpen())
   {
@@ -1338,9 +1343,11 @@ void IGraphicsLinux::PromptForFile(WDL_String& fileName, WDL_String& path, EFile
   {
     fileName.Set("");
   }
+
+  // TODO call completionHandler
 }
 
-void IGraphicsLinux::PromptForDirectory(WDL_String& dir)
+void IGraphicsLinux::PromptForDirectory(WDL_String& dir, IFileDialogCompletionHandlerFunc completionHandler)
 {
   if (!WindowIsOpen())
   {
@@ -1372,6 +1379,8 @@ void IGraphicsLinux::PromptForDirectory(WDL_String& dir)
   {
     dir.Set("");
   }
+
+  // TODO call completionHandler
 }
 
 bool IGraphicsLinux::PromptForColor(IColor& color, const char* str, IColorPickerHandlerFunc func)
@@ -1425,6 +1434,8 @@ bool IGraphicsLinux::PromptForColor(IColor& color, const char* str, IColorPicker
 
     return ok;
   }
+
+  // TODO call func
 }
 
 bool IGraphicsLinux::OpenURL(const char* url, const char* msgWindowTitle, const char* confirmMsg, const char* errMsgOnFailure)

@@ -37,15 +37,17 @@ public:
   void GetMouseLocation(float& x, float& y) const override;
   void HideMouseCursor(bool hide, bool lock) override;
   void MoveMouseCursor(float x, float y) override;
-  EMsgBoxResult ShowMessageBox(const char* str, const char* caption, EMsgBoxType type, IMsgBoxCompletionHanderFunc completionHandler) override;
+  EMsgBoxResult ShowMessageBox(const char* str, const char* title, EMsgBoxType type, IMsgBoxCompletionHandlerFunc completionHandler) override;
   void ForceEndUserEdit() override { /* NO-OP */ }
   void DrawResize() override;
   const char* GetPlatformAPIStr() override { return "Linux"; }
-  void UpdateTooltips() override { /* NO-OP */ }; 
+  void UpdateTooltips() override { /* NO-OP */ };
+
   bool RevealPathInExplorerOrFinder(WDL_String& path, bool select) override;
-  void PromptForFile(WDL_String& fileName, WDL_String& path, EFileAction action, const char* extensions) override;
-  void PromptForDirectory(WDL_String& dir) override;
+  void PromptForFile(WDL_String& fileName, WDL_String& path, EFileAction action, const char* ext, IFileDialogCompletionHandlerFunc completionHandler) override;
+  void PromptForDirectory(WDL_String& dir, IFileDialogCompletionHandlerFunc completionHandler) override;
   bool PromptForColor(IColor& color, const char* str, IColorPickerHandlerFunc func) override;
+
   bool OpenURL(const char* url, const char* msgWindowTitle, const char* confirmMsg, const char* errMsgOnFailure) override;
   static int GetUserOSVersion();
   bool GetTextFromClipboard(WDL_String& str) override;
@@ -59,8 +61,8 @@ public:
   void SetIntegration(void* mainLoop) override;
 
 protected:
-  IPopupMenu* CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT& bounds, bool& isAsync) override { /* NO-OP */ return nullptr; }
-  void CreatePlatformTextEntry(int paramIdx, const IText& text, const IRECT& bounds, int length, const char* str) override { /* NO-OP */ } 
+  IPopupMenu* CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT bounds, bool& isAsync) override { /* NO-OP */ return nullptr; }
+  void CreatePlatformTextEntry(int paramIdx, const IText& text, const IRECT& bounds, int length, const char* str) override { /* NO-OP */ }
   void RequestFocus();
 
   friend class IGraphics;

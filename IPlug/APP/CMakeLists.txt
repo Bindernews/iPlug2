@@ -57,23 +57,22 @@ iplug_target_add(iPlug2_APP INTERFACE
 # iplug_source_tree(iPlug2_APP)
 
 function(iplug_configure_app base_plugin target)
-  get_target_property(plugin_name ${base_plugin} IPLUG_PLUGIN_NAME)
-  get_target_property(gui_libraries ${base_plugin} IPLUG_PLUGIN_GRAPHICS)
+  iplug_get_common_plugin_variables(app)
 
   # Create target
   add_executable(${target} WIN32 MACOSX_BUNDLE)
   iplug_target_add(${target} PUBLIC LINK iPlug2_APP ${base_plugin} ${gui_libraries})
 
-  set(out_dir "${CMAKE_BINARY_DIR}/${target}")
-  set(res_dir "${out_dir}/resources")
+  # Default resources directory
+  set(res_dir "${output_dir}/resources")
 
   if (WIN32)
     set_target_properties(${target} PROPERTIES
       OUTPUT_NAME "${plugin_name}"
-      RUNTIME_OUTPUT_DIRECTORY "${out_dir}")
+      RUNTIME_OUTPUT_DIRECTORY "${output_dir}")
 
   elseif (CMAKE_SYSTEM_NAME MATCHES "Darwin")
-    set(res_dir "${CMAKE_BINARY_DIR}/${target}/${PLUG_NAME}.app/Contents/Resources")
+    set(res_dir "${CMAKE_BINARY_DIR}/${target}/${plugin_name}.app/Contents/Resources")
     # Set the Info.plist file and add required resources
     set(_res
       "${CMAKE_SOURCE_DIR}/resources/${plugin_name}.icns"
@@ -86,14 +85,13 @@ function(iplug_configure_app base_plugin target)
     set(res_dir "")
 
   elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
-    set(res_dir "${CMAKE_BINARY_DIR}/${target}/resources")
     set_target_properties(${target} PROPERTIES
       OUTPUT_NAME "${plugin_name}"
-      RUNTIME_OUTPUT_DIRECTORY "${out_dir}")
+      RUNTIME_OUTPUT_DIRECTORY "${output_dir}")
 
   endif()
 
   if (res_dir)
-    iplug_target_bundle_resources(${target} "${res_dir}")
+    iplug_target_bundle_resources(${base_plugin} "${res_dir}")
   endif()
 endfunction()

@@ -34,13 +34,25 @@ elseif (CMAKE_SYSTEM_NAME MATCHES "Darwin")
   )
 
 elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
+
+  option(SWELL_SUPPORT_GTK "Enable GTK+ support in SWELL" OFF)
+
   find_package(PkgConfig REQUIRED)
-  pkg_check_modules(Glib_20 REQUIRED IMPORTED_TARGET "glib-2.0")
-  pkg_check_modules(Gdk_30 REQUIRED IMPORTED_TARGET "gdk-3.0")
-  pkg_check_modules(X11 REQUIRED IMPORTED_TARGET "x11")
-  pkg_check_modules(XInput IMPORTED_TARGET "xi")
-  pkg_check_modules(Freetype2 REQUIRED IMPORTED_TARGET "freetype2")
-  pkg_check_modules(Glx REQUIRED IMPORTED_TARGET "glx")
+  pkg_check_modules(
+    SWELL_PrivDependencies REQUIRED IMPORTED_TARGET
+    "glib-2.0"
+    "x11"
+    "xi"
+    "glx"
+    "freetype2"
+    "fontconfig"
+  )
+
+  set(pub_dep "gdk-3.0")
+  if (SWELL_SUPPORT_GTK)
+    set(pub_dep "gtk+-3.0")
+  endif()
+  pkg_check_modules(SWELL_PubDependencies REQUIRED IMPORTED_TARGET ${pub_dep})
 
   # Build and link Swell properly on Linux. This uses GTK+ 3.0 and X11
   list(APPEND _src
@@ -62,8 +74,10 @@ elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
   list(APPEND _def
     SWELL_COMPILED
     SWELL_TARGET_GDK=3
+    $<$<BOOL:${SWELL_SUPPORT_GTK}>:SWELL_SUPPORT_GTK>
     SWELL_LICE_GDI
     SWELL_FREETYPE
+    SWELL_FONTCONFIG
     _FILE_OFFSET_BITS=64
     WDL_ALLOW_UNSIGNED_DEFAULT_CHAR
   )
@@ -73,11 +87,7 @@ elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
   )
   list(APPEND _lib
     WDL_LICE
-    PkgConfig::Gdk_30
-    PkgConfig::Glib_20
-    PkgConfig::X11
-    PkgConfig::Freetype2
-    PkgConfig::Glx
+    PkgConfig::SWELL_PrivDependencies
     # Xinput library, we only need to dynamically link to it
     "Xi"
   )
@@ -86,10 +96,11 @@ elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
     ${CMAKE_SOURCE_DIR}/resources/main.rc_mac_dlg
     ${CMAKE_SOURCE_DIR}/resources/main.rc_mac_menu
   )
-  target_link_libraries(WDL_SWELL PUBLIC PkgConfig::Gdk_30)
+  target_link_libraries(WDL_SWELL PUBLIC PkgConfig::SWELL_PubDependencies)
 endif()
 
 target_sources(WDL_SWELL PRIVATE ${_src})
 target_include_directories(WDL_SWELL PUBLIC ${_inc})
 target_link_libraries(WDL_SWELL PRIVATE ${_lib})
 target_compile_definitions(WDL_SWELL PUBLIC ${_def})
+target_compile_options(WDL_SWELL PRIVATE -Wno-deprecated-declarations)

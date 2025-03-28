@@ -30,6 +30,11 @@ IPlugVST3Processor::~IPlugVST3Processor() {}
 
 #pragma mark AudioEffect overrides
 
+uint32 PLUGIN_API IPlugVST3Processor::getTailSamples()
+{
+  return GetTailIsInfinite() ? kInfiniteTail : GetTailSize();
+}
+
 tresult PLUGIN_API IPlugVST3Processor::initialize(FUnknown* context)
 {
   TRACE
@@ -183,6 +188,18 @@ tresult PLUGIN_API IPlugVST3Processor::notify(IMessage* message)
       
       return kResultFalse;
     }
+  }
+  if (!strcmp(message->getMessageID(), "SSMFUI")) // sysex message from UI
+  {
+    if (message->getAttributes()->getBinary("D", data, size) == kResultOk)
+    {
+      int64 offset = 0;
+      message->getAttributes()->getInt("O", offset);
+      SysExData sysex {(int) offset, (int) size, data};
+      mSysExDataFromEditor.Push(sysex);
+      return kResultOk;
+    }
+    return kResultFalse;
   }
   else if (!strcmp(message->getMessageID(), "SAMFUI")) // message from UI
   {

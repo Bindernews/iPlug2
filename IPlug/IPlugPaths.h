@@ -27,13 +27,6 @@ using PluginIDType = HMODULE;
 using PluginIDType = void *;
 #endif
 
-#if defined OS_WIN
-#include <windows.h>
- // Unicode helpers
-void UTF8ToUTF16(wchar_t* utf16Str, const char* utf8Str, int maxLen);
-void UTF16ToUTF8(WDL_String& utf8Str, const wchar_t* utf16Str);
-#endif
-
 /** Get the path to the host binary 
 * @param path WDL_String reference where the path will be put on success or empty string on failure */
 extern void HostPath(WDL_String& path, const char* bundleID = 0);
@@ -70,6 +63,9 @@ extern void VST3PresetsPath(WDL_String& path, const char* mfrName, const char* p
  * @param path WDL_String reference where the path will be put on success or empty string on failure
  * @param pluginName CString to specify the plug-in name (BUNDLE_NAME from config.h can be used here) */
 extern void INIPath(WDL_String& path, const char* pluginName);
+
+/** Get the path to the folder where the Plug-in's ICoreWebView2 userdata folder should be (Windows WebView only)*/
+extern void WebViewCachePath(WDL_String& path);
 
 /** Find the absolute path of a resource based on it's file name (e.g. “background.png”) and type (e.g. “png”), or in the case of windows,
  * confirm the existence of a particular resource in the binary. If it fails to find the resource with the binary it will test the fileNameOrResID argument

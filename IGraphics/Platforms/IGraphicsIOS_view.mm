@@ -14,6 +14,7 @@
 
 #import <QuartzCore/QuartzCore.h>
 #import <Metal/Metal.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 #import "IGraphicsIOS_view.h"
 
@@ -24,6 +25,11 @@
 extern StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
 
 @implementation IGRAPHICS_UITABLEVC
+
+- (int) menuIndexFromIndexPath: (NSIndexPath*) indexPath
+{
+  return [self.items[indexPath.row][1] intValue];
+}
 
 - (void) viewDidLoad
 {
@@ -43,7 +49,7 @@ extern StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
   {
     IPopupMenu::Item* pMenuItem = mMenu->GetItem(i);
 
-    elementTitle = [[NSMutableString alloc] initWithCString:pMenuItem->GetText() encoding:NSUTF8StringEncoding];
+    elementTitle = [[NSMutableString alloc] initWithUTF8String: pMenuItem->GetText()];
 
     if (mMenu->GetPrefix())
     {
@@ -62,13 +68,13 @@ extern StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
       [elementTitle insertString:prefixString atIndex:0];
     }
 
-    [self.items addObject:elementTitle];
+    [self.items addObject: @[elementTitle, [NSNumber numberWithInt:i]]];
   }
   
   [self.view addSubview:self.tableView];
 }
 
-- (id) initWithIPopupMenuAndIGraphics:(IPopupMenu*) pMenu :(IGraphicsIOS*) pGraphics
+- (id) initWithIPopupMenuAndIGraphics: (IPopupMenu*) pMenu : (IGraphicsIOS*) pGraphics
 {
   self = [super init];
   
@@ -78,17 +84,17 @@ extern StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
   return self;
 }
 
-- (NSInteger) tableView:(UITableView*) tableView numberOfRowsInSection:(NSInteger) section
+- (NSInteger) tableView: (UITableView*) tableView numberOfRowsInSection : (NSInteger) section
 {
   return self.items.count;
 }
 
-- (NSInteger) numberOfSectionsInTableView:(UITableView*) tableView
+- (NSInteger) numberOfSectionsInTableView: (UITableView*) tableView
 {
   return 1;
 }
 
-- (UITableViewCell*) tableView:(UITableView*) tableView cellForRowAtIndexPath:(NSIndexPath*) indexPath
+- (UITableViewCell*) tableView: (UITableView*) tableView cellForRowAtIndexPath: (NSIndexPath*) indexPath
 {
   static NSString *identifer = @"cell";
   UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:identifer];
@@ -97,47 +103,50 @@ extern StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
   {
     cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:identifer];
   }
+    
+  cell.textLabel.text = [NSString stringWithFormat:@"%@", self.items[indexPath.row][0]];
   
-  int cellIndex = static_cast<int>(indexPath.row);
+  IPopupMenu::Item* pItem = mMenu->GetItem([self menuIndexFromIndexPath:indexPath]);
   
-  cell.textLabel.text = [NSString stringWithFormat:@"%@", self.items[indexPath.row]];
-  
-  IPopupMenu::Item* pItem = mMenu->GetItem(cellIndex);
-  
-  if(pItem->GetChecked())
+  if (pItem->GetChecked())
     cell.accessoryType = UITableViewCellAccessoryCheckmark;
   else
     cell.accessoryType = pItem->GetSubmenu() ? UITableViewCellAccessoryDisclosureIndicator : UITableViewCellAccessoryNone;
 
-  if(!pItem->GetEnabled())
-  {
-    cell.userInteractionEnabled = NO;
-    cell.textLabel.enabled = NO;
-  }
+  cell.textLabel.enabled = cell.userInteractionEnabled = pItem->GetEnabled();
   
   return cell;
 }
 
-- (CGFloat) tableView:(UITableView*) tableView heightForRowAtIndexPath:(NSIndexPath*) indexPath
+- (CGFloat) tableView:(UITableView*) tableView heightForRowAtIndexPath: (NSIndexPath*) indexPath
 {
-  int cellIndex = static_cast<int>(indexPath.row);
+  
+  IPopupMenu::Item* pItem = mMenu->GetItem([self menuIndexFromIndexPath:indexPath]);
 
-  IPopupMenu::Item* pItem = mMenu->GetItem(cellIndex);
+  if (pItem->GetIsSeparator())
+    return 0.5;
+  else
+    return self.tableView.rowHeight;
+}
 
-  if(pItem->GetIsSeparator())
-    return 0.5f;
+- (CGFloat) tableView:(UITableView *)tableView estimatedHeightForRowAtIndexPath:(NSIndexPath *)indexPath
+{
+  IPopupMenu::Item* pItem = mMenu->GetItem([self menuIndexFromIndexPath:indexPath]);
+
+  if (pItem->GetIsSeparator())
+    return 0.5;
   else
     return self.tableView.rowHeight;
 }
 
 - (void) tableView:(UITableView*) tableView didSelectRowAtIndexPath:(NSIndexPath*) indexPath
 {
-  int cellIndex = static_cast<int>(indexPath.row);
+  int menuIdx = [self menuIndexFromIndexPath:indexPath];
 
-  IPopupMenu::Item* pItem = mMenu->GetItem(cellIndex);
+  IPopupMenu::Item* pItem = mMenu->GetItem(menuIdx);
   IPopupMenu* pSubMenu = pItem->GetSubmenu();
   
-  if(pSubMenu)
+  if (pSubMenu)
   {
     IGRAPHICS_UITABLEVC* newViewController = [[IGRAPHICS_UITABLEVC alloc] initWithIPopupMenuAndIGraphics: pSubMenu : mGraphics];
     [newViewController setTitle:[NSString stringWithUTF8String:CStringHasContents(pSubMenu->GetRootTitle()) ? pSubMenu->GetRootTitle() : pItem->GetText()]];
@@ -146,16 +155,16 @@ extern StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
     return;
   }
 
-  if(pItem->GetIsChoosable())
+  if (pItem->GetIsChoosable())
   {
-    mMenu->SetChosenItemIdx(cellIndex);
+    [self dismissViewControllerAnimated:YES completion:nil];
+
+    mMenu->SetChosenItemIdx(menuIdx);
     
-    if(mMenu->GetFunction())
+    if (mMenu->GetFunction())
       mMenu->ExecFunction();
     
     mGraphics->SetControlValueAfterPopupMenu(mMenu);
-    
-    [self dismissViewControllerAnimated:YES completion:nil];
   }
 }
 
@@ -177,6 +186,21 @@ extern StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
   super.preferredContentSize = preferredContentSize;
 }
 
+- (void) tableView: (UITableView *) tableView commitEditingStyle: (UITableViewCellEditingStyle) editingStyle forRowAtIndexPath: (NSIndexPath*) indexPath
+{
+  if (editingStyle == UITableViewCellEditingStyleDelete)
+  {
+    mGraphics->DeleteFromPopupMenu(mMenu, [self menuIndexFromIndexPath:indexPath]);
+    [self.items removeObjectAtIndex:indexPath.row];
+    [tableView deleteRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
+  }
+}
+
+- (BOOL) tableView: (UITableView *) tableView canEditRowAtIndexPath: (NSIndexPath*) indexPath
+{
+  return mMenu->GetItem([self menuIndexFromIndexPath:indexPath])->GetIsDeletable();
+}
+
 @end
 
 @implementation IGRAPHICS_VIEW
@@ -188,12 +212,7 @@ extern StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
   mGraphics = pGraphics;
   CGRect r = CGRectMake(0.f, 0.f, (float) pGraphics->WindowWidth(), (float) pGraphics->WindowHeight());
   self = [super initWithFrame:r];
-  
-  //scrollview
-  [self setContentSize:r.size];
-  self.delegate = self;
-  self.scrollEnabled = NO;
-  
+    
 #ifdef IGRAPHICS_METAL
   mMTLLayer = [[CAMetalLayer alloc] init];
   mMTLLayer.device = MTLCreateSystemDefaultDevice();
@@ -207,8 +226,6 @@ extern StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
 
   self.multipleTouchEnabled = NO;
   
-  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillShow:) name:UIKeyboardWillShowNotification object:nil];
-  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillBeHidden:) name:UIKeyboardWillHideNotification object:nil];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(applicationDidEnterBackgroundNotification:) name:UIApplicationDidEnterBackgroundNotification object:nil];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(applicationWillEnterForegroundNotification:) name:UIApplicationWillEnterForegroundNotification object:nil];
   mColorPickerHandlerFunc = nullptr;
@@ -387,20 +404,9 @@ extern StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
   mMTLLayer = nil;
 }
 
-- (void) textFieldDidEndEditing:(UITextField*) textField reason:(UITextFieldDidEndEditingReason) reason
-{
-  if(textField == mTextField)
-  {
-    mGraphics->SetControlValueAfterTextEdit([[mTextField text] UTF8String]);
-    mGraphics->SetAllControlsDirty();
-    
-    [self endUserInput];
-  }
-}
-
 - (BOOL) textFieldShouldReturn:(UITextField*) textField
 {
-  if(textField == mTextField)
+  if (textField == mTextField)
   {
     mGraphics->SetControlValueAfterTextEdit([[mTextField text] UTF8String]);
     mGraphics->SetAllControlsDirty();
@@ -408,11 +414,6 @@ extern StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
     [self endUserInput];
   }
   return YES;
-}
-
-- (void) textFieldDidEndEditing:(UITextField*) textField
-{
-  [self endUserInput];
 }
 
 - (BOOL) textField:(UITextField*) textField shouldChangeCharactersInRange:(NSRange)range replacementString:(NSString*) string
@@ -490,87 +491,78 @@ extern StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
 {
   if (mTextField)
     return;
+  
+  mAlertController = [UIAlertController alertControllerWithTitle:@"Input a value:" message:@"" preferredStyle:UIAlertControllerStyleAlert];
 
-  mTextField = [[UITextField alloc] initWithFrame:areaRect];
-  mTextFieldLength = length;
-  
-  CoreTextFontDescriptor* CTFontDescriptor = CoreTextHelpers::GetCTFontDescriptor(text, sFontDescriptorCache);
-  UIFontDescriptor* fontDescriptor = (__bridge UIFontDescriptor*) CTFontDescriptor->GetDescriptor();
-  UIFont* font = [UIFont fontWithDescriptor: fontDescriptor size: text.mSize * 0.75];
-  [mTextField setFont: font];
-  
-  [mTextField setText:[NSString stringWithUTF8String:str]];
-  [mTextField setTextColor:ToUIColor(text.mTextEntryFGColor)];
-  [mTextField setBackgroundColor:ToUIColor(text.mTextEntryBGColor)];
-  [mTextField setAutocorrectionType:UITextAutocorrectionTypeNo];
-  [mTextField setDelegate:self];
-  
-  switch (text.mVAlign)
+  __weak IGRAPHICS_VIEW* weakSelf = self;
+
+  void (^cancelHandler)(UIAlertAction*) = ^(UIAlertAction *action)
   {
-    case EVAlign::Top:
-      [mTextField setContentVerticalAlignment:UIControlContentVerticalAlignmentTop];
-      break;
-    case EVAlign::Middle:
-      [mTextField setContentVerticalAlignment:UIControlContentVerticalAlignmentCenter];
-      break;
-    case EVAlign::Bottom:
-      [mTextField setContentVerticalAlignment:UIControlContentVerticalAlignmentBottom];
-      break;
-    default:
-      break;
-  }
-  
-  switch (text.mAlign)
+    __strong IGRAPHICS_VIEW* strongSelf = weakSelf;
+    strongSelf->mGraphics->SetAllControlsDirty();
+    [strongSelf endUserInput];
+  };
+    
+  UIAlertAction* cancelAction = [UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleDefault handler:cancelHandler];
+  [mAlertController addAction:cancelAction];
+
+  void (^okHandler)(UIAlertAction*) = ^(UIAlertAction *action)
   {
-    case EAlign::Near:
-      [mTextField setTextAlignment: NSTextAlignmentLeft];
-      break;
-    case EAlign::Center:
-      [mTextField setTextAlignment: NSTextAlignmentCenter];
-      break;
-    case EAlign::Far:
-      [mTextField setTextAlignment: NSTextAlignmentRight];
-      break;
-    default:
-      break;
-  }
-  
-  [self addSubview: mTextField];
-  [mTextField becomeFirstResponder];
+    __strong IGRAPHICS_VIEW* strongSelf = weakSelf;
+    strongSelf->mGraphics->SetControlValueAfterTextEdit([[strongSelf->mTextField text] UTF8String]);
+    strongSelf->mGraphics->SetAllControlsDirty();
+    [strongSelf endUserInput];
+  };
+    
+  UIAlertAction* okAction = [UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:okHandler];
+  [mAlertController addAction:okAction];
+  [mAlertController setPreferredAction:okAction];
+    
+  [mAlertController addTextFieldWithConfigurationHandler:^(UITextField* aTextField) {
+    __strong IGRAPHICS_VIEW* strongSelf = weakSelf;
+    strongSelf->mTextField = aTextField;
+    strongSelf->mTextFieldLength = length;
+    aTextField.delegate = strongSelf;
+    [aTextField setText:[NSString stringWithUTF8String:str]];
+  }];
+  [self.window.rootViewController presentViewController:mAlertController animated:YES completion:nil];
 }
 
 - (void) endUserInput
 {
   [self becomeFirstResponder];
+  [self.window.rootViewController dismissViewControllerAnimated:NO completion:nil];
   [mTextField setDelegate: nil];
-  [mTextField removeFromSuperview];
+  mAlertController = nullptr;
   mTextField = nullptr;
   mGraphics->ClearInTextEntryControl();
 }
 
-- (void) showMessageBox: (const char*) str : (const char*) caption : (EMsgBoxType) type : (IMsgBoxCompletionHanderFunc) completionHandler
+- (void) showMessageBox: (const char*) str : (const char*) title : (EMsgBoxType) type : (IMsgBoxCompletionHandlerFunc) completionHandler
 {
-  NSString* titleNString = [NSString stringWithUTF8String:str];
-  NSString* captionNString = [NSString stringWithUTF8String:caption];
+  [self endUserInput];
+
+  NSString* message = [NSString stringWithUTF8String:str];
+  NSString* titleNs = [NSString stringWithUTF8String:title];
   
-  UIAlertController* alertController = [UIAlertController alertControllerWithTitle:titleNString message:captionNString preferredStyle:UIAlertControllerStyleAlert];
+  UIAlertController* alertController = [UIAlertController alertControllerWithTitle:titleNs message:message preferredStyle:UIAlertControllerStyleAlert];
   
   void (^handlerBlock)(UIAlertAction*) =
   ^(UIAlertAction* action) {
     
-    if(completionHandler != nullptr)
+    if (completionHandler != nullptr)
     {
       EMsgBoxResult result = EMsgBoxResult::kCANCEL;
       
-      if([action.title isEqualToString:@"OK"])
+      if ([action.title isEqualToString:@"OK"])
         result = EMsgBoxResult::kOK;
-      if([action.title isEqualToString:@"Cancel"])
+      if ([action.title isEqualToString:@"Cancel"])
         result = EMsgBoxResult::kCANCEL;
-      if([action.title isEqualToString:@"Yes"])
+      if ([action.title isEqualToString:@"Yes"])
         result = EMsgBoxResult::kYES;
-      if([action.title isEqualToString:@"No"])
+      if ([action.title isEqualToString:@"No"])
         result = EMsgBoxResult::kNO;
-      if([action.title isEqualToString:@"Retry"])
+      if ([action.title isEqualToString:@"Retry"])
         result = EMsgBoxResult::kRETRY;
       
       completionHandler(result);
@@ -578,13 +570,13 @@ extern StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
     
   };
   
-  if(type == kMB_OK || type == kMB_OKCANCEL)
+  if (type == kMB_OK || type == kMB_OKCANCEL)
   {
     UIAlertAction* okAction = [UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:handlerBlock];
     [alertController addAction:okAction];
   }
   
-  if(type == kMB_YESNO || type == kMB_YESNOCANCEL)
+  if (type == kMB_YESNO || type == kMB_YESNOCANCEL)
   {
     UIAlertAction* yesAction = [UIAlertAction actionWithTitle:@"Yes" style:UIAlertActionStyleDefault handler:handlerBlock];
     [alertController addAction:yesAction];
@@ -593,33 +585,75 @@ extern StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
     [alertController addAction:noAction];
   }
   
-  if(type == kMB_RETRYCANCEL)
+  if (type == kMB_RETRYCANCEL)
   {
     UIAlertAction* retryAction = [UIAlertAction actionWithTitle:@"Retry" style:UIAlertActionStyleDefault handler:handlerBlock];
     [alertController addAction:retryAction];
   }
   
-  if(type == kMB_OKCANCEL || type == kMB_YESNOCANCEL || type == kMB_RETRYCANCEL)
+  if (type == kMB_OKCANCEL || type == kMB_YESNOCANCEL || type == kMB_RETRYCANCEL)
   {
     UIAlertAction* cancelAction = [UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:handlerBlock];
     [alertController addAction:cancelAction];
   }
   
-  [self.window.rootViewController presentViewController:alertController animated:YES completion:nil];
+  [[NSOperationQueue mainQueue] addOperationWithBlock:^{
+    [self.window.rootViewController presentViewController:alertController animated:YES completion:nil];
+  }];
+}
+
+- (void) promptForFile: (NSString*) fileName : (NSString*) path : (EFileAction) action : (NSArray*) contentTypes : (IFileDialogCompletionHandlerFunc) completionHandler
+{
+  [self endUserInput];
+
+  mFileDialogFunc = completionHandler;
+
+  UIDocumentPickerViewController* vc = NULL;
+  NSURL* url = [[NSURL alloc] initFileURLWithPath:path];
+
+  if (action == EFileAction::Open)
+  {
+    vc = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:contentTypes asCopy:YES];
+    [vc setDirectoryURL:url];
+  }
+  else
+  {
+    vc = [[UIDocumentPickerViewController alloc] initForExportingURLs:@[url]];
+  }
+  
+  [vc setDelegate:self];
+  
+  [self.window.rootViewController presentViewController:vc animated:YES completion:nil];
+}
+
+- (void) promptForDirectory: (NSString*) path : (IFileDialogCompletionHandlerFunc) completionHandler
+{
+  [self endUserInput];
+
+  mFileDialogFunc = completionHandler;
+
+  UIDocumentPickerViewController* vc = NULL;
+  NSURL* url = [[NSURL alloc] initFileURLWithPath:path];
+
+  NSMutableArray* pFileTypes = [[NSMutableArray alloc] init];
+  UTType* directoryType = [UTType typeWithIdentifier:@"public.folder"];
+  [pFileTypes addObject:directoryType];
+  
+  vc = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:pFileTypes];
+  [vc setDirectoryURL:url];
+
+  [vc setDelegate:self];
+  
+  [self.window.rootViewController presentViewController:vc animated:YES completion:nil];
 }
 
 - (BOOL) promptForColor: (IColor&) color : (const char*) str : (IColorPickerHandlerFunc) func
 {
-#ifdef __IPHONE_14_0
+  [self endUserInput];
+
   UIColorPickerViewController* colorSelectionController = [[UIColorPickerViewController alloc] init];
   
-  UIUserInterfaceIdiom idiom = [[UIDevice currentDevice] userInterfaceIdiom];
-  
-  if(idiom == UIUserInterfaceIdiomPad)
-    colorSelectionController.modalPresentationStyle = UIModalPresentationPopover;
-  else
-    colorSelectionController.modalPresentationStyle = UIModalPresentationPageSheet;
-  
+  colorSelectionController.modalPresentationStyle = UIModalPresentationPopover;
   colorSelectionController.popoverPresentationController.delegate = self;
   colorSelectionController.popoverPresentationController.sourceView = self;
   
@@ -634,7 +668,6 @@ extern StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
   mColorPickerHandlerFunc = func;
   
   [self.window.rootViewController presentViewController:colorSelectionController animated:YES completion:nil];
-#endif
 
   return false;
 }
@@ -803,36 +836,17 @@ extern StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
 {
   CGPoint pos = [touch locationInView:touch.view];
   
-  auto ds = mGraphics->GetDrawScale();
-
-  if(mGraphics->RespondsToGesture(pos.x / ds, pos.y / ds))
-    return TRUE;
-  else
-    return FALSE;
-}
-
-- (void) keyboardWillShow:(NSNotification*) notification
-{
-  NSDictionary* info = [notification userInfo];
-  CGSize kbSize = [[info objectForKey:UIKeyboardFrameEndUserInfoKey] CGRectValue].size;
-  
-  UIEdgeInsets contentInsets = UIEdgeInsetsMake(0.0, 0.0, kbSize.height, 0.0);
-  self.contentInset = contentInsets;
-  self.scrollIndicatorInsets = contentInsets;
-  
-  CGRect r = self.frame;
-  r.size.height -= kbSize.height;
-  
-  if (!CGRectContainsPoint(r, CGPointMake(mTextField.frame.origin.x + mTextField.frame.size.width, mTextField.frame.origin.y + mTextField.frame.size.height)) ) {
-    [self scrollRectToVisible:mTextField.frame animated:YES];
+  if (mGraphics)
+  {
+    auto ds = mGraphics->GetDrawScale();
+    
+    if (mGraphics->RespondsToGesture(pos.x / ds, pos.y / ds))
+    {
+      return TRUE;
+    }
   }
-}
-
-- (void) keyboardWillBeHidden:(NSNotification*) notification
-{
-  UIEdgeInsets contentInsets = UIEdgeInsetsZero;
-  self.contentInset = contentInsets;
-  self.scrollIndicatorInsets = contentInsets;
+  
+  return FALSE;
 }
 
 - (void) applicationDidEnterBackgroundNotification:(NSNotification*) notification
@@ -850,21 +864,51 @@ extern StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
   return NO;
 }
 
-- (void) scrollViewDidScroll:(UIScrollView*) scrollView
-{
-  mGraphics->SetTranslation(0, -self.contentOffset.y);
-  mGraphics->SetAllControlsDirty();
-}
-
 - (void) presentationControllerDidDismiss: (UIPresentationController*) presentationController
 {
   mGraphics->SetControlValueAfterPopupMenu(nullptr);
 }
 
-#ifdef __IPHONE_14_0
+- (void) documentPicker:(UIDocumentPickerViewController*) controller didPickDocumentsAtURLs:(NSArray <NSURL*>*) urls
+{
+  WDL_String fileName, path;
+  
+  if (urls.count == 1)
+  {
+    NSURL* pSource = urls[0];
+    NSString* pFullPath = [pSource path];
+    fileName.Set([pFullPath UTF8String]);
+    
+    NSString* pTruncatedPath = [pFullPath stringByDeletingLastPathComponent];
+
+    if (pTruncatedPath)
+    {
+      path.Set([pTruncatedPath UTF8String]);
+      path.Append("/");
+    }
+
+    if (mFileDialogFunc)
+      mFileDialogFunc(fileName, path);
+  }
+  else
+  {
+    // call with empty values
+    if (mFileDialogFunc)
+      mFileDialogFunc(fileName, path);
+  }
+}
+
+- (void) documentPickerWasCancelled:(UIDocumentPickerViewController*) controller
+{
+  WDL_String fileName, path;
+  
+  if (mFileDialogFunc)
+    mFileDialogFunc(fileName, path);
+}
+
 - (void) colorPickerViewControllerDidSelectColor:(UIColorPickerViewController*) viewController;
 {
-  if(mColorPickerHandlerFunc)
+  if (mColorPickerHandlerFunc)
   {
     IColor c = FromUIColor([viewController selectedColor]);
     mColorPickerHandlerFunc(c);
@@ -875,7 +919,6 @@ extern StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
 {
   mColorPickerHandlerFunc = nullptr;
 }
-#endif
 
 - (void) traitCollectionDidChange: (UITraitCollection*) previousTraitCollection
 {

@@ -37,6 +37,8 @@
 BEGIN_IPLUG_NAMESPACE
 BEGIN_IGRAPHICS_NAMESPACE
 
+class IContainerBase;
+
 /** The lowest level base class of an IGraphics control. A control is anything on the GUI 
 *  @ingroup BaseControls */
 class IControl
@@ -141,6 +143,9 @@ public:
   /** Implement to do something when something was drag 'n dropped onto this control */
   virtual void OnDrop(const char* str) {};
 
+  /** Implement to handle multiple items drag 'n dropped onto this control */
+  virtual void OnDropMultiple(const std::vector<const char*>& paths) { OnDrop(paths[0]); }
+
   /** Implement to do something when graphics is scaled globally (e.g. moves to different DPI screen) */
   virtual void OnRescale() {}
 
@@ -167,12 +172,17 @@ public:
   
   /** Implement this method to handle popup menu selection after IGraphics::CreatePopupMenu/IControl::PromptUserInput
    * @param pSelectedMenu If pSelectedMenu is invalid it means the user didn't select anything
-   * @param valIdx An index that indicates which of the controls vals the menu relates to */
+   * @param valIdx An index that indicates which of the control's vals the menu relates to */
   virtual void OnPopupMenuSelection(IPopupMenu* pSelectedMenu, int valIdx);
 
+  /** Implement this method to handle popup menu deletion interactions (on IOS) after IGraphics::CreatePopupMenu/IControl::PromptUserInput
+     * @param pMenu The menu in which an item was deleted
+     * @param itemIdx An index that indicates which of the items was deleted */
+  virtual void OnDeleteFromPopupMenu(IPopupMenu* pMenu, int itemIdx) {}
+    
   /** Implement this method to handle text input after IGraphics::CreateTextEntry/IControl::PromptUserInput
    * @param str A CString with the inputted text
-   * @param valIdx An index that indicates which of the controls vals the text completion relates to */
+   * @param valIdx An index that indicates which of the control's values the text completion relates to */
   virtual void OnTextEntryCompletion(const char* str, int valIdx) {}
 
   /** Implement this to respond to a menu selection from CreateContextMenu(); @see CreateContextMenu() */
@@ -187,12 +197,12 @@ public:
   virtual void DrawPTHighlight(IGraphics& g);
 
   /** Call this method in response to a mouse event to create an edit box so the user can enter a value, or pop up a pop-up menu, if the control is linked to a parameter (mParamIdx > kNoParameter)
-   * @param valIdx An index to choose which of the controls linked parameters to retrieve. NOTE: since controls usually have only 1 parameter you can omit this argument and use the default index of 0 */
+   * @param valIdx An index to choose which of the control's linked parameters to retrieve. NOTE: since controls usually have only 1 parameter you can omit this argument and use the default index of 0 */
   void PromptUserInput(int valIdx = 0);
   
   /** Create a text entry box so the user can enter a value, or pop up a pop-up menu, if the control is linked to a parameter (mParamIdx > kNoParameter) specifying the bounds
    * @param bounds The rectangle for the text entry. Pop-up menu's will appear below the rectangle.
-   * @param valIdx An index to choose which of the controls linked parameters to retrieve. NOTE: since controls usually have only 1 parameter you can omit this argument and use the default index of 0 */
+   * @param valIdx An index to choose which of the control's linked parameters to retrieve. NOTE: since controls usually have only 1 parameter you can omit this argument and use the default index of 0 */
   void PromptUserInput(const IRECT& bounds, int valIdx = 0);
   
   /** Set an Action Function for this control. 
@@ -206,22 +216,23 @@ public:
   inline IControl* SetAnimationEndActionFunction(IActionFunction actionFunc) { mAnimationEndActionFunc = actionFunc; return this; }
   
   /** Set a tooltip for the control
-   * @param str CString tooltip to be displayed */
-  inline void SetTooltip(const char* str) { mTooltip.Set(str); }
+   * @param str CString tooltip to be displayed
+   * @return Ptr to this control, for chaining */
+  inline IControl* SetTooltip(const char* str) { mTooltip.Set(str); return this; }
   
   /** @return Currently set tooltip text */
   inline const char* GetTooltip() const { return mTooltip.Get(); }
 
   /** Get the index of a parameter that the control is linked to
    * Normaly controls are either linked to a single parameter or no parameter but some may be linked to multiple parameters
-   * @param valIdx An index to choose which of the controls linked parameters to retrieve. NOTE: since controls usually have only 1 parameter you can omit this argument and use the default index of 0
+   * @param valIdx An index to choose which of the control's linked parameters to retrieve. NOTE: since controls usually have only 1 parameter you can omit this argument and use the default index of 0
    * @return Parameter index, or kNoParameter if there is no parameter linked with this control at valIdx */
   int GetParamIdx(int valIdx = 0) const;
   
   /** Set the index of a parameter that the control is linked to
    * If you are calling this "manually" to reuse a control for multiple parameters, you probably want to call IEditorDelegate::SendCurrentParamValuesFromDelegate() afterward, to update the control values
    * @param paramIdx Parameter index, or kNoParameter if there is no parameter linked with this control at valIdx
-   * @param valIdx An index to choose which of the controls vals to set */
+   * @param valIdx An index to choose which of the control's values to set */
   virtual void SetParamIdx(int paramIdx, int valIdx = 0);
  
   /** Check if the control is linked to a particular parameter
@@ -251,7 +262,7 @@ public:
   /** Set the control's value after user input.
    * This method is called after a text entry or popup menu prompt triggered by PromptUserInput(), calling SetDirty(true), which will mean that the new value gets sent back to the delegate
    * @param value the normalised value after user input via text entry or pop-up menu
-   * @param valIdx An index to choose which of the controls linked parameters to retrieve. NOTE: since controls usually have only 1 parameter you can omit this argument and use the default index of 0 */
+   * @param valIdx An index to choose which of the control's linked parameters to retrieve. NOTE: since controls usually have only 1 parameter you can omit this argument and use the default index of 0 */
   virtual void SetValueFromUserInput(double value, int valIdx = 0);
     
   /** Set one or all of the control's values to the default value of the associated parameter.
@@ -372,6 +383,10 @@ public:
   /** @return \c true if the control ignores mouse events */
   bool GetIgnoreMouse() const { return mIgnoreMouse; }
   
+  /** Specify whether the control should respond to mouse events
+   * @param ignore \c true if it should ignore mouse events */
+  virtual void SetIgnoreMouse(bool ignore) { mIgnoreMouse = ignore; }
+  
   /** @return \c true if the control should show parameter labels/units e.g. "Hz" in text entry prompts */
   bool GetPromptShowsParamLabel() const { return mPromptShowsParamLabel; }
 
@@ -427,8 +442,8 @@ public:
    * @param func the function to trigger */
   IControl* AttachGestureRecognizer(EGestureType type, IGestureFunc func);
   
-  /** @return /c true if this control supports multiple gestures */
-  bool GetWantsGestures() const { return mGestureFuncs.size() > 0 && !mAnimationFunc; }
+  /** @return /c true if this control supports gestures (override if you are not calling IControl::AttachGestureRecognizer but are overriding OnGesture()) */
+  virtual bool GetWantsGestures() const { return mGestureFuncs.size() > 0 && !mAnimationFunc; }
   
   /** @return the last recognized gesture */
   EGestureType GetLastGesture() const { return mLastGesture; }
@@ -448,6 +463,11 @@ public:
     OnRescale();
   }
   
+  /** @return A pointer to the parent container, if the control is a sub control */
+  IContainerBase* GetParent() const { return mParent; }
+  
+  void SetParent(IContainerBase* pParent) { mParent = pParent; }
+  
   /** @return A pointer to the IGraphics context that owns this control */ 
   IGraphics* GetUI() { return mGraphics; }
     
@@ -463,7 +483,7 @@ public:
    * @param y The Y coordinate for snapping
    * @param direction The direction of the control's travel- horizontal or vertical fader
    * @param bounds The area in which the track of e.g. a slider should be snapped
-   * @param valIdx \todo */
+   * @param valIdx The value that the current mouse gesture should snap */
   virtual void SnapToMouse(float x, float y, EDirection direction, const IRECT& bounds, int valIdx = -1, double minClip = 0., double maxClip = 1.);
 
   /* if you override this you must call the base implementation, to free mAnimationFunc */
@@ -478,7 +498,7 @@ public:
   
   /** Set the animation function and starts it
    * @param func A std::function conforming to IAnimationFunction
-   * @param duration Duration in milliseconds for the animation  */
+   * @param duration Duration in milliseconds for the animation */
   void SetAnimation(IAnimationFunction func, int duration) { mAnimationFunc = func; StartAnimation(duration); }
 
   /** Get the control's animation function, if it exists */
@@ -506,7 +526,7 @@ protected:
   
   /** A helper template function to call a method for an individual value, or for all values
    * @param valIdx If this is > kNoValIdx execute the function for an individual value. If equal to kNoValIdx call the function for all values
-   * @param func A function that takes a single integer argument, the valIdx \todo
+   * @param func A function that takes a single integer argument, the value index
    * @param args Arguments to the function */
   template<typename T, typename... Args>
   void ForValIdx(int valIdx, T func, Args... args)
@@ -520,7 +540,7 @@ protected:
         func(v, args...);
     }
   }
-    
+  
   IRECT mRECT;
   IRECT mTargetRECT;
   
@@ -563,6 +583,7 @@ protected:
 #endif
   
 private:
+  IContainerBase* mParent = nullptr;
   IGEditorDelegate* mDelegate = nullptr;
   IGraphics* mGraphics = nullptr;
   IActionFunction mActionFunc = nullptr;
@@ -581,6 +602,122 @@ private:
  * \addtogroup BaseControls
  * @{
  */
+
+/** IContainerBase allows a control to nest sub controls and it clips the drawing of those subcontrols
+ * Inheritors can add child controls by overriding OnAttached() and calling AddChildControl(), or passing in an AttachFunc lambda to the construtor.
+ * Child controls should not have been added elsewhere
+ * OnResized() should also be overriden if the control bounds will change (can also be specified in a ResizeFunc lambda) */
+class IContainerBase : public IControl
+{
+public:
+  using AttachFunc = std::function<void(IContainerBase* pContainer, const IRECT& bounds)>;
+  using ResizeFunc = std::function<void(IContainerBase* pContainer, const IRECT& bounds)>;
+  
+  IContainerBase(const IRECT& bounds, int paramIdx = kNoParameter, IActionFunction actionFunc = nullptr)
+  : IControl(bounds, paramIdx, actionFunc)
+  {}
+  
+  IContainerBase(const IRECT& bounds, const std::initializer_list<int>& params, IActionFunction actionFunc = nullptr)
+  : IControl(bounds, params, actionFunc)
+  {}
+  
+  IContainerBase(const IRECT& bounds, IActionFunction actionFunc)
+  : IControl(bounds, actionFunc)
+  {}
+  
+  IContainerBase(const IRECT& bounds, AttachFunc attachFunc, ResizeFunc resizeFunc)
+  : IControl(bounds)
+  , mAttachFunc(attachFunc)
+  , mResizeFunc(resizeFunc)
+  {
+    mIgnoreMouse = true;
+  }
+  
+  void SetAttachFunc(AttachFunc attachFunc)
+  {
+    mAttachFunc = attachFunc;
+  }
+  
+  void SetResizeFunc(ResizeFunc resizeFunc)
+  {
+    mResizeFunc = resizeFunc;
+  }
+  
+  virtual void Draw(IGraphics& g) override
+  {
+    /* NO-OP */
+  }
+  
+  virtual ~IContainerBase()
+  {
+    mChildren.Empty(false);
+  }
+  
+  virtual void OnAttached() override
+  {
+    if (mAttachFunc)
+      mAttachFunc(this, mRECT);
+    
+    OnResize();
+  }
+  
+  virtual void OnResize() override
+  {
+    if (mResizeFunc && mChildren.GetSize())
+      mResizeFunc(this, mRECT);
+  }
+  
+  void SetDisabled(bool disable) override
+  {
+    ForAllChildrenFunc([disable](int childIdx, IControl* pChild) {
+      pChild->SetDisabled(disable);
+    });
+
+    IControl::SetDisabled(disable);
+  }
+
+  void Hide(bool hide) override
+  {
+    ForAllChildrenFunc([hide](int childIdx, IControl* pChild) {
+      pChild->Hide(hide);
+    });
+    
+    IControl::Hide(hide);
+  }
+  
+  IControl* AddChildControl(IControl* pControl, int ctrlTag = kNoTag, const char* group = "")
+  {
+    pControl->SetParent(this);
+    return mChildren.Add(GetUI()->AttachControl(pControl, ctrlTag, group));
+  }
+  
+  void RemoveChildControl(IControl* pControl)
+  {
+    pControl->SetParent(nullptr);
+    mChildren.DeletePtr(pControl, false);
+    GetUI()->RemoveControl(pControl);
+  }
+  
+  IControl* GetChild(int idx)
+  {
+    return mChildren.Get(idx);
+  }
+  
+  int NChildren() const { return mChildren.GetSize(); }
+  
+  void ForAllChildrenFunc(std::function<void(int childIdx, IControl* pControl)> func)
+  {
+    for (int i=0; i<mChildren.GetSize(); i++)
+    {
+      func(i, mChildren.Get(i));
+    }
+  }
+  
+protected:
+  AttachFunc mAttachFunc = nullptr;
+  ResizeFunc mResizeFunc = nullptr;
+  WDL_PtrList<IControl> mChildren;
+};
 
 /** A base interface to be combined with IControl for bitmap-based controls "IBControls", managing an IBitmap */
 class IBitmapBase
@@ -607,7 +744,7 @@ public:
 
     if (mBitmap.N() > 1)
     {
-      i = 1 + int(0.5 + mControl->GetValue() * (double) (mBitmap.N() - 1));
+      i = 1 + int(0.5 + mControl->GetValue() * static_cast<double>(mBitmap.N() - 1));
       i = Clip(i, 1, mBitmap.N());
     }
     IBlend blend = mControl->GetBlend();
@@ -635,6 +772,8 @@ public:
     SetStyle(style);
   }
   
+  virtual ~IVectorBase() {}
+  
   /** Call in the constructor of your IVControl to link the IVectorBase and IControl
    * @param pControl Ptr to the control
    * @param label CString for the IVControl label */
@@ -643,6 +782,9 @@ public:
     mControl = pControl;
     mLabelStr.Set(label);
   }
+  
+  /** Implement if extra changes are required in response to style changing */
+  virtual void OnStyleChanged() { /* NO-OP */ }
 
   /** Set one of the IVColors that style the IVControl
    * @param colorIdx The index of the color to set
@@ -666,21 +808,22 @@ public:
     return mStyle.colorSpec.GetColor(color);
   }
   
-  void SetLabelStr(const char* label) { mLabelStr.Set(label); mControl->SetDirty(false); }
-  void SetValueStr(const char* value) { mValueStr.Set(value); mControl->SetDirty(false); }
-  void SetWidgetFrac(float frac) { mStyle.widgetFrac = Clip(frac, 0.f, 1.f);  mControl->OnResize(); mControl->SetDirty(false); }
-  void SetAngle(float angle) { mStyle.angle = Clip(angle, 0.f, 360.f);  mControl->SetDirty(false); }
-  void SetShowLabel(bool show) { mStyle.showLabel = show;  mControl->OnResize(); mControl->SetDirty(false); }
-  void SetShowValue(bool show) { mStyle.showValue = show;  mControl->OnResize(); mControl->SetDirty(false); }
-  void SetRoundness(float roundness) { mStyle.roundness = Clip(roundness, 0.f, 1.f); mControl->SetDirty(false); }
-  void SetDrawFrame(bool draw) { mStyle.drawFrame = draw; mControl->SetDirty(false); }
-  void SetDrawShadows(bool draw) { mStyle.drawShadows = draw; mControl->SetDirty(false); }
-  void SetEmboss(bool draw) { mStyle.emboss = draw; mControl->SetDirty(false); }
-  void SetShadowOffset(float offset) { mStyle.shadowOffset = offset; mControl->SetDirty(false); }
-  void SetFrameThickness(float thickness) { mStyle.frameThickness = thickness; mControl->SetDirty(false); }
-  void SetSplashRadius(float radius) { mSplashRadius = radius * mMaxSplashRadius; }
-  void SetSplashPoint(float x, float y) { mSplashPoint.x = x; mSplashPoint.y = y; }
-  void SetShape(EVShape shape) { mShape = shape; mControl->SetDirty(false); }
+  void SetLabelStr(const char* label) { mLabelStr.Set(label); mControl->SetDirty(false); OnStyleChanged(); }
+  const char* GetLabelStr() const { return mLabelStr.Get(); }
+  void SetValueStr(const char* value) { mValueStr.Set(value); mControl->SetDirty(false); OnStyleChanged(); }
+  void SetWidgetFrac(float frac) { mStyle.widgetFrac = Clip(frac, 0.f, 1.f);  mControl->OnResize(); mControl->SetDirty(false); OnStyleChanged(); }
+  void SetAngle(float angle) { mStyle.angle = Clip(angle, 0.f, 360.f);  mControl->SetDirty(false); OnStyleChanged(); }
+  void SetShowLabel(bool show) { mStyle.showLabel = show;  mControl->OnResize(); mControl->SetDirty(false); OnStyleChanged(); }
+  void SetShowValue(bool show) { mStyle.showValue = show;  mControl->OnResize(); mControl->SetDirty(false); OnStyleChanged(); }
+  void SetRoundness(float roundness) { mStyle.roundness = Clip(roundness, 0.f, 1.f); mControl->SetDirty(false); OnStyleChanged(); }
+  void SetDrawFrame(bool draw) { mStyle.drawFrame = draw; mControl->SetDirty(false); OnStyleChanged(); }
+  void SetDrawShadows(bool draw) { mStyle.drawShadows = draw; mControl->SetDirty(false); OnStyleChanged(); }
+  void SetEmboss(bool draw) { mStyle.emboss = draw; mControl->SetDirty(false); OnStyleChanged(); }
+  void SetShadowOffset(float offset) { mStyle.shadowOffset = offset; mControl->SetDirty(false); OnStyleChanged(); }
+  void SetFrameThickness(float thickness) { mStyle.frameThickness = thickness; mControl->SetDirty(false); OnStyleChanged(); }
+  void SetSplashRadius(float radius) { mSplashRadius = radius * mMaxSplashRadius; OnStyleChanged(); }
+  void SetSplashPoint(float x, float y) { mSplashPoint.x = x; mSplashPoint.y = y; OnStyleChanged(); }
+  void SetShape(EVShape shape) { mShape = shape; mControl->SetDirty(false); OnStyleChanged(); }
 
   /** Set the Style of this IVControl
    * @param style */
@@ -688,6 +831,7 @@ public:
   {
     mStyle = style;
     SetColors(style.colorSpec);
+    OnStyleChanged();
   }
 
   /** Get the style of this IVControl
@@ -699,7 +843,7 @@ public:
    * @return IRECT The adjusted bounds */
   IRECT GetAdjustedHandleBounds(IRECT handleBounds) const
   {
-    if(mStyle.drawFrame)
+    if (mStyle.drawFrame)
       handleBounds.Pad(- 0.5f * mStyle.frameThickness);
     
     if (mStyle.drawShadows)
@@ -713,11 +857,15 @@ public:
    * @return float The radius */ 
   float GetRoundedCornerRadius(const IRECT& bounds) const
   {
-    if(bounds.W() < bounds.H())
+    if (bounds.W() < bounds.H())
       return mStyle.roundness * (bounds.W() / 2.f);
     else
       return mStyle.roundness * (bounds.H() / 2.f);
   }
+  
+  IRECT GetWidgetBounds() const { return mWidgetBounds; }
+  IRECT GetLabelBounds() const { return mLabelBounds; }
+  IRECT GetValueBounds() const { return mValueBounds; }
   
   /** Draw a splash effect when a widget handle is clicked (via SplashClickAnimationFunc)
    * @param g The graphics context
@@ -790,6 +938,7 @@ public:
       break;
     case EVShape::AllRounded:
       DrawPressableRectangle(g, bounds, pressed, mouseOver, disabled, true, true, true, true);
+      break;
     default:
       break;
     }
@@ -859,10 +1008,10 @@ public:
       }
     }
     
-    if(pressed && mControl->GetAnimationFunction())
+    if (pressed && mControl->GetAnimationFunction())
       DrawSplash(g, handleBounds);
     
-    if(mStyle.drawFrame)
+    if (mStyle.drawFrame)
       g.DrawEllipse(GetColor(kFR), handleBounds, &blend, mStyle.frameThickness);
   }
   
@@ -912,7 +1061,7 @@ public:
     }
     else
     {
-      //outer shadow
+      // outer shadow
       if (mStyle.drawShadows)
         g.FillRoundRect(GetColor(kSH), shadowBounds, tlr, trr, blr, brr, &blend);
 
@@ -942,10 +1091,10 @@ public:
       }
     }
     
-    if(pressed && mControl->GetAnimationFunction())
+    if (pressed && mControl->GetAnimationFunction())
       DrawSplash(g, handleBounds);
     
-    if(mStyle.drawFrame)
+    if (mStyle.drawFrame)
       g.DrawRoundRect(GetColor(kFR), handleBounds, tlr, trr, blr, brr, &blend, mStyle.frameThickness);
     
     return handleBounds;
@@ -1022,13 +1171,43 @@ public:
         IRECT textRect;
         mControl->GetUI()->MeasureText(mStyle.labelText, mLabelStr.Get(), textRect);
 
-        mLabelBounds = parent.GetFromTop(textRect.H()).GetCentredInside(textRect.W(), textRect.H());
+        switch (mStyle.labelOrientation)
+        {
+          case EOrientation::North:
+            mLabelBounds = parent.GetFromTop(textRect.H()).GetCentredInside(textRect.W(), textRect.H());
+            break;
+          case EOrientation::East:
+            mLabelBounds = parent.GetFromRight(textRect.W()).GetCentredInside(textRect.W(), textRect.H());
+            break;
+          case EOrientation::South:
+            mLabelBounds = parent.GetFromBottom(textRect.H()).GetCentredInside(textRect.W(), textRect.H());
+            break;
+          case EOrientation::West:
+            mLabelBounds = parent.GetFromLeft(textRect.W()).GetCentredInside(textRect.W(), textRect.H());
+            break;
+        }
       }
       else
         mLabelBounds = IRECT();
       
-      if(mLabelBounds.H())
-        clickableArea = parent.GetReducedFromTop(mLabelBounds.H());
+      if (!mLabelBounds.Empty())
+      {
+        switch (mStyle.labelOrientation)
+        {
+          case EOrientation::North:
+            clickableArea = parent.GetReducedFromTop(mLabelBounds.H());
+            break;
+          case EOrientation::East:
+            clickableArea = parent.GetReducedFromRight(mLabelBounds.W());
+            break;
+          case EOrientation::South:
+            clickableArea = parent.GetReducedFromBottom(mLabelBounds.H());
+            break;
+          case EOrientation::West:
+            clickableArea = parent.GetReducedFromLeft(mLabelBounds.W());
+            break;
+        }
+      }
     }
     
     if (mStyle.showValue && !mValueInWidget)
@@ -1116,6 +1295,8 @@ public:
     TrackedTouch()
     {}
   };
+  
+  virtual ~IMultiTouchControlBase() {}
   
   virtual void AddTouch(ITouchID touchID, float x, float y, float radius)
   {
@@ -1486,7 +1667,7 @@ public:
 protected:
   virtual void DrawBackground(IGraphics& g, const IRECT& r) override
   {
-    g.FillRect(kBG, r, &mBlend);
+    g.FillRect(GetColor(kBG), r, &mBlend);
 
     if(mBaseValue > 0.)
     {
@@ -1715,41 +1896,62 @@ protected:
   bool mMouseDown = false;
 };
 
-/** An abstract IControl base class that you can inherit from in order to make a control that pops up a menu to browse files */
-class IDirBrowseControlBase : public IControl
+/** An abstract IControl base class that you can inherit from in order to make a control that pops up a menu to browse files
+ * Optionally with a specific extension. Add paths which will appear as subfolders at the root level menu.
+ * If only one path is added there will be no submenu. When you call SetupMenu() the added paths are scanned and any
+ * matching files in those paths are added to the menu.
+ */
+class IDirBrowseControlBase : public IContainerBase
 {
 public:
   /** Creates an IDirBrowseControlBase
    * @param bounds The control's bounds
    * @param extension The file extenstion to browse for, e.g excluding the dot e.g. "txt"
-   * @param showFileExtension Should the menu show the file extension */
-  IDirBrowseControlBase(const IRECT& bounds, const char* extension, bool showFileExtensions = true)
-  : IControl(bounds)
+   * @param showFileExtension Should the menu show the file extension
+   * @param scanRecursively Should the paths be scanned recursively, creating submenus
+   * @param showEmptySubmenus If scanRecursively, should empty folders be shown in the menu */
+  IDirBrowseControlBase(const IRECT& bounds, const char* extension, bool showFileExtensions = true, bool scanRecursively = true, bool showEmptySubmenus = false)
+  : IContainerBase(bounds)
+  , mExtension(extension)
   , mShowFileExtensions(showFileExtensions)
+  , mScanRecursively(scanRecursively)
+  , mShowEmptySubmenus(showEmptySubmenus)
   {
-    mExtension.Set(extension);
   }
 
   virtual ~IDirBrowseControlBase();
 
-  int NItems();
+  int NItems() const;
 
-  void AddPath(const char* path, const char* label);
+  /** Used to add a path to scan for files.
+   * @param path CString with the full path to the folder to scan
+   * @param displayText CString to name the path in the top level menu */
+  void AddPath(const char* path, const char* displayText);
+  
+  /** Clear the menu */
+  void ClearPathList();
 
+  /** Call after adding one or more paths, to populate the menu */
   void SetupMenu();
-
-//  void GetSelectedItemLabel(WDL_String& label);
-//  void GetSelectedItemPath(WDL_String& path);
+  
+  /** Set the selected file based on a file path. Does nothing if the file has not been added */
+  void SetSelectedFile(const char* filePath);
+  
+  /** Get the full path to the file if something has been selected in the menu */
+  void GetSelectedFile(WDL_String& path) const;
+  
+  /** Check the currently selected menu item. Does nothing if mSelectedItemIndex == -1 */
+  void CheckSelectedItem();
 
 private:
   void ScanDirectory(const char* path, IPopupMenu& menuToAddTo);
   void CollectSortedItems(IPopupMenu* pMenu);
   
 protected:
-  bool mShowEmptySubmenus = false;
-  bool mShowFileExtensions = true;
-  int mSelectedIndex = -1;
-  IPopupMenu* mSelectedMenu = nullptr;
+  const bool mScanRecursively;
+  const bool mShowFileExtensions;
+  const bool mShowEmptySubmenus;
+  int mSelectedItemIndex = -1; // index into mItems
   IPopupMenu mMainMenu;
   WDL_PtrList<WDL_String> mPaths;
   WDL_PtrList<WDL_String> mPathLabels;
@@ -1768,19 +1970,21 @@ protected:
  */
 
 /** A basic control to fill a rectangle with a color or gradient */
-class IPanelControl : public IControl
+class IPanelControl : public IContainerBase
 {
 public:
-  IPanelControl(const IRECT& bounds, const IColor& color, bool drawFrame = false)
-  : IControl(bounds, kNoParameter)
+  IPanelControl(const IRECT& bounds, const IColor& color, bool drawFrame = false,
+                AttachFunc attachFunc = nullptr, ResizeFunc resizeFunc = nullptr)
+  : IContainerBase(bounds, attachFunc, resizeFunc)
   , mPattern(color)
   , mDrawFrame(drawFrame)
   {
     mIgnoreMouse = true;
   }
   
-  IPanelControl(const IRECT& bounds, const IPattern& pattern, bool drawFrame = false)
-  : IControl(bounds, kNoParameter)
+  IPanelControl(const IRECT& bounds, const IPattern& pattern, bool drawFrame = false,
+                AttachFunc attachFunc = nullptr, ResizeFunc resizeFunc = nullptr)
+  : IContainerBase(bounds, attachFunc, resizeFunc)
   , mPattern(pattern)
   , mDrawFrame(drawFrame)
   {
@@ -1790,10 +1994,10 @@ public:
   void Draw(IGraphics& g) override
   {
     g.PathRect(mRECT);
-    g.PathFill(mPattern);
+    g.PathFill(mPattern, IFillOptions(), &mBlend);
   
-    if(mDrawFrame)
-      g.DrawRect(COLOR_LIGHT_GRAY, mRECT);
+    if (mDrawFrame)
+      g.DrawRect(COLOR_LIGHT_GRAY, mRECT, &mBlend);
   }
   
   void SetPattern(const IPattern& pattern)
@@ -1829,16 +2033,16 @@ public:
   
   void Draw(IGraphics& g) override
   {
-    if(mDrawFunc)
+    if (mDrawFunc)
       mDrawFunc(this, g, mRECT);
   }
   
   virtual void OnEndAnimation() override // if you override this you must call the base implementation, to free mAnimationFunc
   {
-    if(mLoopAnimation && mAnimationDuration)
+    if (mLoopAnimation && mAnimationDuration)
       StartAnimation(mAnimationDuration);
     else
-      SetAnimation(nullptr);
+      IControl::OnEndAnimation();
     
     SetDirty(false);
   }
@@ -1971,7 +2175,7 @@ public:
   /** @return Cstring with the text that the control displays */
   const char* GetStr() const { return mStr.Get(); }
   
-  /** Measures the bounds of the text that the control displays and compacts/expands the controls bounds to fit */
+  /** Measures the bounds of the text that the control displays and compacts/expands the control's bounds to fit */
   void SetBoundsBasedOnStr();
   
 protected:
@@ -2001,6 +2205,23 @@ public:
     SetDirty(true);
   }
 };
+
+/** A basic control to display some text  that needs to span multiple lines */
+class IMultiLineTextControl : public ITextControl
+{
+public:
+  IMultiLineTextControl(const IRECT& bounds, const char* str, const IText& text = DEFAULT_TEXT, const IColor& BGColor = DEFAULT_BGCOLOR)
+  : ITextControl(bounds, str, text, BGColor)
+  {
+  }
+  
+  void Draw(IGraphics& g) override
+  {
+    g.FillRect(mBGColor, mRECT, &mBlend);
+    g.DrawMultiLineText(mText, mStr.Get(), mRECT, &mBlend);
+  }
+};
+
 
 /** A control to show a clickable URL, that changes color after clicking */
 class IURLControl : public ITextControl
@@ -2060,7 +2281,7 @@ protected:
   bool mShowParamLabel;
   IColor mTriangleColor = COLOR_BLACK;
   IColor mTriangleMouseOverColor = COLOR_WHITE;
-  IRECT mTri;
+  IRECT mTriangleRect;
 };
 
 /** A control to use as a placeholder during development */

@@ -241,7 +241,6 @@ else()
     ${deps_dir}/NanoVG/src
     ${deps_dir}/NanoSVG/src
   )
-  list(APPEND _lib iPlug2_GL2)
 endif()
 
 iplug_target_add(iPlug2_NanoVG INTERFACE

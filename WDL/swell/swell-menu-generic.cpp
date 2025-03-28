@@ -1031,7 +1031,7 @@ static LRESULT WINAPI submenuWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
               }
             }
 
-            if (*p > 0 && (WPARAM)toupper(*p) == wParam)
+            if (*p > 0 && (WPARAM)toupper_safe(*p) == wParam)
             {
               if (!matchcnt++)
               {
@@ -1186,8 +1186,41 @@ static LRESULT WINAPI submenuWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
         GetClientRect(hwnd,&r);
         HMENU__ *menu = (HMENU__*)GetWindowLongPtr(hwnd,GWLP_USERDATA);
         const int oldsel = menu->sel_vis;
-        if (GET_X_LPARAM(lParam)>=r.left && GET_X_LPARAM(lParam)<r.right)
+        if (GET_X_LPARAM(lParam)>=r.left &&
+            GET_X_LPARAM(lParam)<r.right &&
+            GET_Y_LPARAM(lParam)>top_margin
+            )
         {
+          int a = m_trackingMenus.Find(hwnd);
+          if (a>=0)
+          {
+            // step back through and make sure each menu has the correct item selected
+            HMENU__ *m = menu;
+            while (--a>=0)
+            {
+              HWND h = m_trackingMenus.Get(a);
+              if (WDL_NOT_NORMALLY(!h)) break;
+              HMENU__ *m2 = (HMENU__*)GetWindowLongPtr(h,GWLP_USERDATA);
+              if (WDL_NOT_NORMALLY(!m2)) break;
+
+              MENUITEMINFO *s = m2->items.Get(m2->sel_vis);
+              if (!s || s->hSubMenu != m)
+              {
+                // find m in menu, select, invalidate
+                for (int x = 0; x < m2->items.GetSize(); x ++)
+                {
+                  s = m2->items.Get(x);
+                  if (s && s->hSubMenu == m)
+                  {
+                    m2->sel_vis = x;
+                    InvalidateRect(h,NULL,FALSE);
+                    break;
+                  }
+                }
+              }
+              m = m2;
+            }
+          }
           int mode = 3; // 4 was old-style super-fast menus
           SendMessage(hwnd,WM_USER+100,mode,GET_Y_LPARAM(lParam));
         }
@@ -1203,7 +1236,10 @@ static LRESULT WINAPI submenuWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
 
         RECT r;
         GetClientRect(hwnd,&r);
-        if (GET_X_LPARAM(lParam)>=r.left && GET_X_LPARAM(lParam)<r.right)
+        if (GET_X_LPARAM(lParam)>=r.left &&
+            GET_X_LPARAM(lParam)<r.right &&
+            GET_Y_LPARAM(lParam)>top_margin
+            )
         {
           SendMessage(hwnd,WM_USER+100,2,GET_Y_LPARAM(lParam));
           return 0;
@@ -1213,6 +1249,11 @@ static LRESULT WINAPI submenuWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
     return 0;
   }
   return DefWindowProc(hwnd,uMsg,wParam,lParam);
+}
+
+bool PopupMenuIsActive(void)
+{
+  return m_trackingMenus.GetSize()>0;
 }
 
 bool DestroyPopupMenus()

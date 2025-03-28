@@ -1,10 +1,10 @@
 /*
  ==============================================================================
- 
- This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers. 
- 
+
+ This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers.
+
  See LICENSE.txt for  more info.
- 
+
  ==============================================================================
 */
 
@@ -14,6 +14,7 @@
 
 #ifdef OS_WIN
 #include "asio.h"
+extern float GetScaleForHWND(HWND hWnd);
 #define GET_MENU() GetMenu(gHWND)
 #elif defined OS_MAC || defined OS_LINUX
 #define GET_MENU() SWELL_GetCurrentMenu()
@@ -51,10 +52,6 @@ static void _ComboBoxSetCurSel(HWND hwndDlg, int nIDDlgItem, WPARAM wIdx)
 #endif
 }
 
-#if defined OS_MAC
-extern int GetTitleBarOffset();
-#endif
-
 // check the input and output devices, find matching srs
 void IPlugAPPHost::PopulateSampleRateList(HWND hwndDlg, RtAudio::DeviceInfo* inputDevInfo, RtAudio::DeviceInfo* outputDevInfo)
 {
@@ -82,7 +79,7 @@ void IPlugAPPHost::PopulateSampleRateList(HWND hwndDlg, RtAudio::DeviceInfo* inp
     SendDlgItemMessage(hwndDlg,IDC_COMBO_AUDIO_SR,CB_ADDSTRING,0,(LPARAM)buf.Get());
     SendDlgItemMessage(hwndDlg,IDC_COMBO_AUDIO_SR,CB_SETITEMDATA,k,(LPARAM)matchedSRs[k]);
   }
-  
+
   WDL_String str;
   str.SetFormatted(32, "%i", mState.mAudioSR);
 
@@ -231,7 +228,7 @@ void IPlugAPPHost::PopulateAudioDialogs(HWND hwndDlg)
   {
     SendDlgItemMessage(hwndDlg,IDC_COMBO_AUDIO_BUF_SIZE,CB_ADDSTRING,0,(LPARAM)kBufferSizeOptions[i].c_str());
   }
-  
+
   WDL_String str;
   str.SetFormatted(32, "%i", mState.mBufferSize);
 
@@ -348,14 +345,14 @@ WDL_DLGRET IPlugAPPHost::PreferencesDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wPar
     SendDlgItemMessage(hwndDlg, item, CB_GETLBTEXT, idx, (LPARAM) tempString.data());
     str.Set(tempString.c_str());
   };
-  
+
   int v = 0;
   switch(uMsg)
   {
     case WM_INITDIALOG:
       _this->PopulatePreferencesDialog(hwndDlg);
       mTempState = mState;
-      
+
       return TRUE;
 
     case WM_COMMAND:
@@ -554,38 +551,39 @@ WDL_DLGRET IPlugAPPHost::PreferencesDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wPar
   return TRUE;
 }
 
-static void ClientResize(HWND hWnd, int nWidth, int nHeight)
+static void ClientResize(HWND hWnd, int width, int height)
 {
+  #if defined OS_WIN
+  #if defined NO_IGRAPHICS || PLUG_HOST_RESIZE
+  float ss = GetScaleForHWND(hWnd);
+  width = int(float(width) * ss);
+  height = int(float(height) * ss);
+  #endif
+  #endif
+
   RECT rcClient, rcWindow;
   POINT ptDiff;
   int screenwidth, screenheight;
   int x, y;
-  
+
   screenwidth  = GetSystemMetrics(SM_CXSCREEN);
   screenheight = GetSystemMetrics(SM_CYSCREEN);
-  x = (screenwidth / 2) - (nWidth / 2);
-  y = (screenheight / 2) - (nHeight / 2);
-  
+  x = (screenwidth / 2) - (width / 2);
+  y = (screenheight / 2) - (height / 2);
+
   GetClientRect(hWnd, &rcClient);
   GetWindowRect(hWnd, &rcWindow);
 
   ptDiff.x = (rcWindow.right - rcWindow.left) - rcClient.right;
   ptDiff.y = (rcWindow.bottom - rcWindow.top) - rcClient.bottom;
-  
-  SetWindowPos(hWnd, 0, x, y, nWidth + ptDiff.x, nHeight + ptDiff.y, 0);
-}
 
-#ifdef OS_WIN 
-extern float GetScaleForHWND(HWND hWnd);
-#endif
+  SetWindowPos(hWnd, 0, x, y, width + ptDiff.x, height + ptDiff.y, 0);
+}
 
 //static
 WDL_DLGRET IPlugAPPHost::MainDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
   IPlugAPPHost* pAppHost = IPlugAPPHost::sInstance.get();
-
-  int width = 0;
-  int height = 0;
 
   switch (uMsg)
   {
@@ -594,24 +592,29 @@ WDL_DLGRET IPlugAPPHost::MainDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPA
       gHWND = hwndDlg;
       IPlugAPP* pPlug = pAppHost->GetPlug();
 
-#ifdef OS_LINUX
-        RECT r = {0, 0, 100, 100};
-        DBGMSG("APP: Initial socket size: %dx%d\n", r.right, r.bottom);
-        pAppHost->mSite = SWELL_CreateXBridgeWindow(hwndDlg, &pAppHost->mSiteWnd, &r);
-        if(!pAppHost->OpenWindow(pAppHost->mSiteWnd)) {
-#else
-        if(!pAppHost->OpenWindow(gHWND)) {
-#endif
+
+#if defined(OS_LINUX)
+      RECT r = {0, 0, 100, 100};
+      DBGMSG("APP: Initial socket size: %dx%d\n", r.right, r.bottom);
+      pAppHost->mSite = SWELL_CreateXBridgeWindow(hwndDlg, &pAppHost->mSiteWnd, &r);
+      if(!pAppHost->OpenWindow(pAppHost->mSiteWnd))
+      {
         DBGMSG("couldn't attach gui\n");
+        return 0;
       }
 
-      width = pPlug->GetEditorWidth();
-      height = pPlug->GetEditorHeight();
-
+      int width = pPlug->GetEditorWidth();
+      int height = pPlug->GetEditorHeight();
       ClientResize(hwndDlg, width, height);
-#if defined(OS_LINUX)
       SetWindowPos(pAppHost->mSite, hwndDlg, 0, 0, width, height, SWP_NOZORDER);
+#else
+      if (!pAppHost->OpenWindow(gHWND))
+      {
+        DBGMSG("couldn't attach gui\n");
+      }
 #endif
+
+      ClientResize(hwndDlg, pPlug->GetEditorWidth(), pPlug->GetEditorHeight());
 
       ShowWindow(hwndDlg, SW_SHOW);
       return 1;
@@ -620,7 +623,7 @@ WDL_DLGRET IPlugAPPHost::MainDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPA
       pAppHost->CloseWindow();
       gHWND = NULL;
       IPlugAPPHost::sInstance = nullptr;
-      
+
       #if defined OS_WIN
       PostQuitMessage(0);
       #elif defined OS_MAC
@@ -642,9 +645,9 @@ WDL_DLGRET IPlugAPPHost::MainDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPA
         case ID_ABOUT:
         {
           IPlugAPP* pPlug = pAppHost->GetPlug();
-          
+
           bool pluginOpensAboutBox = pPlug->OnHostRequestingAboutBox();
-          
+
           if (pluginOpensAboutBox == false)
           {
             WDL_String info;
@@ -679,11 +682,11 @@ WDL_DLGRET IPlugAPPHost::MainDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPA
         case ID_LIVE_EDIT:
         {
           IGEditorDelegate* pPlug = dynamic_cast<IGEditorDelegate*>(pAppHost->GetPlug());
-        
+
           if(pPlug)
           {
             IGraphics* pGraphics = pPlug->GetUI();
-            
+
             if(pGraphics)
             {
               bool enabled = pGraphics->LiveEditEnabled();
@@ -691,17 +694,17 @@ WDL_DLGRET IPlugAPPHost::MainDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPA
               CheckMenuItem(GET_MENU(), ID_LIVE_EDIT, (MF_BYCOMMAND | enabled) ? MF_UNCHECKED : MF_CHECKED);
             }
           }
-          
+
           return 0;
         }
         case ID_SHOW_DRAWN:
         {
           IGEditorDelegate* pPlug = dynamic_cast<IGEditorDelegate*>(pAppHost->GetPlug());
-          
+
           if(pPlug)
           {
             IGraphics* pGraphics = pPlug->GetUI();
-            
+
             if(pGraphics)
             {
               bool enabled = pGraphics->ShowAreaDrawnEnabled();
@@ -709,17 +712,17 @@ WDL_DLGRET IPlugAPPHost::MainDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPA
               CheckMenuItem(GET_MENU(), ID_SHOW_DRAWN, (MF_BYCOMMAND | enabled) ? MF_UNCHECKED : MF_CHECKED);
             }
           }
-          
+
           return 0;
         }
         case ID_SHOW_BOUNDS:
         {
           IGEditorDelegate* pPlug = dynamic_cast<IGEditorDelegate*>(pAppHost->GetPlug());
-          
+
           if(pPlug)
           {
             IGraphics* pGraphics = pPlug->GetUI();
-            
+
             if(pGraphics)
             {
               bool enabled = pGraphics->ShowControlBoundsEnabled();
@@ -727,17 +730,17 @@ WDL_DLGRET IPlugAPPHost::MainDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPA
               CheckMenuItem(GET_MENU(), ID_SHOW_BOUNDS, (MF_BYCOMMAND | enabled) ? MF_UNCHECKED : MF_CHECKED);
             }
           }
-          
+
           return 0;
         }
         case ID_SHOW_FPS:
         {
           IGEditorDelegate* pPlug = dynamic_cast<IGEditorDelegate*>(pAppHost->GetPlug());
-          
+
           if(pPlug)
           {
             IGraphics* pGraphics = pPlug->GetUI();
-            
+
             if(pGraphics)
             {
               bool enabled = pGraphics->ShowingFPSDisplay();
@@ -745,7 +748,7 @@ WDL_DLGRET IPlugAPPHost::MainDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPA
               CheckMenuItem(GET_MENU(), ID_SHOW_FPS, (MF_BYCOMMAND | enabled) ? MF_UNCHECKED : MF_CHECKED);
             }
           }
-          
+
           return 0;
         }
 #endif
@@ -755,7 +758,7 @@ WDL_DLGRET IPlugAPPHost::MainDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPA
     {
       if(!pAppHost)
         return 1;
-      
+
       IPlugAPP* pPlug = pAppHost->GetPlug();
 
       MINMAXINFO* mmi = (MINMAXINFO*) lParam;
@@ -763,21 +766,15 @@ WDL_DLGRET IPlugAPPHost::MainDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPA
       mmi->ptMinTrackSize.y = pPlug->GetMinHeight();
       mmi->ptMaxTrackSize.x = pPlug->GetMaxWidth();
       mmi->ptMaxTrackSize.y = pPlug->GetMaxHeight();
-      
-#ifdef OS_MAC
-      const int titleBarOffset = GetTitleBarOffset();
-      mmi->ptMinTrackSize.y += titleBarOffset;
-      mmi->ptMaxTrackSize.y += titleBarOffset;
-#endif
 
-#ifdef OS_WIN 
+#ifdef OS_WIN
       float scale = GetScaleForHWND(hwndDlg);
       mmi->ptMinTrackSize.x = static_cast<LONG>(static_cast<float>(mmi->ptMinTrackSize.x) * scale);
       mmi->ptMinTrackSize.y = static_cast<LONG>(static_cast<float>(mmi->ptMinTrackSize.y) * scale);
       mmi->ptMaxTrackSize.x = static_cast<LONG>(static_cast<float>(mmi->ptMaxTrackSize.x) * scale);
       mmi->ptMaxTrackSize.y = static_cast<LONG>(static_cast<float>(mmi->ptMaxTrackSize.y) * scale);
 #endif
-      
+
       return 0;
     }
 #ifdef OS_WIN
@@ -813,7 +810,7 @@ WDL_DLGRET IPlugAPPHost::MainDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPA
       IEditorDelegate* pPlug = dynamic_cast<IEditorDelegate*>(pAppHost->GetPlug());
 #endif
 
-      int w = pPlug->GetEditorWidth(); 
+      int w = pPlug->GetEditorWidth();
       int h = pPlug->GetEditorHeight();
 
       SetWindowPos(hwndDlg, 0, rect->left, rect->top, w + ptDiff.x, h + ptDiff.y, 0);
@@ -833,7 +830,7 @@ WDL_DLGRET IPlugAPPHost::MainDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPA
         RECT r;
         GetClientRect(hwndDlg, &r);
         float scale = 1.f;
-        #ifdef OS_WIN 
+        #ifdef OS_WIN
         scale = GetScaleForHWND(hwndDlg);
         #endif
         pPlug->OnParentWindowResize(static_cast<int>(r.right / scale), static_cast<int>(r.bottom / scale));

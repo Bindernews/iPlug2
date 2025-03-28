@@ -57,20 +57,19 @@ function(_iplug_load_module_vst2)
 endfunction(_iplug_load_module_vst2)
 
 function(iplug_configure_vst2 base_plugin target)
-  get_target_property(plugin_name ${base_plugin} IPLUG_PLUGIN_NAME)
-  get_target_property(gui_libraries ${base_plugin} IPLUG_PLUGIN_GRAPHICS)
+  iplug_get_common_plugin_variables(vst2)
 
+  # Create module and link it to dependencies
   add_library(${target} MODULE)
   iplug_target_add(${target} PUBLIC LINK iPlug2_VST2 ${base_plugin} ${gui_libraries})
 
-  set(out_dir "${CMAKE_BINARY_DIR}/VST2/${target}")
-  set(res_dir "${out_dir}/resources")
+  set(res_dir "${output_dir}/resources")
 
   if (IPLUG_OS MATCHES "Windows")
     set(install_dir "${VST2_INSTALL_PATH}/${plugin_name}")
     set_target_properties(${target} PROPERTIES
       OUTPUT_NAME "${plugin_name}"
-      LIBRARY_OUTPUT_DIRECTORY "${out_dir}"
+      LIBRARY_OUTPUT_DIRECTORY "${output_dir}"
       PREFIX ""
       SUFFIX ".dll"
     )
@@ -85,7 +84,7 @@ function(iplug_configure_vst2 base_plugin target)
       SUFFIX "")
 
     if (CMAKE_GENERATOR STREQUAL "Xcode")
-      set(out_dir "${CMAKE_BINARY_DIR}/$<CONFIG>/${plugin_name}.vst")
+      set(output_dir "${CMAKE_BINARY_DIR}/$<CONFIG>/${plugin_name}.vst")
       set(res_dir "")
     endif()
 
@@ -93,7 +92,7 @@ function(iplug_configure_vst2 base_plugin target)
     set(install_dir "${VST2_INSTALL_PATH}/${plugin_name}.vst2")
     set_target_properties(${target} PROPERTIES
       OUTPUT_NAME "${plugin_name}"
-      LIBRARY_OUTPUT_DIRECTORY "${out_dir}"
+      LIBRARY_OUTPUT_DIRECTORY "${output_dir}"
       PREFIX ""
       SUFFIX ".so"
     )
@@ -101,10 +100,10 @@ function(iplug_configure_vst2 base_plugin target)
 
   # Handle resources
   if (res_dir)
-    iplug_target_bundle_resources(${target} "${res_dir}")
+    iplug_target_bundle_resources(${base_plugin} "${res_dir}")
   endif()
 
-  iplug_add_post_build_copy(${target} "${out_dir}" "${install_dir}")
+  iplug_add_post_build_copy(${target} "${output_dir}" "${install_dir}")
 endfunction()
 
 _iplug_load_module_vst2()

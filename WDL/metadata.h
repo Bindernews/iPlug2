@@ -16,7 +16,7 @@ const char *EnumMexKeys(int i, const char **desc=NULL)
 {
   // TO_DO_IF_METADATA_UPDATE
   static const char *s_mexkeys[]=
-    {"TITLE", "ARTIST", "ALBUM", "YEAR", "GENRE", "COMMENT", "DESC", "BPM", "KEY", "DB_CUSTOM", "TRACKNUMBER"};
+    {"TITLE", "ARTIST", "ALBUM", "TRACKNUMBER", "YEAR", "GENRE", "COMMENT", "DESC", "BPM", "KEY", "DB_CUSTOM"};
   static const char *s_mexdesc[]=
     {"Title", "Artist", "Album", "Track", "Date", "Genre", "Comment", "Description", "BPM", "Key", "Media Explorer Tags"};
 
@@ -124,6 +124,7 @@ void XMLCompliantAppend(WDL_FastString *str, const char *txt, bool is_value)
       case '>': str->Append("&gt;"); break;
       case '&': str->Append("&amp;"); break;
       case ' ': str->Append(is_value ? " " : "_"); break;
+      case ':': if (!is_value) { str->Append("_"); break; } // else fall through
       default: str->Append(&c,1); break;
     }
   }
@@ -251,13 +252,103 @@ double UnpackXMPTimestamp(wdl_xml_element *elem)
   return -1.0;
 }
 
+const char *GetXMPSubElement(wdl_xml_element *elem, const char *name)
+{
+  for (int i=0; i < elem->elements.GetSize(); ++i)
+  {
+    wdl_xml_element *elem2=elem->elements.Get(i);
+    if (!strcmp(elem2->name, name)) return elem2->value.Get(); // may be ""
+  }
+  return NULL; // element does not exist
+}
+
+bool IsXMPResourceList(wdl_xml_element *elem)
+{
+  if (!strcmp(elem->name, "rdf:li"))
+  {
+    const char *val=elem->get_attribute("rdf:parseType");
+    if (val && !strcmp(val, "Resource")) return true;
+  }
+  return false;
+}
+
+// keep in sync with metadata.cpp:XMP_MARKER_RESOLUTION
+#define XMP_MARKER_RESOLUTION 1000000
+
+// todo generic PopulateCuesFromMetadata function metadata => list of REAPERCues
+
+void UnpackXMPTrack(wdl_xml_element *elem, WDL_StringKeyedArray<char*> *metadata)
+{
+  int num_markers=0;
+  WDL_FastString key, val;
+  for (int i=0; i < elem->elements.GetSize(); ++i)
+  {
+    wdl_xml_element *elem2=elem->elements.Get(i);
+    if (!strcmp(elem2->name, "rdf:Bag"))
+    {
+      for (int i2=0; i2 < elem2->elements.GetSize(); ++i2)
+      {
+        wdl_xml_element *elem3=elem2->elements.Get(i2);
+        if (IsXMPResourceList(elem3))
+        {
+          const char *track_type=GetXMPSubElement(elem3, "xmpDM:trackType");
+          const char *frame_rate=GetXMPSubElement(elem3, "xmpDM:frameRate");
+          if (track_type && frame_rate && !strcmp(track_type, "Cue"))
+          {
+            double marker_resolution=0;
+            if (frame_rate[0] == 'f') marker_resolution=atof(frame_rate+1);
+            // todo parse other resolution types
+            if (marker_resolution > 0.0)
+            {
+              double marker_convert=XMP_MARKER_RESOLUTION/marker_resolution;
+              for (int i3=0; i3 < elem3->elements.GetSize(); ++i3)
+              {
+                wdl_xml_element *elem4=elem3->elements.Get(i3);
+                if (!strcmp(elem4->name, "xmpDM:markers"))
+                {
+                  for (int i4=0; i4 < elem4->elements.GetSize(); ++i4)
+                  {
+                    wdl_xml_element *elem5=elem4->elements.Get(i4);
+                    if (!strcmp(elem5->name, "rdf:Seq"))
+                    {
+                      for (int i5=0; i5 < elem5->elements.GetSize(); ++i5)
+                      {
+                        wdl_xml_element *elem6=elem5->elements.Get(i4);
+                        const char *start_time=GetXMPSubElement(elem6, "xmpDM:startTime");
+                        const char *duration=GetXMPSubElement(elem6, "xmpDM:duration");
+                        const char *marker_name=GetXMPSubElement(elem6, "xmpDM:name");
+                        if (start_time)
+                        {
+                          double st=atof(start_time)*marker_convert;
+                          double et = st + (duration ? atof(duration)*marker_convert : 0.0);
+                          key.SetFormatted(512, "XMP:MARK%03d", num_markers++);
+                          val.SetFormatted(512, "%.0f:%.0f:", st, et);
+                          if (marker_name && marker_name[0]) val.Append(marker_name);
+                          else val.AppendFormatted(512, "Marker %d", num_markers);
+                          metadata->Insert(key.Get(), strdup(val.Get()));
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 void UnpackXMPDescription(const char *curkey, wdl_xml_element *elem,
   WDL_StringKeyedArray<char*> *metadata)
 {
   if (!strcmp(elem->name, "xmpDM:Tracks"))
   {
     // xmp "tracks" are collections of markers and other related data,
-    // todo maybe parse the markers but for now we know we can ignore this entire block
+    // we can parse the markers (at least ones we wronte) but otherwise
+    // we can ignore this entire block
+    UnpackXMPTrack(elem, metadata);
     return;
   }
 
@@ -429,6 +520,12 @@ int PackIXMLChunk(WDL_HeapBuf *hb, WDL_StringKeyedArray<char*> *metadata, int pa
     if (!sec) continue;
 
     key += strlen(sec)+1;
+
+    // metadata can get recursively re-encoded in ixml
+    if (!strncmp(key, "ASWG:", 5)) continue;
+    if (!strncmp(key, "BWF:", 4)) continue;
+    if (!strncmp(key, "IXML:", 5)) continue;
+
     if (!strcmp(sec, "BWF"))
     {
       if (!strcmp(key, "Description")) key="BWF_DESCRIPTION";
@@ -503,8 +600,8 @@ int PackIXMLChunk(WDL_HeapBuf *hb, WDL_StringKeyedArray<char*> *metadata, int pa
     int len=ixmllen+1+junklen;
     if (len < padtolen) len=padtolen;
     if (len&1) ++len;
-    unsigned char *p=(unsigned char*)hb->Resize(olen+len);
-    if (p)
+    unsigned char *p=(unsigned char*)hb->ResizeOK(olen+len);
+    if (WDL_NORMALLY(p != NULL))
     {
       memcpy(p+olen, ixml.Get(), ixmllen);
       memset(p+olen+ixmllen, 0, len-ixmllen);
@@ -593,14 +690,14 @@ int PackXMPChunk(WDL_HeapBuf *hb, WDL_StringKeyedArray<char*> *metadata)
     }
   }
 
-#define XMP_MARKER_RESOLUTION "1000000" // keep in sync with metadata.cpp:UpdateAutomaticMetadata()
-
-  static const char *track_hdr=
+  static const char *track_hdr1=
     "<xmpDM:Tracks>"
       "<rdf:Bag>"
         "<rdf:li rdf:parseType=\"Resource\">"
           "<xmpDM:trackType>Cue</xmpDM:trackType>"
-          "<xmpDM:frameRate>f" XMP_MARKER_RESOLUTION "</xmpDM:frameRate>"
+          "<xmpDM:frameRate>f";
+  static const char *track_hdr2=
+          "</xmpDM:frameRate>"
           "<xmpDM:markers>"
             "<rdf:Seq>";
   static const char *track_ftr=
@@ -626,7 +723,7 @@ int PackXMPChunk(WDL_HeapBuf *hb, WDL_StringKeyedArray<char*> *metadata)
     const char *sep2=strchr(sep1+1, ':');
     const char *name = sep2 ? sep2+1 : ""; // might need to make this xml compliant?
 
-    if (!cnt++) xmp.Append(track_hdr);
+    if (!cnt++) xmp.AppendFormatted(1024, "%s%d%s", track_hdr1, XMP_MARKER_RESOLUTION, track_hdr2);
 
     xmp.Append("<rdf:li rdf:parseType=\"Resource\">");
     xmp.AppendFormatted(1024, "<xmpDM:startTime>%.0f</xmpDM:startTime>", st);
@@ -641,8 +738,8 @@ int PackXMPChunk(WDL_HeapBuf *hb, WDL_StringKeyedArray<char*> *metadata)
   int xmplen=xmp.GetLength();
   int len=xmplen+1;
   if (len&1) ++len;
-  unsigned char *p=(unsigned char*)hb->Resize(olen+len);
-  if (p)
+  unsigned char *p=(unsigned char*)hb->ResizeOK(olen+len);
+  if (WDL_NORMALLY(p != NULL))
   {
     memcpy(p+olen, xmp.Get(), xmplen);
     memset(p+olen+xmplen, 0, len-xmplen);
@@ -687,9 +784,10 @@ int PackVorbisFrame(WDL_HeapBuf *hb, WDL_StringKeyedArray<char*> *metadata, bool
     }
   }
 
-  unsigned char *buf=(unsigned char*)hb->Resize(olen+framelen)+olen;
-  if (buf)
+  unsigned char *buf=(unsigned char*)hb->ResizeOK(olen+framelen);
+  if (WDL_NORMALLY(buf != NULL))
   {
+    buf += olen;
     unsigned char *p=buf;
     memcpy(p, &vendorlen, 4);
     p += 4;
@@ -799,7 +897,7 @@ int PackApeChunk(WDL_HeapBuf *hb, WDL_StringKeyedArray<char*> *metadata)
     const char *val=metadata->Enumerate(i, &key);
     if (strlen(key) < 5 || strncmp(key, "APE:", 4) || !val || !val[0]) continue;
     key += 4;
-    if (!apelen) apelen += 64;
+    if (!apelen) apelen=64; // includes header and footer
     if (!strncmp(key, "User Defined", 12))
     {
       const char *k, *v;
@@ -815,14 +913,15 @@ int PackApeChunk(WDL_HeapBuf *hb, WDL_StringKeyedArray<char*> *metadata)
   }
   if (!apelen) return false;
 
-  unsigned char *buf=(unsigned char*)hb->Resize(olen+apelen)+olen;
-  if (buf)
+  unsigned char *buf=(unsigned char*)hb->ResizeOK(olen+apelen);
+  if (WDL_NORMALLY(buf != NULL))
   {
+    buf += olen;
     unsigned char *p=buf;
     memcpy(p, "APETAGEX", 8);
     p += 8;
     _AddInt32LE(2000); // version
-    _AddInt32LE(apelen-32);
+    _AddInt32LE(apelen-32); // includes footer but not header
     _AddInt32LE(cnt);
     _AddInt32LE((1<<31)|(1<<30)|(1<<29)); // tag contains header and footer, this is the header
     _AddInt32LE(0);
@@ -861,7 +960,7 @@ int PackApeChunk(WDL_HeapBuf *hb, WDL_StringKeyedArray<char*> *metadata)
     memcpy(p, "APETAGEX", 8);
     p += 8;
     _AddInt32LE(2000); // version
-    _AddInt32LE(apelen-32);
+    _AddInt32LE(apelen-32); // includes footer but not header
     _AddInt32LE(cnt);
     _AddInt32LE((1<<31)|(1<<30)|(1<<28)); // tag contains header and footer, this is the footer
     _AddInt32LE(0);
@@ -906,7 +1005,7 @@ const char *EnumMetadataSchemeFromFileType(const char *filetype, int idx)
   };
   static const char *AIF_SCHEMES[]=
   {
-    "IFF", "XMP",
+    "IFF", "XMP", "ID3"
   };
   static const char *CAF_SCHEMES[]=
   {
@@ -1155,39 +1254,85 @@ bool HandleMexMetadataRequest(const char *mexkey, char *buf, int buflen,
 }
 
 
-void WriteMetadataPrefPos(double prefpos, int srate,
+const char *prefpos_keys[] = // value is samples unless noted
+{
+  "BWF:TimeReference",
+  "ID3:TXXX:TIME_REFERENCE",
+  "IXML:BEXT:BWF_TIME_REFERENCE_HIGH",
+  "IXML:BEXT:BWF_TIME_REFERENCE_LOW",
+  "VORBIS:TIME_REFERENCE",
+  "XMP:dm/relativeTimestamp", // value is ms
+};
+
+bool GetMetadataPrefPos(WDL_StringKeyedArray<char*> *metadata, int srate, double *prefpos)
+{
+  if (!metadata) return false;
+  if (WDL_NOT_NORMALLY(srate <= 1)) return false;
+
+  for (int i=0; i < sizeof(prefpos_keys)/sizeof(prefpos_keys[0]); ++i)
+  {
+    const char *val=metadata->Get(prefpos_keys[i]);
+    if (val && val[0])
+    {
+      if (prefpos)
+      {
+        *prefpos = atof(val);
+        if (!strcmp(prefpos_keys[i], "XMP:dm/relativeTimestamp")) *prefpos *= 0.001;
+        else *prefpos /= (double)srate;
+      }
+      return true;
+    }
+  }
+
+  return false;
+}
+
+void WriteMetadataPrefPos(double prefpos, int srate,  // prefpos <= 0.0 to clear
   WDL_StringKeyedArray<char*> *metadata)
 {
   if (!metadata) return;
 
-  metadata->Delete("BWF:TimeReference");
-  metadata->Delete("ID3:TXXX:TIME_REFERENCE");
-  metadata->Delete("IXML:BEXT:BWF_TIME_REFERENCE_HIGH");
-  metadata->Delete("IXML:BEXT:BWF_TIME_REFERENCE_LOW");
-  metadata->Delete("XMP:dm/relativeTimestamp");
-  metadata->Delete("VORBIS:TIME_REFERENCE");
+  for (int i=0; i < sizeof(prefpos_keys)/sizeof(prefpos_keys[0]); ++i)
+  {
+    metadata->Delete(prefpos_keys[i]);
+  }
 
-  if (prefpos > 0.0 && srate > 1)
+  if (prefpos > 0.0 && WDL_NORMALLY(srate > 1))
   {
     char buf[128];
-    if (srate > 0.0)
-    {
-      snprintf(buf, sizeof(buf), "%.0f", floor(prefpos*(double)srate));
-      metadata->Insert("BWF:TimeReference", strdup(buf));
-      // BWF:TimeReference causes IXML:BEXT element to be written as well
-      metadata->Insert("ID3:TXXX:TIME_REFERENCE", strdup(buf));
-      metadata->Insert("VORBIS:TIME_REFERENCE", strdup(buf));
-    }
-    snprintf(buf, sizeof(buf), "%.0f", floor(prefpos*1000.0));
+
+    snprintf(buf, sizeof(buf), "%.0f", floor(prefpos*(double)srate));
+    metadata->Insert("BWF:TimeReference", strdup(buf));
+    // BWF:TimeReference causes IXML:BEXT element to be written as well
+    metadata->Insert("ID3:TXXX:TIME_REFERENCE", strdup(buf));
+    metadata->Insert("VORBIS:TIME_REFERENCE", strdup(buf));
+
+    snprintf(buf, sizeof(buf), "%09.0f", floor(prefpos*1000.0));
     metadata->Insert("XMP:dm/relativeTimestamp", strdup(buf));
   }
 }
 
+bool IsImageMetadata(const char *key)
+{
+  return !strncmp(key, "ID3:APIC", 8) || !strncmp(key, "FLACPIC:APIC", 12);
+}
+
+void DeleteAllImageMetadata(WDL_StringKeyedArray<char*> *metadata)
+{
+  for (int i=0; i < metadata->GetSize(); ++i)
+  {
+    const char *key;
+    metadata->Enumerate(i, &key);
+    if (IsImageMetadata(key)) metadata->DeleteByIndex(i--);
+  }
+}
 
 void AddMexMetadata(WDL_StringKeyedArray<char*> *mex_metadata,
   WDL_StringKeyedArray<char*> *metadata, int srate)
 {
   if (!mex_metadata || !metadata) return;
+
+  bool added_img_metadata=false;
 
   for (int idx=0; idx < mex_metadata->GetSize(); ++idx)
   {
@@ -1200,6 +1345,17 @@ void AddMexMetadata(WDL_StringKeyedArray<char*> *mex_metadata,
       WriteMetadataPrefPos((double)ms/1000.0, srate, metadata);
       // caller may still have to do stuff if prefpos is represented
       // in some other way outside the metadata we handle, like wavpack
+      continue;
+    }
+
+    if (IsImageMetadata(mexkey))
+    {
+      if (!added_img_metadata)
+      {
+        added_img_metadata=true;
+        DeleteAllImageMetadata(metadata);
+      }
+      metadata->Insert(mexkey, strdup(val));
       continue;
     }
 
@@ -1233,12 +1389,12 @@ void DumpMetadata(WDL_FastString *str, WDL_StringKeyedArray<char*> *metadata)
         lstrcpyn(scheme, "mex", sizeof(scheme));
         str->Append("Metadata:\r\n");
       }
-      str->AppendFormatted(4096, "    %s: %s\r\n", mexdesc, buf);
+      str->AppendFormatted(4096, "    %s:%s%s\r\n",
+        mexdesc, strchr(buf, '\n') ? "\r\n" : " ", buf);
     }
   }
 
-  int i;
-  for (i=0; i < metadata->GetSize(); ++i)
+  for (int i=0; i < metadata->GetSize(); ++i)
   {
     const char *key;
     const char *val=metadata->Enumerate(i, &key);
@@ -1255,11 +1411,12 @@ void DumpMetadata(WDL_FastString *str, WDL_StringKeyedArray<char*> *metadata)
       }
       key += slen+1;
     }
-    str->AppendFormatted(4096, "    %s: %s\r\n", key, val);
+    str->AppendFormatted(4096, "    %s:%s%s\r\n",
+      key, strchr(val, '\n') ? "\r\n" : " ", val);
   }
 
   int unk_cnt=0;
-  for (i=0; i < metadata->GetSize(); ++i)
+  for (int i=0; i < metadata->GetSize(); ++i)
   {
     const char *key;
     const char *val=metadata->Enumerate(i, &key);
@@ -1445,7 +1602,7 @@ void DeleteID3Raw(WDL_PtrList<ID3RawTag> *rawtags, const char *key)
   key += 4;
   const char *subkey=NULL;
   int suboffs=0, sublen=0;
-  if (key[4])
+  if (key[4] && strncmp(key, "APIC", 4))
   {
     if (!strncmp(key, "TXXX:", 5)) suboffs=3;
     else if (!strncmp(key, "PRIV:", 5)) suboffs=2;
@@ -1507,7 +1664,7 @@ int PackID3Chunk(WDL_HeapBuf *hb, WDL_StringKeyedArray<char*> *metadata,
     {
       id3len += 10+1+strlen(val);
     }
-    else if (!strcmp(key, "COMM"))
+    else if (!strcmp(key, "COMM") || !strcmp(key, "USLT"))
     {
       id3len += 10+5+strlen(val);
     }
@@ -1562,7 +1719,7 @@ int PackID3Chunk(WDL_HeapBuf *hb, WDL_StringKeyedArray<char*> *metadata,
       int desclen=wdl_min(strlen(desc), 63);
 
       int apic_hdrlen=1+strlen(mime)+1+1+desclen+1;
-      char *p=(char*)apic_hdr.Resize(apic_hdrlen);
+      char *p=(char*)apic_hdr.ResizeOK(apic_hdrlen);
       if (p)
       {
         *p++=3; // UTF-8
@@ -1600,7 +1757,7 @@ int PackID3Chunk(WDL_HeapBuf *hb, WDL_StringKeyedArray<char*> *metadata,
     for (int i=0; i < rawtags->GetSize(); ++i)
     {
       ID3RawTag *rawtag=rawtags->Get(i);
-      if (WDL_NORMALLY(rawtag && rawtag->key && rawtag->key[0] && rawtag->val.GetSize()))
+      if (WDL_NORMALLY(rawtag && rawtag->key[0] && rawtag->val.GetSize()))
       {
         id3len += 8+rawtag->val.GetSize();
       }
@@ -1610,9 +1767,10 @@ int PackID3Chunk(WDL_HeapBuf *hb, WDL_StringKeyedArray<char*> *metadata,
   if (id3len)
   {
     id3len += 10;
-    unsigned char *buf=(unsigned char*)hb->Resize(olen+id3len)+olen;
-    if (buf)
+    unsigned char *buf=(unsigned char*)hb->ResizeOK(olen+id3len);
+    if (WDL_NORMALLY(buf != NULL))
     {
+      buf += olen;
       chapcnt=0;
       unsigned char *p=buf;
       memcpy(p,"ID3\x04\x00\x00", 6);
@@ -1667,11 +1825,14 @@ int PackID3Chunk(WDL_HeapBuf *hb, WDL_StringKeyedArray<char*> *metadata,
           memcpy(p, val, len);
           p += len;
         }
-        else if (!strcmp(key, "COMM"))
+        else if (!strcmp(key, "COMM") || !strcmp(key, "USLT"))
         {
           // http://www.loc.gov/standards/iso639-2/php/code_list.php
           // most apps ignore this, itunes wants "eng" or something locale-specific
-          const char *lang=metadata->Get("ID3:COMM_LANG");
+          const char *lang=NULL;
+          if (!strcmp(key, "USLT")) lang=metadata->Get("ID3:LYRIC_LANG");
+          if (!lang) lang=metadata->Get("ID3:COMM_LANG");
+          if (!lang) lang=metadata->Get("ID3:COMMENT_LANG");
 
           memcpy(p, key, 4);
           p += 4;
@@ -1680,11 +1841,11 @@ int PackID3Chunk(WDL_HeapBuf *hb, WDL_StringKeyedArray<char*> *metadata,
           memcpy(p, "\x00\x00\x03", 3); // UTF-8
           p += 3;
           if (lang && strlen(lang) >= 3 &&
-              tolower(*lang) >= 'a' && tolower(*lang) <= 'z')
+              tolower_safe(*lang) >= 'a' && tolower_safe(*lang) <= 'z')
           {
-            *p++=tolower(*lang++);
-            *p++=tolower(*lang++);
-            *p++=tolower(*lang++);
+            *p++=tolower_safe(*lang++);
+            *p++=tolower_safe(*lang++);
+            *p++=tolower_safe(*lang++);
             *p++=0;
           }
           else
@@ -1812,7 +1973,7 @@ int PackID3Chunk(WDL_HeapBuf *hb, WDL_StringKeyedArray<char*> *metadata,
         for (int i=0; i < rawtags->GetSize(); ++i)
         {
           ID3RawTag *rawtag=rawtags->Get(i);
-          if (WDL_NORMALLY(rawtag && rawtag->key && rawtag->key[0] && rawtag->val.GetSize()))
+          if (WDL_NORMALLY(rawtag && rawtag->key[0] && rawtag->val.GetSize()))
           {
             memcpy(p, rawtag->key, strlen(rawtag->key));
             p += strlen(rawtag->key);
@@ -1869,22 +2030,40 @@ double ReadMetadataPrefPos(WDL_StringKeyedArray<char*> *metadata, double srate)
 struct ChanLayout { const char *fmts; int nch; const char *desc; int chan_layout, chan_mask; };
 static const ChanLayout CHAN_LAYOUTS[]=
 {
+  // using Ls/Rs for left side/right side
+  // using Lb/Rb for left back/right back
+
   { "cw", 2, "L R",
     kAudioChannelLayoutTag_UseChannelBitmap,
     kAudioChannelBit_Left | kAudioChannelBit_Right },
 
-  { "cw", 4, "L R Ls Rs",
+  { "cw", 3, "L R C",
+    kAudioChannelLayoutTag_UseChannelBitmap,
+    kAudioChannelBit_Left | kAudioChannelBit_Right | kAudioChannelBit_Center },
+
+  { "cw", 4, "L R Lb Rb",
     kAudioChannelLayoutTag_UseChannelBitmap,
     kAudioChannelBit_Left | kAudioChannelBit_Right |
     kAudioChannelBit_LeftSurround | kAudioChannelBit_RightSurround },
 
-  { "cw", 6, "L R C LFE Ls Rs",
+  { "cw", 5, "L R C Lb Rb",
+    kAudioChannelLayoutTag_UseChannelBitmap,
+    kAudioChannelBit_Left | kAudioChannelBit_Right | kAudioChannelBit_Center |
+    kAudioChannelBit_LeftSurround | kAudioChannelBit_RightSurround },
+
+  { "cw", 6, "L R C LFE Lb Rb",
     kAudioChannelLayoutTag_UseChannelBitmap,
     kAudioChannelBit_Left | kAudioChannelBit_Right | kAudioChannelBit_Center |
     kAudioChannelBit_LFEScreen |
     kAudioChannelBit_LeftSurround | kAudioChannelBit_RightSurround },
 
-  { "cw", 8, "L R C LFE Ls Rs Lsd Rsd",
+  { "cw", 6, "L R Lb Rb Ls Rs",
+    kAudioChannelLayoutTag_UseChannelBitmap,
+    kAudioChannelBit_Left | kAudioChannelBit_Right |
+    kAudioChannelBit_LeftSurround | kAudioChannelBit_RightSurround |
+    kAudioChannelBit_LeftSurroundDirect | kAudioChannelBit_RightSurroundDirect },
+
+  { "cw", 8, "L R C LFE Lb Rb Ls Rs",
     kAudioChannelLayoutTag_UseChannelBitmap,
     kAudioChannelBit_Left | kAudioChannelBit_Right | kAudioChannelBit_Center |
     kAudioChannelBit_LFEScreen |
@@ -1895,23 +2074,24 @@ static const ChanLayout CHAN_LAYOUTS[]=
   { "c", 2, "Binaural", kAudioChannelLayoutTag_Binaural, 0 },
   { "c", 4, "Ambisonic B-Format - W X Y Z", kAudioChannelLayoutTag_Ambisonic_B_Format, 0 },
 
-  { "c", 6, "MPEG 5.1A - L R C LFE Ls Rs", kAudioChannelLayoutTag_MPEG_5_1_A, 0 },
-  { "c", 6, "MPEG 5.1B - L R Ls Rs C LFE", kAudioChannelLayoutTag_MPEG_5_1_B, 0 },
-  { "c", 6, "MPEG 5.1C - L C R Ls Rs LFE", kAudioChannelLayoutTag_MPEG_5_1_C, 0 },
-  { "c", 6, "MPEG 5.1D - C L R Ls Rs LFE", kAudioChannelLayoutTag_MPEG_5_1_D, 0 },
-  { "c", 8, "MPEG 5.1A - L R C LFE Ls Rs Lc Rc", kAudioChannelLayoutTag_MPEG_7_1_A, 0 },
-  { "c", 8, "MPEG 5.1B - C Lc Rc L R Ls Rs LFE", kAudioChannelLayoutTag_MPEG_7_1_B, 0 },
-  { "c", 8, "MPEG 5.1C - L R C LFE Ls Rs Rls Rrs", kAudioChannelLayoutTag_MPEG_7_1_C, 0 },
+  { "c", 6, "MPEG 5.1A - L R C LFE Lb Rb", kAudioChannelLayoutTag_MPEG_5_1_A, 0 },
+  { "c", 6, "MPEG 5.1B - L R Lb Rb C LFE", kAudioChannelLayoutTag_MPEG_5_1_B, 0 },
+  { "c", 6, "MPEG 5.1C - L C R Lb Rb LFE", kAudioChannelLayoutTag_MPEG_5_1_C, 0 },
+  { "c", 6, "MPEG 5.1D - C L R Lb Rb LFE", kAudioChannelLayoutTag_MPEG_5_1_D, 0 },
 
-  { "c", 6, "ITU 3.2.1 - L R C LFE Ls Rs", kAudioChannelLayoutTag_ITU_3_2_1, 0 },
-  { "c", 8, "ITU 3.4.1 - L R C LFE Ls Rs Rls Rrs", kAudioChannelLayoutTag_ITU_3_4_1, 0 },
+  { "c", 8, "MPEG 7.1A - L R C LFE Lb Rb Lc Rc", kAudioChannelLayoutTag_MPEG_7_1_A, 0 },
+  { "c", 8, "MPEG 7.1B - C Lc Rc L R Lb Rb LFE", kAudioChannelLayoutTag_MPEG_7_1_B, 0 },
+  { "c", 8, "MPEG 7.1C (SMPTE 7.1) - L R C LFE Ls Rs Lb Rb", kAudioChannelLayoutTag_MPEG_7_1_C, 0 },
+
+  { "c", 6, "ITU 3.2.1 - L R C LFE Lb Rb", kAudioChannelLayoutTag_ITU_3_2_1, 0 },
+  { "c", 8, "ITU 3.4.1 - L R C LFE Lb Rb Rls Rrs", kAudioChannelLayoutTag_ITU_3_4_1, 0 },
 
   { "c", -1, "HO Ambisonic SN3D", kAudioChannelLayoutTag_HOA_ACN_SN3D, 0 },
   { "c", -1, "HO Ambisonic N3D", kAudioChannelLayoutTag_HOA_ACN_N3D, 0 },
 
-  { "c", 8, "Atmos 5.1.2 - L R C LFE Ls Rs Ltm Rtm", kAudioChannelLayoutTag_Atmos_5_1_2, 0 },
-  { "c", 12, "Atmos 7.1.4 - L R C LFE Ls Rs Rls Rrs Ltf Rtf Ltr Rtr", kAudioChannelLayoutTag_Atmos_7_1_4, 0 },
-  { "c", 16, "Atmos 9.1.6 - L R C LFE Ls Rs Rls Rrs Lw Rw Ltf Rtf Ltm Rtm Ltr Rtr", kAudioChannelLayoutTag_Atmos_9_1_6, 0 },
+  { "c", 8, "Atmos 5.1.2 - L R C LFE Lb Rb Ltm Rtm", kAudioChannelLayoutTag_Atmos_5_1_2, 0 },
+  { "c", 12, "Atmos 7.1.4 - L R C LFE Lb Rb Rls Rrs Ltf Rtf Ltr Rtr", kAudioChannelLayoutTag_Atmos_7_1_4, 0 },
+  { "c", 16, "Atmos 9.1.6 - L R C LFE Lb Rb Rls Rrs Lw Rw Ltf Rtf Ltm Rtm Ltr Rtr", kAudioChannelLayoutTag_Atmos_9_1_6, 0 },
 };
 
 #define LAYOUT_MASK_VALID(layout, mask) \
@@ -1998,15 +2178,15 @@ bool PackFlacPicBase64(WDL_StringKeyedArray<char*> *metadata,
   else if (ext && !stricmp(ext, ".png")) mime="image/png";
   if (!mime) return false;
 
-  WDL_FileRead *fr=new WDL_FileRead(picfn);
-  if (!fr) return false;
+  WDL_FileRead fr(picfn);
+  if (!fr.IsOpen()) return false;
 
-  int datalen=fr->GetSize();
-  if (!datalen)
+  WDL_INT64 datalen64=fr.GetSize();
+  if (datalen64 < 1 || datalen64 >= (1<<30))
   {
-    delete fr;
     return false;
   }
+  int datalen = (int)datalen64;
   int r8 = (datalen&7) ? 8-(datalen&7) : 0;
 
   // see opusfile src/info.c opus_picture_tag_parse_impl
@@ -2026,7 +2206,6 @@ bool PackFlacPicBase64(WDL_StringKeyedArray<char*> *metadata,
   unsigned char *p=(unsigned char*)hb_bin.ResizeOK(binlen);
   if (!p)
   {
-    delete fr;
     return false;
   }
   unsigned char *op=p;
@@ -2045,8 +2224,7 @@ bool PackFlacPicBase64(WDL_StringKeyedArray<char*> *metadata,
   _AddInt32(0);
   _AddInt32(datalen+r8);
 
-  fr->Read(p, datalen);
-  delete fr;
+  fr.Read(p, datalen);
   p += datalen;
 
   memset(p, 0, r8);
@@ -2069,6 +2247,62 @@ bool PackFlacPicBase64(WDL_StringKeyedArray<char*> *metadata,
 
   return false;
 }
+
+bool ExportMetadataImageToTmpFile(const char *srcfn, const char *infostr,
+  WDL_FastString *imgdesc, WDL_FastString *imgtype, WDL_FastString *imgfn)
+{
+  if (!srcfn || !srcfn[0] || !infostr || !infostr[0] || !imgfn) return false;
+
+  WDL_HeapBuf tmp;
+  int tmplen=strlen(infostr);
+  if (!tmp.ResizeOK(tmplen+1)) return false;
+  memcpy(tmp.Get(), infostr, tmplen+1);
+
+  const char *ext=NULL, *mime=NULL, *desc=NULL, *type=NULL, *offs=NULL, *len=NULL;
+  char *p=(char*)tmp.Get();
+  for (int i=0; i < tmplen; ++i)
+  {
+    if (!strncmp(p+i, "ext:", 4)) { if (i) p[i-1]=0; i += 4; ext=p+i; }
+    else if (!strncmp(p+i, "mime:", 5)) { if (i) p[i-1]=0; i += 5; mime=p+i; }
+    else if (!strncmp(p+i, "desc:", 5)) { if (i) p[i-1]=0; i += 5; desc=p+i; }
+    else if (!strncmp(p+i, "type:", 5)) { if (i) p[i-1]=0; i += 5; type=p+i; }
+    else if (!strncmp(p+i, "offset:", 7)) { if (i) p[i-1]=0; i += 7; offs=p+i; }
+    else if (!strncmp(p+i, "length:", 7)) { if (i) p[i-1]=0; i += 7; len=p+i; }
+  }
+
+  WDL_INT64 ioffs = offs ? (WDL_INT64)atof(offs) : 0;
+  int ilen = len ? atoi(len) : 0;
+
+  bool ok=false;
+  if ((ext || mime) && ioffs > 0 && ilen > 0)
+  {
+    WDL_FileRead fr(srcfn);
+    if (fr.IsOpen() && fr.GetSize() >= ioffs+ilen)
+    {
+      fr.SetPosition(ioffs);
+
+      char tmppath[2048];
+      tmppath[0]=0;
+      GetTempPath(sizeof(tmppath), tmppath);
+      imgfn->Set(tmppath);
+      imgfn->Append(WDL_get_filepart(srcfn));
+      imgfn->Append(".");
+      if (ext) imgfn->Append(ext);
+      else if (mime && !strncmp(mime, "image/", 6)) imgfn->Append(mime+6);
+
+      WDL_FileWrite fw(imgfn->Get());
+      if (fw.IsOpen() && CopyFileData(&fr, &fw, ilen))
+      {
+        if (desc && imgdesc) imgdesc->Set(desc);
+        if (type && imgtype) imgtype->Set(type);
+        ok=true;
+      }
+    }
+  }
+
+  return ok;
+}
+
 
 
 #endif // _METADATA_H_

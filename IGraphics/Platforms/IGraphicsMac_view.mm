@@ -132,6 +132,10 @@ static int MacKeyEventToVK(NSEvent* pEvent, int& flag)
   return code;
 }
 
+#ifndef IGRAPHICS_MENU_RCVR
+#warning The iPlug2 Obj-C namespace is not customized. Did you forget to include IPlugOBJCPrefix.pch?
+#endif
+
 @implementation IGRAPHICS_MENU_RCVR
 
 - (NSMenuItem*) menuItem
@@ -163,7 +167,7 @@ static int MacKeyEventToVK(NSEvent* pEvent, int& flag)
   {
     IPopupMenu::Item* pMenuItem = pMenu->GetItem(i);
 
-    nsMenuItemTitle = [[[NSMutableString alloc] initWithCString:pMenuItem->GetText() encoding:NSUTF8StringEncoding] autorelease];
+    nsMenuItemTitle = [[[NSMutableString alloc] initWithUTF8String:pMenuItem->GetText()] autorelease];
 
     if (pMenu->GetPrefix())
     {
@@ -574,6 +578,12 @@ static CVReturn displayLinkCallback(CVDisplayLinkRef displayLink, const CVTimeSt
                                                  name:NSViewFrameDidChangeNotification
                                                object:self];
     #endif
+    #ifdef IGRAPHICS_GL
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(frameDidChange:)
+                                                 name:NSViewGlobalFrameDidChangeNotification
+                                               object:self];
+    #endif
     
 //    [[NSNotificationCenter defaultCenter] addObserver:self
 //                                             selector:@selector(windowResized:) name:NSWindowDidEndLiveResizeNotification
@@ -664,6 +674,7 @@ static CVReturn displayLinkCallback(CVDisplayLinkRef displayLink, const CVTimeSt
     #endif
     #ifdef IGRAPHICS_GL
     [[self openGLContext] flushBuffer];
+    [NSOpenGLContext clearCurrentContext];
     #endif
   }
 }
@@ -1079,7 +1090,21 @@ static void MakeCursorFromName(NSCursor*& cursor, const char *name)
   NSMenu* pNSMenu = [[[IGRAPHICS_MENU alloc] initWithIPopupMenuAndReceiver:&menu : pDummyView] autorelease];
   NSPoint wp = {bounds.origin.x, bounds.origin.y + bounds.size.height + 4};
 
-  [pNSMenu popUpMenuPositioningItem:nil atLocation:wp inView:self];
+  NSMenuItem* pSelectedItem = nil;
+  
+  auto selectedItemIdx = menu.GetChosenItemIdx();
+
+  if (selectedItemIdx > -1)
+  {
+    pSelectedItem = [pNSMenu itemAtIndex:selectedItemIdx];
+  }
+  
+  if (pSelectedItem != nil)
+  {
+    wp = {bounds.origin.x, bounds.origin.y};
+  }
+  
+  [pNSMenu popUpMenuPositioningItem:pSelectedItem atLocation:wp inView:self];
   
   NSMenuItem* pChosenItem = [pDummyView menuItem];
   NSMenu* pChosenMenu = [pChosenItem menu];
@@ -1164,7 +1189,7 @@ static void MakeCursorFromName(NSCursor*& cursor, const char *name)
   [mTextFieldView setTextColor:ToNSColor(text.mTextEntryFGColor)];
   [mTextFieldView setBackgroundColor:ToNSColor(text.mTextEntryBGColor)];
 
-  [mTextFieldView setStringValue: [NSString stringWithCString:str encoding:NSUTF8StringEncoding]];
+  [mTextFieldView setStringValue: [NSString stringWithUTF8String:str]];
 
 #ifndef COCOA_TEXTENTRY_BORDERED
   [mTextFieldView setBordered: NO];
@@ -1216,7 +1241,7 @@ static void MakeCursorFromName(NSCursor*& cursor, const char *name)
   if (c < 0) return @"";
 
   const char* tooltip = mGraphics->GetControl(c)->GetTooltip();
-  return CStringHasContents(tooltip) ? [NSString stringWithCString:tooltip encoding:NSUTF8StringEncoding] : @"";
+  return CStringHasContents(tooltip) ? [NSString stringWithUTF8String:tooltip] : @"";
 }
 
 - (void) registerToolTip: (IRECT&) bounds
@@ -1236,21 +1261,38 @@ static void MakeCursorFromName(NSCursor*& cursor, const char *name)
 
 - (BOOL) performDragOperation: (id<NSDraggingInfo>) sender
 {
-  NSPasteboard *pPasteBoard = [sender draggingPasteboard];
+  NSPasteboard* pPasteBoard = [sender draggingPasteboard];
 
   if ([[pPasteBoard types] containsObject:NSFilenamesPboardType])
   {
-    NSArray *pFiles = [pPasteBoard propertyListForType:NSFilenamesPboardType];
-    NSString *pFirstFile = [pFiles firstObject];
+    NSArray* pFiles = [pPasteBoard propertyListForType:NSFilenamesPboardType];
     NSPoint point = [sender draggingLocation];
     NSPoint relativePoint = [self convertPoint: point fromView:nil];
     // TODO - fix or remove these values
     float x = relativePoint.x;// - 2.f;
     float y = relativePoint.y;// - 3.f;
-    mGraphics->OnDrop([pFirstFile UTF8String], x, y);
+    if ([pFiles count] == 1)
+    {
+      NSString* pFirstFile = [pFiles firstObject];
+      mGraphics->OnDrop([pFirstFile UTF8String], x, y);
+    }
+    else if ([pFiles count] > 1)
+    {
+      std::vector<const char*> paths([pFiles count]);
+      for (auto i = 0; i < [pFiles count]; i++)
+      {
+        NSString* pFile = [pFiles objectAtIndex: i];
+        paths[i] = [pFile UTF8String];
+      }
+      mGraphics->OnDropMultiple(paths, x, y);
+    }
   }
-
   return YES;
+}
+
+- (NSDragOperation)draggingSession:(NSDraggingSession*) session sourceOperationMaskForDraggingContext:(NSDraggingContext)context
+{
+  return NSDragOperationCopy;
 }
 
 #ifdef IGRAPHICS_METAL
@@ -1260,6 +1302,12 @@ static void MakeCursorFromName(NSCursor*& cursor, const char *name)
 
   [(CAMetalLayer*)[self layer] setDrawableSize:CGSizeMake(self.frame.size.width * scale,
                                                           self.frame.size.height * scale)];
+}
+#endif
+#ifdef IGRAPHICS_GL
+- (void) frameDidChange:(NSNotification*) pNotification
+{
+  [[self openGLContext] makeCurrentContext];
 }
 #endif
 

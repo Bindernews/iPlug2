@@ -38,6 +38,7 @@ IPlugAPIBase::IPlugAPIBase(Config c, EAPI plugAPI)
   mStateChunks = c.plugDoesChunks;
   mAPI = plugAPI;
   mBundleID.Set(c.bundleID);
+  mAppGroupID.Set(c.appGroupID);
 
   Trace(TRACELOC, "%s:%s", c.pluginName, CurrentTime());
   
@@ -107,7 +108,8 @@ bool IPlugAPIBase::EditorResizeFromUI(int viewWidth, int viewHeight, bool needsP
 void IPlugAPIBase::SetHost(const char* host, int version)
 {
   assert(mHost == kHostUninit);
-    
+  
+  mRawHostNameStr.Set(host);
   mHost = LookUpHost(host);
   mHostVersion = version;
   
@@ -141,7 +143,7 @@ void IPlugAPIBase::SendParameterValueFromAPI(int paramIdx, double value, bool no
   if (normalized)
     value = GetParam(paramIdx)->FromNormalized(value);
   
-  mParamChangeFromProcessor.Push(ParamTuple { paramIdx, value } );
+  mParamChangeFromProcessor.PushFromArgs(paramIdx, value);
 }
 
 void IPlugAPIBase::OnTimer(Timer& t)

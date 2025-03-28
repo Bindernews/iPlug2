@@ -90,15 +90,13 @@ iplug_target_add(iPlug2_VST3 INTERFACE
 source_group(TREE ${sdk} PREFIX IPlug/VST3 FILES ${_src})
 
 function(iplug_configure_vst3 base_plugin target)
-  get_target_property(plugin_name ${base_plugin} IPLUG_PLUGIN_NAME)
-  get_target_property(gui_libraries ${base_plugin} IPLUG_PLUGIN_GRAPHICS)
+  iplug_get_common_plugin_variables(vst3)
 
   # Create target
   add_library(${target} MODULE)
   # Link to iPlug library and GUI libraries
   target_link_libraries(${target} PUBLIC iPlug2_VST3 ${base_plugin} ${gui_libraries})
 
-  set(out_dir "${CMAKE_BINARY_DIR}/${target}.vst3")
   set(install_dir "${VST3_INSTALL_PATH}/${plugin_name}.vst3")
   set(res_dir "${CMAKE_BINARY_DIR}/${target}.vst3/Contents/Resources")
 
@@ -106,7 +104,7 @@ function(iplug_configure_vst3 base_plugin target)
     # Use .vst3 as the extension instead of .dll
     set_target_properties(${target} PROPERTIES
       OUTPUT_NAME "${plugin_name}"
-      LIBRARY_OUTPUT_DIRECTORY "${out_dir}/Contents/${vst3_target_arch}/"
+      LIBRARY_OUTPUT_DIRECTORY "${output_dir}/Contents/${vst3_target_arch}/"
       PREFIX ""
       SUFFIX ".vst3")
 
@@ -121,14 +119,14 @@ function(iplug_configure_vst3 base_plugin target)
       SUFFIX "")
 
     if (CMAKE_GENERATOR STREQUAL "Xcode")
-      set(out_dir "${CMAKE_BINARY_DIR}/$<CONFIG>/${plugin_name}.vst3")
+      set(output_dir "${CMAKE_BINARY_DIR}/$<CONFIG>/${plugin_name}.vst3")
       set(res_dir "")
     endif()
 
   elseif (IPLUG_OS MATCHES "Linux")
     set_target_properties(${target} PROPERTIES
       OUTPUT_NAME "${IPLUG_APP_NAME}"
-      LIBRARY_OUTPUT_DIRECTORY "${out_dir}/Contents/${vst3_target_arch}/"
+      LIBRARY_OUTPUT_DIRECTORY "${output_dir}/Contents/${vst3_target_arch}/"
       PREFIX ""
       SUFFIX ".so")
 
@@ -138,5 +136,5 @@ function(iplug_configure_vst3 base_plugin target)
     iplug_target_bundle_resources(${target} "${res_dir}")
   endif()
 
-  iplug_add_post_build_copy(${target} "${out_dir}" "${install_dir}")
+  iplug_add_post_build_copy(${target} "${output_dir}" "${install_dir}")
 endfunction()

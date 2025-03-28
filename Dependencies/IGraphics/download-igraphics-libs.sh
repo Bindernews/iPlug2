@@ -9,13 +9,13 @@ LOG_PATH="$BUILD_DIR"
 LOG_NAME="download.log"
 
 # Basename part of tarballs to download
-FREETYPE_VERSION=freetype-2.10.4
+FREETYPE_VERSION=freetype-2.13.3
 PKGCONFIG_VERSION=pkg-config-0.28
 EXPAT_VERSION=expat-2.2.5
 PNG_VERSION=v1.6.35
-ZLIB_VERSION=zlib-1.2.11
-SKIA_VERSION=chrome/m97
-# SKIA_VERSION=master
+ZLIB_VERSION=zlib-1.3.1
+SKIA_VERSION=chrome/m130
+#SKIA_VERSION=main
 
 # URLs where tarballs of releases can be downloaded - no trailing slash
 PNG_URL=https://github.com/glennrp/libpng/archive
@@ -61,17 +61,6 @@ spin() {
         printf "\b\b\b\b\b\b"
     done
     printf "    \b\b\b\b"
-}
-
-git_clone_commit() {
-    # git_clone_commit <git_url> <dest_dir> <commit_hash>
-    mkdir -p "$2"
-    pushd "$2"
-    git init
-    git remote add origin "$1"
-    git fetch --depth 1 origin "$3"
-    git checkout FETCH_HEAD
-    popd
 }
 
 cd "${0%/*}"
@@ -182,10 +171,9 @@ then
   echo "Found skia"
 else
   echo "Downloading skia"
-  git_clone_commit $SKIA_URL "$SRC_DIR/skia" $SKIA_VERSION
-  cd "$SRC_DIR/skia"
-  echo "Patching skia"
-  git apply "$IGRAPHICS_DEPS_DIR/skia.patch" 
+  git clone --depth 1 --branch $SKIA_VERSION $SKIA_URL "$SRC_DIR/skia"
+  # git clone $SKIA_URL "$SRC_DIR/skia"
+  # git checkout $SKIA_VERSION
   rm -r -f .git
   cd "$IGRAPHICS_DEPS_DIR"
 fi

@@ -289,7 +289,7 @@ static AUAudioUnitPreset* NewAUPreset(NSInteger number, NSString* pName)
             if (CStringHasContents(pParam->GetCustomUnit()))
             {
               unit = kAudioUnitParameterUnit_CustomUnit;
-              pUnitName = [NSString stringWithCString:pParam->GetCustomUnit() encoding:NSUTF8StringEncoding];
+              pUnitName = [NSString stringWithUTF8String:pParam->GetCustomUnit()];
             }
             else
             {
@@ -321,7 +321,7 @@ static AUAudioUnitPreset* NewAUPreset(NSInteger number, NSString* pName)
       
       for (auto dt = 0; dt < pParam->NDisplayTexts(); dt++)
       {
-        [pValueStrings addObject:[NSString stringWithCString:pParam->GetDisplayText(dt) encoding:NSUTF8StringEncoding]];
+        [pValueStrings addObject:[NSString stringWithUTF8String:pParam->GetDisplayText(dt)]];
       }
     }
     
@@ -350,7 +350,7 @@ static AUAudioUnitPreset* NewAUPreset(NSInteger number, NSString* pName)
     AUParameterAddress address = AUParameterAddress(paramIdx);
 
     AUParameter* pAUParam = [AUParameterTree createParameterWithIdentifier:    [NSString stringWithFormat:@"%d", paramIdx ]
-                                                                         name: [NSString stringWithCString:pParam->GetName() encoding:NSUTF8StringEncoding]
+                                                                         name: [NSString stringWithUTF8String:pParam->GetName()]
                                                                       address: address
                                                                           min: pParam->GetMin()
                                                                           max: pParam->GetMax()
@@ -380,7 +380,7 @@ static AUAudioUnitPreset* NewAUPreset(NSInteger number, NSString* pName)
     else
     {
       AUParameterGroup* pGroup = [AUParameterTree createGroupWithIdentifier:[NSString stringWithString:[NSString stringWithFormat:@"Group %d", p-1]]
-                                                                       name:[NSString stringWithCString:mPlug->GetParamGroupName(p-1) encoding:NSUTF8StringEncoding]
+                                                                       name:[NSString stringWithUTF8String:mPlug->GetParamGroupName(p-1)]
                                                                    children:treeArray[p]];
 
       [rootNodeArray addObject:pGroup];
@@ -401,7 +401,7 @@ static AUAudioUnitPreset* NewAUPreset(NSInteger number, NSString* pName)
   {
     for (auto i = 0; i < mPlug->NPresets(); i++)
     {
-      [pPresets addObject:NewAUPreset(i, [NSString stringWithCString: mPlug->GetPresetName(i) encoding:NSUTF8StringEncoding])];
+      [pPresets addObject:NewAUPreset(i, [NSString stringWithUTF8String:mPlug->GetPresetName(i)])];
     }
   }
   
@@ -428,7 +428,7 @@ static AUAudioUnitPreset* NewAUPreset(NSInteger number, NSString* pName)
 
   mParameterTree.implementorStringFromValueCallback = ^(AUParameter *param, const AUValue *__nullable valuePtr) {
     AUValue value = valuePtr == nil ? param.value : *valuePtr;
-    return [NSString stringWithCString:pPlug->GetParamDisplay(param.address, value) encoding:NSUTF8StringEncoding];
+    return [NSString stringWithUTF8String:pPlug->GetParamDisplay(param.address, value)];
   };
 
   mParameterTree.implementorValueFromStringCallback = ^(AUParameter* param, NSString* string) {
@@ -449,6 +449,8 @@ static AUAudioUnitPreset* NewAUPreset(NSInteger number, NSString* pName)
   }
     
   self.currentPreset = mPresets.firstObject;
+  
+  mPlug->OnParamReset(kReset);
   
   return self;
 }
@@ -613,15 +615,15 @@ static AUAudioUnitPreset* NewAUPreset(NSInteger number, NSString* pName)
 
       if (_transportStateCapture)
       {
-        double samplePos; double cycleStart; double cycleEnd; AUHostTransportStateFlags transportStateFlags;
+        double samplePos; double cycleStart; double cycleEnd; AUHostTransportStateFlags flags;
 
-        _transportStateCapture(&transportStateFlags, &samplePos, &cycleStart, &cycleEnd);
+        _transportStateCapture(&flags, &samplePos, &cycleStart, &cycleEnd);
 
         timeInfo.mSamplePos = samplePos;
         timeInfo.mCycleStart = cycleStart;
         timeInfo.mCycleEnd = cycleEnd;
-        timeInfo.mTransportIsRunning = transportStateFlags == AUHostTransportStateMoving || transportStateFlags == AUHostTransportStateRecording;
-        timeInfo.mTransportLoopEnabled = transportStateFlags == AUHostTransportStateCycling;
+        timeInfo.mTransportIsRunning = ((flags & AUHostTransportStateMoving) != 0);
+        timeInfo.mTransportLoopEnabled = ((flags & AUHostTransportStateCycling) != 0);
       }
 
       pPlug->ProcessWithEvents(timestamp, frameCount, realtimeEventListHead, timeInfo);
@@ -660,7 +662,8 @@ static AUAudioUnitPreset* NewAUPreset(NSInteger number, NSString* pName)
           self->mPlug->RestorePreset(int(pFactoryPreset.number));
           self->mCurrentPreset = pFactoryPreset;
           
-          for (int paramIdx = 0; paramIdx < self->mPlug->NParams(); paramIdx++) {
+          for (int paramIdx = 0; paramIdx < self->mPlug->NParams(); paramIdx++)
+          {
             AUParameter* parameterToChange = [self->mParameterTree parameterWithAddress:self->mPlug->GetParamAddress(paramIdx)];
             parameterToChange.value = self->mPlug->GetParam(paramIdx)->Value();
           }
@@ -713,12 +716,15 @@ static AUAudioUnitPreset* NewAUPreset(NSInteger number, NSString* pName)
 
 - (NSTimeInterval) latency
 {
-  return (NSTimeInterval) mPlug->GetLatency() / mPlug->GetSampleRate();
+  return static_cast<NSTimeInterval>(mPlug->GetLatency()) / mPlug->GetSampleRate();
 }
 
 - (NSTimeInterval) tailTime
 {
-  return (double) mPlug->GetTailSize() / mPlug->GetSampleRate();
+  if (mPlug->GetTailIsInfinite())
+    return std::numeric_limits<NSTimeInterval>::infinity();
+  else
+    return static_cast<NSTimeInterval>(mPlug->GetTailSize()) / mPlug->GetSampleRate();
 }
 
 - (NSDictionary<NSString*, id>*)fullState
@@ -734,18 +740,18 @@ static AUAudioUnitPreset* NewAUPreset(NSInteger number, NSString* pName)
   mPlug->SerializeState();
   mPlug->SerializeVST3CtrlrState();
 #else
-  [pDict setValue:[NSNumber numberWithInt: mPlug->GetPluginVersion(false)] forKey:[NSString stringWithUTF8String: kAUPresetVersionKey]];
-  [pDict setValue:[NSNumber numberWithInt: mPlug->GetAUPluginType()] forKey:[NSString stringWithUTF8String: kAUPresetTypeKey]];
-  [pDict setValue:[NSNumber numberWithInt: mPlug->GetUniqueID()] forKey:[NSString stringWithUTF8String: kAUPresetSubtypeKey]];
-  [pDict setValue:[NSNumber numberWithInt: mPlug->GetMfrID()] forKey:[NSString stringWithUTF8String: kAUPresetManufacturerKey]];
-  [pDict setValue:[NSString stringWithUTF8String: mPlug->GetPresetName(mPlug->GetCurrentPresetIdx())] forKey:[NSString stringWithUTF8String: kAUPresetNameKey]];
+  [pDict setValue:[NSNumber numberWithInt: mPlug->GetPluginVersion(false)] forKey:[NSString stringWithUTF8String:kAUPresetVersionKey]];
+  [pDict setValue:[NSNumber numberWithInt: mPlug->GetAUPluginType()] forKey:[NSString stringWithUTF8String:kAUPresetTypeKey]];
+  [pDict setValue:[NSNumber numberWithInt: mPlug->GetUniqueID()] forKey:[NSString stringWithUTF8String:kAUPresetSubtypeKey]];
+  [pDict setValue:[NSNumber numberWithInt: mPlug->GetMfrID()] forKey:[NSString stringWithUTF8String:kAUPresetManufacturerKey]];
+  [pDict setValue:[NSString stringWithUTF8String:mPlug->GetPresetName(mPlug->GetCurrentPresetIdx())] forKey:[NSString stringWithUTF8String:kAUPresetNameKey]];
 
   IByteChunk chunk;
 //  IByteChunk::InitChunkWithIPlugVer(chunk);
   mPlug->SerializeState(chunk);
   NSMutableData* pData = [[NSMutableData alloc] init];
   [pData replaceBytesInRange:NSMakeRange (0, chunk.Size()) withBytes:chunk.GetData()];
-  [pDict setValue:pData forKey:[NSString stringWithUTF8String: kAUPresetDataKey]];
+  [pDict setValue:pData forKey:[NSString stringWithUTF8String:kAUPresetDataKey]];
 #endif
   return pDict;
 }
@@ -755,7 +761,7 @@ static AUAudioUnitPreset* NewAUPreset(NSInteger number, NSString* pName)
   NSMutableDictionary<NSString*, id>* modifiedState = [[NSMutableDictionary<NSString*, id> alloc] init];
   [modifiedState addEntriesFromDictionary:newFullState];
 #ifndef STEINBERG_AUWRAPPER_COMPATIBLE
-  NSData* pData = [newFullState valueForKey:[NSString stringWithUTF8String: kAUPresetDataKey]];
+  NSData* pData = [newFullState valueForKey:[NSString stringWithUTF8String:kAUPresetDataKey]];
   IByteChunk chunk;
   chunk.PutBytes([pData bytes], static_cast<int>([pData length]));
   int pos = 0;
@@ -772,8 +778,10 @@ static AUAudioUnitPreset* NewAUPreset(NSInteger number, NSString* pName)
 
   NSMutableIndexSet* pSet = [[NSMutableIndexSet alloc] init];
   
-  for (AUAudioUnitViewConfiguration* viewConfig in availableViewConfigurations) {
-    if (mPlug->OnHostRequestingSupportedViewConfiguration((int) [viewConfig width], (int) [viewConfig height])) {
+  for (AUAudioUnitViewConfiguration* viewConfig in availableViewConfigurations)
+  {
+    if (mPlug->OnHostRequestingSupportedViewConfiguration((int) [viewConfig width], (int) [viewConfig height]))
+    {
       [pSet addIndex:[availableViewConfigurations indexOfObject:viewConfig]];
     }
   }
@@ -784,7 +792,9 @@ static AUAudioUnitPreset* NewAUPreset(NSInteger number, NSString* pName)
 - (void) selectViewConfiguration:(AUAudioUnitViewConfiguration*) viewConfiguration API_AVAILABLE(macos(10.13), ios(11))
 {
   TRACE
-  mPlug->OnHostSelectedViewConfiguration((int) [viewConfiguration width], (int) [viewConfiguration height]);
+  dispatch_async(dispatch_get_main_queue(), ^{
+    self->mPlug->OnHostSelectedViewConfiguration((int) [viewConfiguration width], (int) [viewConfiguration height]);
+  });
 }
 
 #pragma mark - IPlugAUAudioUnit
@@ -859,14 +869,6 @@ static AUAudioUnitPreset* NewAUPreset(NSInteger number, NSString* pName)
 - (BOOL) supportsMPE
 {
   return mPlug->DoesMPE() ? YES : NO;
-}
-
-- (NSData*) getDataFromExternal
-{
-  int dataSize = 0;
-  void* pData = mPlug->GetDataFromExternal(dataSize);
-  
-  return [NSData dataWithBytes:pData length:dataSize];
 }
 
 @end

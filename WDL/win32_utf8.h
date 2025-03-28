@@ -30,6 +30,7 @@ WDL_WIN32_UTF8_IMPL BOOL DeleteFileUTF8(LPCTSTR path);
 WDL_WIN32_UTF8_IMPL BOOL MoveFileUTF8(LPCTSTR existfn, LPCTSTR newfn);
 WDL_WIN32_UTF8_IMPL BOOL CopyFileUTF8(LPCTSTR existfn, LPCTSTR newfn, BOOL fie);
 WDL_WIN32_UTF8_IMPL DWORD GetCurrentDirectoryUTF8(DWORD nBufferLength, LPTSTR lpBuffer);
+WDL_WIN32_UTF8_IMPL DWORD GetTempPathUTF8(DWORD nBufferLength, LPTSTR lpBuffer);
 WDL_WIN32_UTF8_IMPL BOOL SetCurrentDirectoryUTF8(LPCTSTR path);
 WDL_WIN32_UTF8_IMPL BOOL RemoveDirectoryUTF8(LPCTSTR path);
 WDL_WIN32_UTF8_IMPL HINSTANCE LoadLibraryUTF8(LPCTSTR path);
@@ -90,6 +91,9 @@ WDL_WIN32_UTF8_IMPL BOOL GetPrivateProfileStructUTF8(LPCTSTR appStr, LPCTSTR key
 WDL_WIN32_UTF8_IMPL BOOL WritePrivateProfileStructUTF8(LPCTSTR appStr, LPCTSTR keyStr, LPVOID pStruct, UINT uSize, LPCTSTR fnStr);
 
 WDL_WIN32_UTF8_IMPL DWORD GetModuleFileNameUTF8(HMODULE hModule, LPTSTR fnStr, DWORD nSize);
+
+WDL_WIN32_UTF8_IMPL DWORD GetLongPathNameUTF8(LPCTSTR lpszShortPath, LPSTR lpszLongPath, DWORD cchBuffer);
+WDL_WIN32_UTF8_IMPL UINT GetTempFileNameUTF8(LPCTSTR lpPathName, LPCTSTR lpPrefixString, UINT uUnique, LPSTR lpTempFileName);
 
 WDL_WIN32_UTF8_IMPL BOOL CreateProcessUTF8( LPCTSTR lpApplicationName, LPTSTR lpCommandLine,
   LPSECURITY_ATTRIBUTES lpProcessAttributes,
@@ -181,6 +185,11 @@ WDL_WIN32_UTF8_IMPL BOOL CreateProcessUTF8( LPCTSTR lpApplicationName, LPTSTR lp
 #endif
 #define GetCurrentDirectory GetCurrentDirectoryUTF8
 
+#ifdef GetTempPath
+#undef GetTempPath
+#endif
+#define GetTempPath GetTempPathUTF8
+
 #ifdef SetCurrentDirectory
 #undef SetCurrentDirectory
 #endif
@@ -255,6 +264,16 @@ WDL_WIN32_UTF8_IMPL BOOL CreateProcessUTF8( LPCTSTR lpApplicationName, LPTSTR lp
 #endif
 #define GetModuleFileName GetModuleFileNameUTF8
 
+#ifdef GetLongPathName
+#undef GetLongPathName
+#endif
+#define GetLongPathName GetLongPathNameUTF8
+
+#ifdef GetTempFileName
+#undef GetTempFileName
+#endif
+#define GetTempFileName GetTempFileNameUTF8
+
 #ifdef CreateProcess
 #undef CreateProcess
 #endif
@@ -281,11 +300,11 @@ typedef char wdl_utf8_chk_stat_types_assert_failed[sizeof(struct stat) == sizeof
 #define DrawTextUTF8 DrawText
 #define statUTF8 stat
 #define fopenUTF8 fopen
-#define WDL_UTF8_HookComboBox(x)
-#define WDL_UTF8_HookListView(x)
-#define WDL_UTF8_HookListBox(x)
-#define WDL_UTF8_HookTreeView(x)
-#define WDL_UTF8_HookTabCtrl(x)
+#define WDL_UTF8_HookComboBox(x) do { if (WDL_NORMALLY(x)) { } } while(0)
+#define WDL_UTF8_HookListView(x) do { if (WDL_NORMALLY(x)) { } } while(0)
+#define WDL_UTF8_HookListBox(x) do { if (WDL_NORMALLY(x)) { } } while(0)
+#define WDL_UTF8_HookTreeView(x) do { if (WDL_NORMALLY(x)) { } } while(0)
+#define WDL_UTF8_HookTabCtrl(x) do { if (WDL_NORMALLY(x)) { } } while(0)
 #define WDL_UTF8_ListViewConvertDispInfoToW(x)
 
 #define LB_GETTEXTUTF8 LB_GETTEXT

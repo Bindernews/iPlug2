@@ -10,6 +10,7 @@
 
 #import <QuartzCore/QuartzCore.h>
 #import <MetalKit/MetalKit.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 #include "IGraphicsIOS.h"
 #include "IGraphicsCoreText.h"
@@ -18,6 +19,7 @@
 
 #include <map>
 #include <string>
+#include <cassert>
 
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 
@@ -76,7 +78,7 @@ IGraphicsIOS::IGraphicsIOS(IGEditorDelegate& dlg, int w, int h, int fps, float s
     
       for(int i=0; i < gTextures.count; i++)
       {
-        gTextureMap.insert(std::make_pair([[[pTextureFiles[i] lastPathComponent] stringByDeletingPathExtension] cStringUsingEncoding:NSUTF8StringEncoding], (MTLTexturePtr) gTextures[i]));
+        gTextureMap.insert(std::make_pair([[[pTextureFiles[i] lastPathComponent] stringByDeletingPathExtension] UTF8String], (MTLTexturePtr) gTextures[i]));
       }
     
       DBGMSG("Preloaded %i textures\n", (int) [pTextureFiles count]);
@@ -159,10 +161,15 @@ void IGraphicsIOS::RemovePlatformView(void* pView)
   [(UIView*) pView removeFromSuperview];
 }
 
-EMsgBoxResult IGraphicsIOS::ShowMessageBox(const char* str, const char* caption, EMsgBoxType type, IMsgBoxCompletionHanderFunc completionHandler)
+void IGraphicsIOS::HidePlatformView(void* pView, bool hide)
+{
+  [(UIView*) pView setHidden:hide];
+}
+
+EMsgBoxResult IGraphicsIOS::ShowMessageBox(const char* str, const char* title, EMsgBoxType type, IMsgBoxCompletionHandlerFunc completionHandler)
 {
   ReleaseMouseCapture();
-  [(IGRAPHICS_VIEW*) mView showMessageBox:str :caption :type :completionHandler];
+  [(IGRAPHICS_VIEW*) mView showMessageBox:str : title : type : completionHandler];
   return EMsgBoxResult::kNoResult; // we need to rely on completionHandler
 }
 
@@ -190,12 +197,54 @@ void IGraphicsIOS::GetMouseLocation(float& x, float&y) const
   [(IGRAPHICS_VIEW*) mView getLastTouchLocation: x : y];
 }
 
-void IGraphicsIOS::PromptForFile(WDL_String& fileName, WDL_String& path, EFileAction action, const char* ext)
+void IGraphicsIOS::PromptForFile(WDL_String& fileName, WDL_String& path, EFileAction action, const char* ext, IFileDialogCompletionHandlerFunc completionHandler)
 {
+  assert(completionHandler != nullptr && "You must provide a completion handler on iOS");
+  
+  NSString* pDefaultFileName = nil;
+  NSString* pDefaultPath = nil;
+  NSMutableArray* pFileTypes = [[NSMutableArray alloc] init];
+
+  if (fileName.GetLength())
+    pDefaultFileName = [NSString stringWithUTF8String:fileName.Get()];
+  else
+    pDefaultFileName = @"";
+  
+  if (path.GetLength())
+    pDefaultPath = [NSString stringWithUTF8String:path.Get()];
+  else
+    pDefaultPath = @"";
+
+  fileName.Set(""); // reset it
+
+  if (CStringHasContents(ext))
+  {
+    NSArray* pFileExtensions = [[NSString stringWithUTF8String:ext] componentsSeparatedByString: @" "];
+    
+    for (NSString* pFileExtension in pFileExtensions)
+    {
+      UTType* pUTType = [UTType typeWithFilenameExtension:pFileExtension];
+      [pFileTypes addObject:pUTType];
+    }
+  }
+  
+  [(IGRAPHICS_VIEW*) mView promptForFile: pDefaultFileName : pDefaultPath : action : pFileTypes : completionHandler];
 }
 
-void IGraphicsIOS::PromptForDirectory(WDL_String& dir)
+void IGraphicsIOS::PromptForDirectory(WDL_String& path, IFileDialogCompletionHandlerFunc completionHandler)
 {
+  assert(completionHandler != nullptr && "You must provide a completion handler on iOS");
+  
+  NSString* pDefaultPath = nil;
+
+  if (path.GetLength())
+    pDefaultPath = [NSString stringWithUTF8String:path.Get()];
+  else
+    pDefaultPath = @"";
+
+  path.Set(""); // reset it
+
+  [(IGRAPHICS_VIEW*) mView promptForDirectory:pDefaultPath : completionHandler];
 }
 
 bool IGraphicsIOS::PromptForColor(IColor& color, const char* str, IColorPickerHandlerFunc func)
@@ -204,7 +253,7 @@ bool IGraphicsIOS::PromptForColor(IColor& color, const char* str, IColorPickerHa
   return false;
 }
 
-IPopupMenu* IGraphicsIOS::CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT& bounds, bool& isAsync)
+IPopupMenu* IGraphicsIOS::CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT bounds, bool& isAsync)
 {
   IPopupMenu* pReturnMenu = nullptr;
   isAsync = true;
@@ -232,9 +281,9 @@ bool IGraphicsIOS::OpenURL(const char* url, const char* msgWindowTitle, const ch
 {
   NSURL* pNSURL = nullptr;
   if (strstr(url, "http"))
-    pNSURL = [NSURL URLWithString:[NSString stringWithCString:url encoding:NSUTF8StringEncoding]];
+    pNSURL = [NSURL URLWithString:[NSString stringWithUTF8String:url]];
   else
-    pNSURL = [NSURL fileURLWithPath:[NSString stringWithCString:url encoding:NSUTF8StringEncoding]];
+    pNSURL = [NSURL fileURLWithPath:[NSString stringWithUTF8String:url]];
 
   if (pNSURL)
   {

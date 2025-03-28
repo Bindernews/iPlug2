@@ -24,7 +24,7 @@
 
 #if defined OS_WIN && !defined VST3C_API
   HINSTANCE gHINSTANCE = 0;
-  #if defined(VST2_API) || defined(AAX_API)
+  #if defined(VST2_API) || defined(AAX_API) || defined(CLAP_API)
   #ifdef __MINGW32__
   extern "C"
   #endif
@@ -41,7 +41,7 @@
   {
     if (!__GetDpiForWindow)
     {
-      HINSTANCE h = LoadLibraryA("user32.dll");
+      HINSTANCE h = LoadLibraryW(L"user32.dll");
       if (h) *(void **)&__GetDpiForWindow = GetProcAddress(h, "GetDpiForWindow");
 
       if (!__GetDpiForWindow)
@@ -59,7 +59,6 @@
 #endif
     }
 
-
     return 1;
   }
 
@@ -75,7 +74,7 @@
     {
       using namespace iplug;
 
-      IPlugVST2* pPlug = MakePlug(InstanceInfo{hostCallback});
+      IPlugVST2* pPlug = iplug::MakePlug(iplug::InstanceInfo{hostCallback});
 
       if (pPlug)
       {
@@ -136,7 +135,7 @@
   #if defined VST3_API
   static Steinberg::FUnknown* createInstance(void*)
   {
-    return (Steinberg::Vst::IAudioProcessor*) MakePlug(InstanceInfo());
+    return (Steinberg::Vst::IAudioProcessor*) iplug::MakePlug(iplug::InstanceInfo());
   }
 
   BEGIN_FACTORY_DEF(PLUG_MFR, PLUG_URL_STR, PLUG_EMAIL_STR)
@@ -196,14 +195,14 @@
     //Component Manager
     EXPORT ComponentResult AUV2_ENTRY(ComponentParameters* pParams, void* pPlug)
     {
-      return IPlugAU::IPlugAUEntry(pParams, pPlug);
+      return iplug::IPlugAU::IPlugAUEntry(pParams, pPlug);
     }
     #endif
 
     //>10.7 SDK AUPlugin
     EXPORT void* AUV2_FACTORY(const AudioComponentDescription* pInDesc)
     {
-      return IPlugAUFactory<PLUG_CLASS_NAME, PLUG_DOES_MIDI_IN>::Factory(pInDesc);
+      return iplug::IPlugAUFactory<PLUG_CLASS_NAME, PLUG_DOES_MIDI_IN>::Factory(pInDesc);
     }
   };
 #pragma mark - WAM
@@ -212,7 +211,7 @@
   {
     EMSCRIPTEN_KEEPALIVE void* createModule()
     {
-      Processor* pWAM = dynamic_cast<Processor*>(iplug::MakePlug(InstanceInfo()));
+      Processor* pWAM = dynamic_cast<Processor*>(iplug::MakePlug(iplug::InstanceInfo()));
       return (void*) pWAM;
     }
   }
@@ -241,7 +240,7 @@
 
     EMSCRIPTEN_KEEPALIVE void iplug_fsready()
     {
-      gPlug = std::unique_ptr<iplug::IPlugWeb>(iplug::MakePlug(InstanceInfo()));
+      gPlug = std::unique_ptr<iplug::IPlugWeb>(iplug::MakePlug(iplug::InstanceInfo()));
       gPlug->SetHost("www", 0);
       gPlug->OpenWindow(nullptr);
       iplug_syncfs(); // plug in may initialise settings in constructor, write to persistent data after init
@@ -272,6 +271,112 @@
 
     return 0;
   }
+
+#pragma mark - CLAP
+#elif defined CLAP_API
+
+// Make sure optional fields are defined
+
+#ifndef CLAP_MANUAL_URL
+#define CLAP_MANUAL_URL ""
+#endif
+#ifndef CLAP_SUPPORT_URL
+#define CLAP_SUPPORT_URL ""
+#endif
+#ifndef CLAP_DESCRIPTION
+#define CLAP_DESCRIPTION ""
+#endif
+#ifndef CLAP_FEATURES
+  #if PLUG_TYPE==0
+  #define CLAP_FEATURES CLAP_PLUGIN_FEATURE_AUDIO_EFFECT
+  #elif PLUG_TYPE==1
+  #define CLAP_FEATURES CLAP_PLUGIN_FEATURE_INSTRUMENT
+  #elif PLUG_TYPE==2
+  #define CLAP_FEATURES CLAP_PLUGIN_FEATURE_NOTE_EFFECT
+  #endif
+#endif
+
+std::string gPluginPath;
+std::unique_ptr<clap_plugin_descriptor> gPluginDesc;
+
+static bool clap_init(const char* pluginPath)
+{
+  // Init globals
+
+  gPluginPath = pluginPath;
+  gPluginDesc = std::unique_ptr<clap_plugin_descriptor>(new clap_plugin_descriptor());
+
+  // Init the descriptor
+
+  gPluginDesc->clap_version = CLAP_VERSION;
+
+  gPluginDesc->id = BUNDLE_DOMAIN "." BUNDLE_MFR "." BUNDLE_NAME;
+  gPluginDesc->name = PLUG_NAME;
+  gPluginDesc->vendor = PLUG_MFR;
+  gPluginDesc->url = PLUG_URL_STR;
+
+  gPluginDesc->manual_url = CLAP_MANUAL_URL;
+  gPluginDesc->version = PLUG_VERSION_STR;
+  gPluginDesc->support_url = CLAP_SUPPORT_URL;
+  gPluginDesc->description = CLAP_DESCRIPTION;
+
+  static const char *clap_features[] = { CLAP_FEATURES, NULL };
+  gPluginDesc->features = clap_features;
+
+  return true;
+}
+
+static void clap_deinit(void)
+{
+  gPluginPath.clear();
+  gPluginDesc = nullptr;
+}
+
+static uint32_t clap_get_plugin_count(const clap_plugin_factory_t *factory)
+{
+  return 1;
+}
+
+static const clap_plugin_descriptor* clap_get_plugin_descriptor(const clap_plugin_factory_t *factory, uint32_t index)
+{
+  if (!index)
+    return gPluginDesc.get();
+
+  return nullptr;
+}
+
+static const clap_plugin* clap_create_plugin(const clap_plugin_factory_t *factory, const clap_host* host, const char* plugin_id)
+{
+  if (!strcmp(gPluginDesc->id, plugin_id))
+  {
+    IPlugCLAP* pPlug = MakePlug(InstanceInfo{gPluginDesc.get(), host});
+    return pPlug->clapPlugin();
+  }
+
+  return nullptr;
+}
+
+CLAP_EXPORT const clap_plugin_factory_t clap_factory = {
+  clap_get_plugin_count,
+  clap_get_plugin_descriptor,
+  clap_create_plugin,
+};
+
+const void *clap_get_factory(const char *factory_id)
+{
+   if (!::strcmp(factory_id, CLAP_PLUGIN_FACTORY_ID))
+      return &clap_factory;
+
+   return nullptr;
+}
+
+CLAP_EXPORT const clap_plugin_entry_t clap_entry = {
+  CLAP_VERSION,
+  clap_init,
+  clap_deinit,
+  clap_get_factory,
+};
+
 #elif defined AUv3_API || defined AAX_API || defined APP_API
 // Nothing to do here
 #elif defined LV2_API
@@ -392,11 +497,11 @@ LV2_SYMBOL_EXPORT const LV2UI_Descriptor* lv2ui_descriptor(uint32_t index)
 BEGIN_IPLUG_NAMESPACE
 
 #pragma mark -
-#pragma mark VST2, VST3, AAX, AUv3, APP, WAM, WEB
+#pragma mark VST2, VST3, AAX, AUv3, APP, WAM, WEB, CLAP
 
-#if defined VST2_API || defined VST3_API || defined AAX_API || defined AUv3_API || defined APP_API  || defined WAM_API || defined WEB_API
+#if defined VST2_API || defined VST3_API || defined AAX_API || defined AUv3_API || defined APP_API  || defined WAM_API || defined WEB_API || defined CLAP_API
 
-Plugin* MakePlug(const InstanceInfo& info)
+Plugin* MakePlug(const iplug::InstanceInfo& info)
 {
   // From VST3 - is this necessary?
   static WDL_Mutex sMutex;
@@ -410,7 +515,7 @@ Plugin* MakePlug(const InstanceInfo& info)
 
 Plugin* MakePlug(void* pMemory)
 {
-  InstanceInfo info;
+  iplug::InstanceInfo info;
   info.mCocoaViewFactoryClassName.Set(AUV2_VIEW_CLASS_STR);
 
   if (pMemory)
@@ -426,7 +531,7 @@ Steinberg::FUnknown* MakeController()
 {
   static WDL_Mutex sMutex;
   WDL_MutexLock lock(&sMutex);
-  IPlugVST3Controller::InstanceInfo info;
+  iplug::IPlugVST3Controller::InstanceInfo info;
   info.mOtherGUID = Steinberg::FUID(VST3_PROCESSOR_UID);
   // If you are trying to build a distributed VST3 plug-in and you hit an error here like "no matching constructor..." or
   // "error: unknown type name 'VST3Controller'", you need to replace all instances of the name of your plug-in class (e.g. IPlugEffect)
@@ -441,7 +546,7 @@ Steinberg::FUnknown* MakeProcessor()
 {
   static WDL_Mutex sMutex;
   WDL_MutexLock lock(&sMutex);
-  IPlugVST3Processor::InstanceInfo info;
+  iplug::IPlugVST3Processor::InstanceInfo info;
   info.mOtherGUID = Steinberg::FUID(VST3_CONTROLLER_UID);
   return static_cast<Steinberg::Vst::IAudioProcessor*>(new PLUG_CLASS_NAME(info));
 }
@@ -457,7 +562,7 @@ Steinberg::FUnknown* MakeProcessor()
 
 static Config MakeConfig(int nParams, int nPresets)
 {
-  return Config(nParams, nPresets, PLUG_CHANNEL_IO, PLUG_NAME, PLUG_NAME, PLUG_MFR, PLUG_VERSION_HEX, PLUG_UNIQUE_ID, PLUG_MFR_ID, PLUG_LATENCY, PLUG_DOES_MIDI_IN, PLUG_DOES_MIDI_OUT, PLUG_DOES_MPE, PLUG_DOES_STATE_CHUNKS, PLUG_TYPE, PLUG_HAS_UI, PLUG_WIDTH, PLUG_HEIGHT, PLUG_HOST_RESIZE, PLUG_MIN_WIDTH, PLUG_MAX_WIDTH, PLUG_MIN_HEIGHT, PLUG_MAX_HEIGHT, BUNDLE_ID); // TODO: Product Name?
+  return Config(nParams, nPresets, PLUG_CHANNEL_IO, PLUG_NAME, PLUG_NAME, PLUG_MFR, PLUG_VERSION_HEX, PLUG_UNIQUE_ID, PLUG_MFR_ID, PLUG_LATENCY, PLUG_DOES_MIDI_IN, PLUG_DOES_MIDI_OUT, PLUG_DOES_MPE, PLUG_DOES_STATE_CHUNKS, PLUG_TYPE, PLUG_HAS_UI, PLUG_WIDTH, PLUG_HEIGHT, PLUG_HOST_RESIZE, PLUG_MIN_WIDTH, PLUG_MAX_WIDTH, PLUG_MIN_HEIGHT, PLUG_MAX_HEIGHT, BUNDLE_ID, APP_GROUP_ID); // TODO: Product Name?
 }
 
 END_IPLUG_NAMESPACE
