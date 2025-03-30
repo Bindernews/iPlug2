@@ -29,14 +29,16 @@ function(_iplug_load_module_vst2)
   # Check if we're compiling with GCC
   iplug_ternary(is_gcc 1 0 ${CMAKE_CXX_COMPILER_ID} MATCHES "GNU")
 
+  set(cwd ${IPLUG2_SDK_PATH}/IPlug/VST2)
+
   add_library(iPlug2_VST2 INTERFACE)
   iplug_target_add(iPlug2_VST2 INTERFACE
     SOURCE
-    IPlugVST2.h
-    IPlugVST2.cpp
+    ${cwd}/IPlugVST2.h
+    ${cwd}/IPlugVST2.cpp
 
     INCLUDE
-    ${CMAKE_CURRENT_LIST_DIR}
+    ${cwd}
     ${VST2_SDK}
 
     DEFINE

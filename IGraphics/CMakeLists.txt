@@ -93,6 +93,7 @@ elseif (IPLUG_OS MATCHES "Linux")
   )
   list(APPEND _inc
     ${deps_dir}/xcbt
+    ${WDL_DIR}
   )
   list(APPEND _lib
     PkgConfig::X11Libraries
@@ -192,19 +193,19 @@ endif()
 
 # Target for using desktop OpenGL 2.1 as the graphics backend.
 set(tgt iPlug2_GL2)
-add_library(iPlug2_GL2 STATIC)
-target_sources(${tgt} PRIVATE ${deps_dir}/glad_GL2/src/glad.c)
-target_include_directories(${tgt} PUBLIC ${deps_dir}/glad_GL2/include)
-target_link_libraries(${tgt} PUBLIC iPlug2_DesktopGL_Base)
-target_compile_definitions(${tgt} PUBLIC "IGRAPHICS_GL2")
+add_library(iPlug2_GL2 INTERFACE)
+target_sources(${tgt} INTERFACE ${deps_dir}/glad_GL2/src/glad.c)
+target_include_directories(${tgt} INTERFACE ${deps_dir}/glad_GL2/include)
+target_link_libraries(${tgt} INTERFACE iPlug2_DesktopGL_Base)
+target_compile_definitions(${tgt} INTERFACE "IGRAPHICS_GL2")
 
 # Target for using desktop OpenGL 3.0/3.3 or higher as the graphics backend.
 set(tgt iPlug2_GL3)
-add_library(iPlug2_GL3 STATIC)
-target_sources(${tgt} PRIVATE ${deps_dir}/glad_GL3/src/glad.c)
-target_include_directories(${tgt} PUBLIC ${deps_dir}/glad_GL3/include)
-target_link_libraries(${tgt} PUBLIC iPlug2_DesktopGL_Base)
-target_compile_definitions(${tgt} PUBLIC "IGRAPHICS_GL3")
+add_library(iPlug2_GL3 INTERFACE)
+target_sources(${tgt} INTERFACE ${deps_dir}/glad_GL3/src/glad.c)
+target_include_directories(${tgt} INTERFACE ${deps_dir}/glad_GL3/include)
+target_link_libraries(${tgt} INTERFACE iPlug2_DesktopGL_Base)
+target_compile_definitions(${tgt} INTERFACE "IGRAPHICS_GL3")
 
 ##########
 # NanoVG #

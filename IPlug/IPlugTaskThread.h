@@ -36,7 +36,7 @@ struct Task
   uint64_t time;
   // Interval value in microseconds. 0 means occur only once.
   uint64_t interval;
-  // Callback 
+  // Callback
   Callback callback;
 };
 
@@ -53,6 +53,12 @@ public:
   void Cancel(TaskID id);
   /** Stop the task thread. */
   void Stop();
+
+  /**
+   * Get the global \c IPlugTaskThread instance. Users may create new task threads,
+   * but this one will always exist, at least on non-web platforms.
+   */
+  static IPlugTaskThread* instance();
 
 private:
   IPlugTaskThread_Impl* mImpl;

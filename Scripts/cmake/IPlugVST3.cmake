@@ -49,7 +49,7 @@ set(IPLUG2_VST_ICON
 ##########################
 
 add_library(iPlug2_VST3 INTERFACE)
-set(sdk ${CMAKE_CURRENT_LIST_DIR})
+set(sdk ${IPLUG2_SDK_PATH}/IPlug/VST3)
 set(_src
   "${sdk}/IPlugVST3.h"
   "${sdk}/IPlugVST3.cpp"
@@ -64,8 +64,10 @@ set(_src
   "${sdk}/IPlugVST3_ProcessorBase.h"
   "${sdk}/IPlugVST3_ProcessorBase.cpp"
   "${sdk}/IPlugVST3_View.h"
-  $<$<PLATFORM_ID:Linux>:${sdk}/IPlugVST3_RunLoop.cpp>
 )
+if (IPLUG_OS MATCHES "Linux")
+  list(APPEND _src ${sdk}/IPlugVST3_RunLoop.cpp)
+endif()
 iplug_target_add(iPlug2_VST3 INTERFACE
   SOURCE
     ${_src}

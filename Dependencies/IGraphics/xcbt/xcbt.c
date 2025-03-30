@@ -17,10 +17,10 @@
  *    misrepresented as being the original software.
  * 3. This notice may not be removed or altered from any source distribution.
  */
- 
+
 /*
  * XCB based toolkit.
- * 
+ *
  * MAYBE:
  *   glxSwapIntervalEXT
  */
@@ -58,10 +58,10 @@
 #undef TRACE
 #endif
 
-#ifdef _DEBUG
-#define TRACE printf
-#else
+#ifdef NDEBUG
 #define TRACE(...)
+#else
+#define TRACE printf
 #endif
 
 struct _xcbt_window;
@@ -115,7 +115,7 @@ typedef struct _xcbt_timer {
   time_t tv_sec; // when this timer should be triggered (absolute)
   int    tv_msec;
   int                   id; // id (user defined) of the timer (positive)
-  
+
   xcbt_timer_cb cb;
   void         *udata;
 } _xcbt_timer;
@@ -125,7 +125,7 @@ typedef struct {
   // this part should match struct xcbt
   xcb_connection_t *conn;       // xcb connection
   int               def_screen; // default screen
-  xcb_atom_t        catoms[XCBT_COMMON_ATOMS_COUNT]; // common atoms 
+  xcb_atom_t        catoms[XCBT_COMMON_ATOMS_COUNT]; // common atoms
 
   // XLib/XCB mode only
   Display *dpy; // indicate XLib/XCB combo is used (GL ready)
@@ -153,12 +153,12 @@ typedef struct {
   int      (*XCloseDisplay)(Display *dpy);
   int      (*(*XSetErrorHandler)(int (*handler)(Display *, XErrorEvent *)))();
   int     (*xlibOldErrorHandler)(Display *, XErrorEvent *);
-  
+
   // Xlib-xcb
   void    *xlib_xcb; // handle for libX11-xcb.so
   xcb_connection_t *(*XGetXCBConnection)(Display *dpy);
   void (*XSetEventQueueOwner)(Display *dpy, enum XEventQueueOwner owner);
-  
+
 } _xcbt;
 
 
@@ -167,7 +167,7 @@ typedef struct _xcbt_window {
   // should match .h
   _xcbt *x;
   xcb_window_t wnd;
-  int screen;  
+  int screen;
   xcb_window_t x_prt;
   xcbt_rect pos; // position inside parent
   int  mapped; // bool, logical state indicating our expectation...
@@ -179,7 +179,7 @@ typedef struct _xcbt_window {
   // inheritance
   void                     *udata;    // user data
   xcbt_window_handler       uhandler; // user event handler
-  
+
   xcb_colormap_t cmap;
 
   int indraw; // controlled by draw_begin/stop/end_paint, to allow reentrant calls
@@ -187,16 +187,16 @@ typedef struct _xcbt_window {
   // for GL window
   GLXContext  ctx;
   GLXDrawable glwnd;
-  
+
   // for all windows
   xcb_gcontext_t gc; // simple context with B/W bg/fg, created when some context is needed
-  
+
 } _xcbt_window;
 
 
 /*
  * Monolitic time in uSec resolution
- * 
+ *
  * Parameters:
  *   tv - current time is returned there
  */
@@ -220,7 +220,7 @@ static int timespec_cmp(const struct timespec* lhs, const struct timespec* rhs)
 
 /*
  * Manipulate timers
- * 
+ *
  * Parameters:
  *   pxw - window for which timer should be set
  *   id  - id of the timer, should be positive, -1 means remove all currently defined timers for specified window (usec is ignored)
@@ -257,8 +257,8 @@ void xcbt_timer_set(xcbt px, int timer_id, int msec, xcbt_timer_cb cb, void *uda
             t->tv_sec += t->tv_msec / 1000;
             t->tv_msec %= 1000;
           }
-          // ordered add timer 
-          for(pt = &x->timers; 
+          // ordered add timer
+          for(pt = &x->timers;
               *pt && (((*pt)->tv_sec < t->tv_sec) || (((*pt)->tv_sec == t->tv_sec) && ((*pt)->tv_msec < t->tv_msec)));
               pt = &(*pt)->next);
           t->next = *pt;
@@ -274,18 +274,18 @@ void xcbt_timer_set(xcbt px, int timer_id, int msec, xcbt_timer_cb cb, void *uda
         x->timer_changed = 1;
       }
     }
-  }      
-}  
+  }
+}
 
 /*
  * GL/GLX use global function pointers.
  * So the whole thing works in case there is just one set of GL libraries required
- * 
+ *
  * In addition GLAD dlclose used libraries, that can lead to real unloading in case
  * they are not referenced. So just check we have tried to load it already.
  * That introduce reference "leak", so GL/GLX will not be unloaded till the program exit.
  * But I have no better idea at the moment.
- * 
+ *
  * NOT THREAD SAFE.
  */
 #ifndef USE_GLAD_GLX
@@ -419,7 +419,9 @@ void xcbt_sync_dbg(xcbt px){
  * Ignore XLib errors for now
  */
 static int xcbt_XErrorHandler(Display *dpy, XErrorEvent *ev ){
-    TRACE("XLib error\n");
+    char errbuf[2048];
+    XGetErrorText(ev->display, ev->error_code, errbuf, sizeof(errbuf));
+    TRACE("XLib error: %s\n", errbuf);
     return 0;
 }
 
@@ -467,7 +469,7 @@ static int xcbt_connect_init(_xcbt *x, uint32_t flags)
 {
   if ((flags & XCBT_INIT_ATOMS))
     xcbt_load_atoms(x);
-  
+
   // Iterate through screens
   {
     xcb_screen_iterator_t iter;
@@ -602,15 +604,15 @@ int xcbt_get_img_prop(xcbt px, unsigned depth, xcbt_img_prop *prop){
 
 /**
  * Choose GLX FB Config (for GL window)
- * 
+ *
  * At the moment it searchs best MSAA.
- * 
+ *
  * Parameters:
  *   fbc_best - where should we store the index of best config
- * 
+ *
  * Returns:
  *   array of all supported configs, should be freed
- * 
+ *
  * Note: I am not sure list of configs can be freed before using one of configs. So I return the list (which should be freed) and
  *       the index of proposed config to use
  */
@@ -631,7 +633,7 @@ static GLXFBConfig *xcbt_window_gl_choose_fbconfig(_xcbt_window *xw, int *fbc_be
     //GLX_SAMPLES         , 4,
     None
   };
-  
+
   GLXFBConfig *fbc;
   Display *dpy;
   int          fbc_count, i , sb, samples, samples_best = -1;
@@ -669,15 +671,15 @@ static GLXFBConfig *xcbt_window_gl_choose_fbconfig(_xcbt_window *xw, int *fbc_be
 
 /***
  * Create GL context for window
- * 
+ *
  * Parameters:
  *   fbc - GLX FB Config to use
  *   major_version, minor_version - version of GL
  *   debug - set to non zero to enable debugging
- * 
+ *
  * Return:
  *   non zero when the context could be created
- * 
+ *
  * It is a bit unclear with versions for me. It seems like latest version (3.2+) can be returned without ARB,
  * but I have seen comments that for 2.0 it is better use ARB and request 1.0 to avoid compatibility issues. A bit confusing.
  */
@@ -836,7 +838,7 @@ xcbt_window xcbt_window_gl_create(xcbt px, xcb_window_t prt, const xcbt_rect *po
       if(glXGetFBConfigAttrib(dpy, fbc, GLX_VISUAL_ID, (int *)&vid) == Success){
         TRACE("Choosen visual: 0x%x\n", (unsigned)vid);
         if(xcbt_window_gl_create_context(xw, fbc, gl_major, gl_minor, debug)){
-          uint32_t eventmask = 
+          uint32_t eventmask =
                   XCB_EVENT_MASK_EXPOSURE | // we want to know when we need to redraw
                   XCB_EVENT_MASK_STRUCTURE_NOTIFY | // get varius notification messages like configure, reparent, etc.
                   XCB_EVENT_MASK_PROPERTY_CHANGE | // useful when something will change our property
@@ -873,7 +875,7 @@ xcbt_window xcbt_window_gl_create(xcbt px, xcb_window_t prt, const xcbt_rect *po
 }
 
 xcbt_window xcbt_window_top_create(xcbt px, int screen, const char *title, const xcbt_rect *pos){
-  uint32_t eventmask = 
+  uint32_t eventmask =
     XCB_EVENT_MASK_EXPOSURE | // we want to know when we need to redraw
     XCB_EVENT_MASK_STRUCTURE_NOTIFY | // get varius notification messages like configure, reparent, etc.
     XCB_EVENT_MASK_PROPERTY_CHANGE | // useful when something will change our property
@@ -902,7 +904,7 @@ xcbt_window xcbt_window_top_create(xcbt px, int screen, const char *title, const
                       XCB_WINDOW_CLASS_INPUT_OUTPUT, si->root_visual, XCB_CW_EVENT_MASK, wa);
     xcbt_window_register(xw);
 
-    // WM hints    
+    // WM hints
     if(title){
       xcb_change_property(x->conn, XCB_PROP_MODE_REPLACE, xw->wnd, XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8, strlen(title), title);
       xcb_change_property(x->conn, XCB_PROP_MODE_REPLACE, xw->wnd, XCB_ATOM_WM_ICON_NAME, XCB_ATOM_STRING, 8, strlen(title), title);
@@ -931,7 +933,7 @@ xcbt_window xcbt_window_create(xcbt px, xcb_window_t prt, const xcbt_rect *pos){
     memcpy(&xw->pos, pos, sizeof(xcbt_rect));
     xw->screen = xcbt_xcb_window_screen(x, prt);
     if((xw->screen >= 0) && (si = xcbt_screen_info(px, xw->screen))){
-      uint32_t eventmask = 
+      uint32_t eventmask =
                   XCB_EVENT_MASK_EXPOSURE | // we want to know when we need to redraw
                   XCB_EVENT_MASK_STRUCTURE_NOTIFY | // get varius notification messages like configure, reparent, etc.
                   XCB_EVENT_MASK_PROPERTY_CHANGE | // useful when something will change our property
@@ -956,7 +958,7 @@ xcbt_window xcbt_window_create(xcbt px, xcb_window_t prt, const xcbt_rect *pos){
       }
     } else {
       TRACE("ERROR: problems with suggested parent window 0x%x\n", prt);
-    } 
+    }
   }
   xcbt_window_destroy((xcbt_window)xw);
   return NULL;
@@ -995,7 +997,7 @@ void xcbt_window_unmap(xcbt_window pxw){
 
 void *xcbt_window_draw_begin(xcbt_window pxw){
   _xcbt_window *xw = (_xcbt_window *)pxw;
-  if(xw){    
+  if(xw){
     if(xw->ctx){
       if(++xw->indraw > 1){
         GLXContext old = glXGetCurrentContext();
@@ -1004,7 +1006,10 @@ void *xcbt_window_draw_begin(xcbt_window pxw){
         }
         return old; // can be NULL if gl could not be loaded, not a separate error
       }
-      glXMakeContextCurrent(xw->x->dpy, xw->glwnd, xw->glwnd, xw->ctx);
+      if (!glXMakeContextCurrent(xw->x->dpy, xw->glwnd, xw->glwnd, xw->ctx)) {
+        TRACE("XCBT:BUG: glXMakeContextCurrent failed\n");
+        return NULL;
+      }
       if(xcbt_glad_gl_load(xw->x))
         return xw->ctx;
       glXMakeContextCurrent(xw->x->dpy, None, None, NULL);
@@ -1032,12 +1037,15 @@ int xcbt_window_draw_end(xcbt_window pxw){
          *   The following does not produce an error or visible bugs, but mouse events "disappear".
          *   That can be related to Interval... usleep(200000) before draw_end "eat" events completely,
          *   but only in case this call is made.
-         * 
+         *
          *   glFinish(), sync, usleep DO NOT HELP
         if(!glXMakeContextCurrent(xw->x->dpy, None, None, NULL)){
           TRACE("XCBT:BUG: reseting context does not work\n");
         }
         */
+        if (!glXMakeContextCurrent(xw->x->dpy, 0, 0, NULL)) {
+          TRACE("XCBT:BUG: resetting context failed\n");
+        }
       } else {
         xcb_flush(xw->x->conn);
       }
@@ -1212,7 +1220,7 @@ const char* xcbt_clipboard_get_utf8(xcbt_window pxw, int* length)
   xcb_convert_selection(x->conn, xw->wnd,
       XCBT_ATOM_CLIPBOARD(x), XCBT_ATOM_UTF8_STRING(x), XCBT_ATOM_CLIPBOARD(x), XCB_CURRENT_TIME);
   xcbt_flush(x);
-  
+
   struct timespec now;
   struct timespec until;
   clock_gettime(CLOCK_MONOTONIC_RAW, &now);
@@ -1291,7 +1299,7 @@ void xcbt_window_get_screen_pos(xcbt_window pxw, xcbt_rect* rect)
 }
 
 /*
- * Event 0 is an error, print details  
+ * Event 0 is an error, print details
  */
 static void _xcbt_event_process_error(_xcbt *x, xcb_value_error_t *err) {
 	TRACE("XCB ERROR:: code %d, sequence %d, value %d, opcode %d:%d\n", err->error_code, err->sequence, err->bad_value, err->minor_opcode, err->major_opcode);
@@ -1319,7 +1327,7 @@ static void xcbt_event_process(_xcbt *x, xcb_generic_event_t *evt){
       wnd = (xcb_window_t)evt->pad[0];
       break;
     case XCB_KEY_PRESS:
-    case XCB_KEY_RELEASE:  
+    case XCB_KEY_RELEASE:
     case XCB_MOTION_NOTIFY:
     case XCB_ENTER_NOTIFY:
     case XCB_LEAVE_NOTIFY:
@@ -1334,7 +1342,7 @@ static void xcbt_event_process(_xcbt *x, xcb_generic_event_t *evt){
           */
         xcb_motion_notify_event_t *mn = (xcb_motion_notify_event_t *)evt;
         wnd = mn->event;
-        // TODO: check when happenes in case of grabs 
+        // TODO: check when happenes in case of grabs
         break;
       }
     // TODO: all events with window in other position
@@ -1356,7 +1364,7 @@ static void xcbt_event_process(_xcbt *x, xcb_generic_event_t *evt){
 
 /*
  * Execute timers when it is time to do so.
- * 
+ *
  * Returns in milliseconds the eariest timer or -1 in case there is no timers.
  */
 static int _xcbt_process_timers(_xcbt *x){
@@ -1402,7 +1410,7 @@ int xcbt_process(xcbt px){
 
 /**
  * Event loop (blocking)
- * 
+ *
  * Parameters:
  *   exit_cond - a pointer to variable, when this variable is not zero the loop exit. When NULL, only currently pending events are processed.
  *
@@ -1453,7 +1461,7 @@ static void xcbt_receive_clipboard(_xcbt_window *xw, xcb_atom_t property)
     x->clipboard_owner = 0;
     x->clipboard_data[x->clipboard_length - 1] = 0;
     xcb_icccm_get_text_property_reply_wipe(&prop);
-    xcb_delete_property(x->conn, xw->wnd, property); 
+    xcb_delete_property(x->conn, xw->wnd, property);
   }
 }
 
@@ -1472,14 +1480,14 @@ static void xcbt_window_default_handler(_xcbt_window *xw, xcb_generic_event_t *e
         if(mn->event == mn->window){
           if(!xw->xmapped){
             xw->xmapped = 1;
-            if(!xw->mapped){ 
+            if(!xw->mapped){
               // TODO: while waiting for map confirmation, we could decided to unmap, but with XEmbed we are mapped by embedder...
               // xcb_unmap_window(xw->x->conn, xw->wnd);
             }
           }
         } // else comes from SubstructureNotify, can be interesting for specialy cases only
         break;
-      } 
+      }
     case XCB_UNMAP_NOTIFY:
       {
         xcb_unmap_notify_event_t *mn = (xcb_unmap_notify_event_t *)evt;
@@ -1490,7 +1498,7 @@ static void xcbt_window_default_handler(_xcbt_window *xw, xcb_generic_event_t *e
           }
         } // else comes from SubstructureNotify, can be interesting for specialy cases only
         break;
-      } 
+      }
     case XCB_CONFIGURE_NOTIFY:
       {
         xcb_configure_notify_event_t *cn = (xcb_configure_notify_event_t *)evt;
@@ -1504,7 +1512,7 @@ static void xcbt_window_default_handler(_xcbt_window *xw, xcb_generic_event_t *e
           }
         } // else comes from SubstructureNotify, can be interesting for specialy cases only
         break;
-      } 
+      }
       /*
       // can f.e. try to change position
       {
@@ -1598,7 +1606,7 @@ static void xcbt_window_default_handler(_xcbt_window *xw, xcb_generic_event_t *e
     case XCB_SELECTION_NOTIFY:
     {
       // We requested clipoard data and it has arrived.
-      // In some cases 
+      // In some cases
       xcb_selection_notify_event_t* e_notify = (xcb_selection_notify_event_t*) evt;
       if (e_notify->selection == XCBT_ATOM_CLIPBOARD(x) && e_notify->property != XCB_NONE)
       {
@@ -1612,7 +1620,7 @@ static void xcbt_window_default_handler(_xcbt_window *xw, xcb_generic_event_t *e
           memcpy(x->clipboard_data, prop.name, x->clipboard_length);
           x->clipboard_owner = 0;
           xcb_icccm_get_text_property_reply_wipe(&prop);
-          xcb_delete_property(x->conn, e_notify->requestor, e_notify->property); 
+          xcb_delete_property(x->conn, e_notify->requestor, e_notify->property);
         }
       }
       break;
@@ -1645,7 +1653,7 @@ static xcb_gcontext_t _xcbt_window_default_gc(_xcbt_window *xw){
     }
   }
   return 0;
-} 
+}
 
 int xcbt_window_draw_img(xcbt_window pxw, unsigned depth, unsigned w, unsigned h, int x, int y, unsigned data_length, uint8_t *data){
   _xcbt_window *xw = (_xcbt_window *)pxw;
@@ -1655,7 +1663,7 @@ int xcbt_window_draw_img(xcbt_window pxw, unsigned depth, unsigned w, unsigned h
   }
   return 0;
 }
-  
+
 int xcbt_embed_set(xcbt px, xcbt_embed *e){
   _xcbt *x = (_xcbt *)px;
   if(!x)
@@ -1701,9 +1709,9 @@ typedef struct {
     int         fd;
   } watch[_XCBT_EMBED_WATCH_COUNT];
   int watch_count;
-  
+
   int  timer_tag;
-    
+
   void    *(*g_io_channel_unix_new)(int fd);
   unsigned (*g_io_add_watch)(GIOChannel *channel, int condition, void *func, void *user_data);
   void     (*g_io_channel_unref)(GIOChannel *channel);
@@ -1823,14 +1831,14 @@ xcbt_embed *xcbt_embed_glib(){
       TRACE("INFO: GLib is loaded explicitly\n");
     }
   }
-  
+
   if(!(eg->g_io_channel_unix_new = dlsym(h, "g_io_channel_unix_new")) ||
      !(eg->g_io_add_watch = dlsym(h, "g_io_add_watch")) ||
      !(eg->g_io_channel_unref = dlsym(h, "g_io_channel_unref")) ||
      !(eg->g_source_remove = dlsym(h, "g_source_remove")) ||
      !(eg->g_timeout_add = dlsym(h, "g_timeout_add"))
      ){
-    
+
     TRACE("%p\n", eg->g_timeout_add);
     TRACE("FATAL: compatible GLib is not loaded\n");
     free(eg);

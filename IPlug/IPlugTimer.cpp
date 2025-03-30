@@ -1,10 +1,10 @@
 /*
  ==============================================================================
- 
- This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers. 
- 
+
+ This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers.
+
  See LICENSE.txt for  more info.
- 
+
  ==============================================================================
 */
 
@@ -78,7 +78,7 @@ Timer_impl::Timer_impl(ITimerFunction func, uint32_t intervalMs)
 
 {
   ID = SetTimer(0, 0, intervalMs, TimerProc); //TODO: timer ID correct?
-  
+
   if (ID)
   {
     WDL_MutexLock lock(&sMutex);
@@ -109,7 +109,7 @@ void CALLBACK Timer_impl::TimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWOR
   for (auto i = 0; i < sTimers.GetSize(); i++)
   {
     Timer_impl* pTimer = sTimers.Get(i);
-    
+
     if (pTimer->ID == idEvent)
     {
       pTimer->mTimerFunc(*pTimer);
@@ -118,10 +118,6 @@ void CALLBACK Timer_impl::TimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWOR
   }
 }
 #elif defined OS_LINUX
-
-#if IPLUG_EDITOR
-static IPlugTaskThread sMainThread;
-#endif
 
 WDL_Mutex Timer_impl::sMutex;
 WDL_PtrList<Timer_impl> Timer_impl::sTimers;
@@ -139,7 +135,7 @@ Timer_impl::Timer_impl(ITimerFunction func, uint32_t intervalMs)
 {
   auto cb = [&](uint64_t time) -> bool { mTimerFunc(*this); return true; };
   Task task = Task::FromMs(intervalMs, intervalMs, cb);
-  mID = sMainThread.Push(task);
+  mID = IPlugTaskThread::instance()->Push(task);
 }
 
 Timer_impl::~Timer_impl()
@@ -151,7 +147,7 @@ void Timer_impl::Stop()
 {
   if (mID)
   {
-    sMainThread.Cancel(mID);
+    IPlugTaskThread::instance()->Cancel(mID);
     mID = 0;
   }
 }

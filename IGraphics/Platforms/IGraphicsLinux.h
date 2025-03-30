@@ -13,6 +13,7 @@
 #include "IGraphics_select.h"
 #include <memory>
 #include <xcbt.h>
+#include <mutex.h>
 
 BEGIN_IPLUG_NAMESPACE
 class Timer;
@@ -60,6 +61,12 @@ public:
   void CachePlatformFont(const char* fontID, const PlatformFontPtr& font) override { } // No reason to cache (no universal font handle)
   void SetIntegration(void* mainLoop) override;
 
+  /**
+   * @brief Process a GUI frame, must be called at least as often as necessary for the desired FPS.
+   * @remark This should be called from the GUI thread, but it's usually safe to call from other threads as well.
+   */
+  void ProcessFrame();
+
 protected:
   IPopupMenu* CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT bounds, bool& isAsync) override { /* NO-OP */ return nullptr; }
   void CreatePlatformTextEntry(int paramIdx, const IText& text, const IRECT& bounds, int length, const char* str) override { /* NO-OP */ }
@@ -71,6 +78,8 @@ private:
   xcbt_embed* mEmbed = NULL;
   xcbt_window mPlugWnd = NULL;
   xcbt_window_handler mBaseWindowHandler;
+  WDL_Mutex mXLock;
+
   void* mBaseWindowData;
 
   /** Double-click timeout in milliseconds */

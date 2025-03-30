@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 
 function(_iplug_load_module_lv2)
 
-  set(cwd ${CMAKE_CURRENT_LIST_DIR})
+  set(cwd ${IPLUG2_SDK_PATH}/IPlug/LV2)
   set(deps_dir ${IPLUG2_SDK_PATH}/Dependencies/IPlug)
 
   # So that we can generate the .ttl file
@@ -37,11 +37,11 @@ function(_iplug_load_module_lv2)
     DEFINE
     "LV2_API"
     "SAMPLE_TYPE_FLOAT=1"
-    "LV2_CONTROL_PORTS"
+    # "LV2_CONTROL_PORTS"
 
     SOURCE
-    IPlugLV2.h
-    IPlugLV2.cpp
+    ${cwd}/IPlugLV2.h
+    ${cwd}/IPlugLV2.cpp
 
     INCLUDE
     ${LV2_SDK_PATH}
@@ -59,9 +59,9 @@ function(_iplug_load_module_lv2)
     "IPLUG_DSP=1"
 
     SOURCE
-    IPlugLV2_cfg.cpp
-    TTLDocument.h
-    TTLDocument.cpp
+    ${cwd}/IPlugLV2_cfg.cpp
+    ${cwd}/TTLDocument.h
+    ${cwd}/TTLDocument.cpp
 
     LINK
     iPlug2_LV2
@@ -73,10 +73,6 @@ function(_iplug_load_module_lv2)
     DEFINE
     "LV2C_API=1"
     "IPLUG_EDITOR=1"
-
-    SOURCE
-    IPlugLV2.h
-    IPlugLV2.cpp
 
     LINK
     iPlug2_LV2
@@ -119,12 +115,7 @@ function(iplug_configure_lv2 base_plugin target)
   # add_dependencies(${target} rundyn)
 
   # Handle resources
-  if (res_dir)
-    iplug_target_bundle_resources(${target} "${res_dir}")
-  endif()
-
-  # After building copy to the correct directory
-  iplug_add_post_build_copy(${target} "${output_dir}" "${install_dir}")
+  iplug_target_bundle_resources(${target} "${res_dir}")
 
   # Add ui library
   if (NOT gui_libraries STREQUAL iPlug2_NoGraphics)
@@ -142,4 +133,6 @@ function(iplug_configure_lv2 base_plugin target)
     add_dependencies(${target} ${target_ui})
   endif()
 
+  # After building copy to the correct directory
+  iplug_add_post_build_copy(${target} "${output_dir}" "${install_dir}")
 endfunction()

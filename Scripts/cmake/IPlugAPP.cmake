@@ -2,7 +2,8 @@ cmake_minimum_required(VERSION 3.20)
 
 set(WDL_DIR ${IPLUG2_SDK_PATH}/WDL)
 
-add_subdirectory(RTLibs ${CMAKE_BINARY_DIR}/IPlug/RTLibs)
+set(cwd ${IPLUG2_SDK_PATH}/IPlug/APP)
+add_subdirectory(${cwd}/RTLibs ${CMAKE_BINARY_DIR}/IPlug/RTLibs)
 add_subdirectory(${WDL_DIR}/lice ${CMAKE_BINARY_DIR}/WDL/lice)
 add_subdirectory(${WDL_DIR}/swell ${CMAKE_BINARY_DIR}/WDL/swell)
 
@@ -11,7 +12,6 @@ add_subdirectory(${WDL_DIR}/swell ${CMAKE_BINARY_DIR}/WDL/swell)
 ##############
 
 add_library(iPlug2_APP INTERFACE)
-set(cwd ${CMAKE_CURRENT_LIST_DIR})
 set(_src
   ${cwd}/IPlugAPP.h
   ${cwd}/IPlugAPP.cpp

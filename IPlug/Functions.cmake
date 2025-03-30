@@ -242,7 +242,6 @@ function(iplug_copy_properties target_dst target_src properties)
   endforeach()
 endfunction(iplug_copy_properties)
 
-
 #[===[.rst:
 .. code-block:: cmake
 
@@ -261,10 +260,12 @@ function(iplug_add_post_build_copy target src_dir dest_dir)
   cmake_parse_arguments(arg "FORCE" "" "" ${ARGN})
   get_target_property(r ${target} IPLUG_COPY_AFTER_BUILD)
   if (r OR arg_FORCE)
+    message("Adding copy after build for ${target} to ${dest_dir}")
     add_custom_command(TARGET ${target} POST_BUILD
       COMMAND ${CMAKE_COMMAND} ARGS "-E" "remove_directory" "${dest_dir}"
       COMMAND ${CMAKE_COMMAND} ARGS "-E" "copy_directory" "${src_dir}" "${dest_dir}"
-      COMMENT "Copying ${target} to ${dest_dir}")
+      COMMAND ${CMAKE_COMMAND} ARGS -E echo "Copied ${src_dir} to ${dest_dir}"
+    )
   endif()
 endfunction(iplug_add_post_build_copy)
 
@@ -308,13 +309,12 @@ endfunction(iplug_get_common_plugin_variables)
 
 
 #[===[.rst:
-.. code-block:: cmake
 
-  iplug_setup_plugin(
-    <target>
-    [NAME <name>]
-    [VERSION <version>]
-    [GRAPHICS <backend> [api]])
+Setup the base INTERFACE target for an iPlug2 plugin with required options.
+
+.. code-block:: cmake
+  iplug_setup_plugin(<target> [NAME <name>] [VERSION <version>]
+    [GRAPHICS <backend> [api]] [COPY_AFTER_BUILD])
 
 ``<target>``
   Plugin base target to configure.
@@ -325,7 +325,7 @@ endfunction(iplug_get_common_plugin_variables)
 ``VERSION``
   The plugin version. If unspecified, this defaults to the project version.
 
-``GRAPHICS <backend> [api]``
+``GRAPHICS``
   The ``GRAPHICS`` option selects the graphics backend. The options for
   `backend` are ``NanoVG``, ``Skia``, ``Custom``, or ``None``. NanoVG and Skia
   will use those libraries to implement the `IGraphics` backend. ``None``
@@ -336,9 +336,14 @@ endfunction(iplug_get_common_plugin_variables)
   These extra options control specifically which rendering API the backend uses.
   Use ``_`` for the default api for a given backend.
 
+``COPY_AFTER_BUILD``
+  For the output formats that support it, the plugin will be copied to the default
+  user-writable location where DAWs and other tools will search for plugins of
+  that format.
+
 #]===]
 function(iplug_setup_plugin target)
-  cmake_parse_arguments(arg "HAS_UI" "VERSION;NAME" "GRAPHICS" ${ARGN})
+  cmake_parse_arguments(arg "COPY_AFTER_BUILD" "VERSION;NAME" "GRAPHICS" ${ARGN})
 
   if (NOT arg_NAME)
     set(arg_NAME ${CMAKE_PROJECT_NAME})
@@ -346,15 +351,8 @@ function(iplug_setup_plugin target)
   if (NOT arg_VERSION)
     set(arg_VERSION ${CMAKE_PROJECT_VERSION})
   endif()
-
-  if (NOT arg_HAS_UI)
-    # Determine default for arg_HAS_UI
-    get_target_property(link_libs ${target} INTERFACE_LINK_LIBRARIES)
-
-    set(arg_HAS_UI TRUE)
-    if ("iPlug2_NoGraphics" IN_LIST link_libs)
-      set(arg_HAS_UI FALSE)
-    endif()
+  if (NOT arg_COPY_AFTER_BUILD)
+    set(arg_COPY_AFTER_BUILD OFF)
   endif()
 
   ## Parse graphics options ##
@@ -363,12 +361,15 @@ function(iplug_setup_plugin target)
   if (NOT arg_GRAPHICS)
     set(arg_GRAPHICS "NanoVG")
   endif()
+  # Append _ to make sure we have at least 2 items so getting
+  # items 1 and 2 always works.
+  list(APPEND arg_GRAPHICS "_")
 
   set(GUI0_OPTIONS NanoVG Skia Custom None)
   set(NANOVG_API_OPTIONS _ GL2 GL3)
   set(SKIA_API_OPTIONS _ GL2 GL3 CPU)
   list(GET arg_GRAPHICS 0 gui0)
-  list(SUBLIST arg_GRAPHICS 1 1 gui_api)
+  list(GET arg_GRAPHICS 1 gui_api)
 
   # Default api option
   if (NOT gui_api)
@@ -410,6 +411,8 @@ function(iplug_setup_plugin target)
     set(gui_libs iPlug2_${gui0} iPlug2_${gui_api})
   endif()
 
+  message(STATUS "GUI libraries for ${target} are ${gui_libs}")
+
   ## End parse graphics options ##
 
   set_target_properties(
@@ -418,6 +421,7 @@ function(iplug_setup_plugin target)
     IPLUG_PLUGIN_NAME ${arg_NAME}
     IPLUG_PLUGIN_VERSION ${arg_VERSION}
     IPLUG_PLUGIN_GRAPHICS "${gui_libs}"
+    IPLUG_COPY_AFTER_BUILD ${arg_COPY_AFTER_BUILD}
   )
 endfunction(iplug_setup_plugin)
 
@@ -458,9 +462,9 @@ function(iplug_add_format base_target format)
   cmake_parse_arguments(arg "COPY_AFTER_BUILD" "TARGET" "" ${ARGN})
 
   # List of all valid plugin formats
-  set(VALID_FORMATS "aax;app;au2;au3;lv2;vst2;vst3;wam")
+  set(VALID_FORMATS "aax;app;au2;au3;lv2;vst2;vst3;wam;clap")
   # Directory to load for each format in VALID_FORMATS
-  set(FORMAT_DIRS "AAX;APP;AUv2;AUv3;LV2;VST2;VST3;WEB")
+  set(FORMAT_DIRS "AAX;APP;AUv2;AUv3;LV2;VST2;VST3;WEB;CLAP")
 
   # Ensure the format is one of the valid options
   if (NOT ${format} IN_LIST VALID_FORMATS)
@@ -505,15 +509,19 @@ function(iplug_add_format base_target format)
 
   # Dynamically load the configure command
   set(configure_command "iplug_configure_${format}")
+
   if (NOT COMMAND ${configure_command})
     # Get format index and convert it to format subdir
     list(FIND VALID_FORMATS ${format} format_index)
     list(GET FORMAT_DIRS ${format_index} format_subdir)
-    # Load subdirectory with explicit binary directory because it's outside normal path.
-    add_subdirectory(${IPLUG2_SDK_PATH}/IPlug/${format_subdir} ${CMAKE_BINARY_DIR}/IPlug/${format_subdir})
+    include(IPlug${format_subdir} OPTIONAL RESULT_VARIABLE format_loaded)
+    if (NOT format_loaded)
+      # Load subdirectory with explicit binary directory because it's outside normal path.
+      add_subdirectory(${IPLUG2_SDK_PATH}/IPlug/${format_subdir} ${CMAKE_BINARY_DIR}/IPlug/${format_subdir})
+    endif()
   endif()
 
-  # Call the configure command
+  # Call the configure command to setup the plugin target(s).
   cmake_language(CALL ${configure_command} ${base_target} ${target})
 
   # Platform-handling for all formats.

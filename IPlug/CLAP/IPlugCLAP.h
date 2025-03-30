@@ -1,10 +1,10 @@
 /*
  ==============================================================================
- 
- This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers. 
- 
+
+ This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers.
+
  See LICENSE.txt for  more info.
- 
+
  ==============================================================================
 */
 
@@ -19,7 +19,11 @@
 
 #include "IPlugAPIBase.h"
 #include "IPlugProcessor.h"
+#if defined(BUILT_WITH_CMAKE)
+#include "clap/helpers/plugin.hh"
+#else
 #include "plugin.hh"
+#endif
 
 #include "config.h"   // This is your plugin's config.h.
 
@@ -76,12 +80,12 @@ class IPlugCLAP : public IPlugAPIBase
         default:            return CLAP_EVENT_PARAM_VALUE;
       }
     }
-    
+
     Type mType;
     int mIdx;
     double mValue;
   };
-  
+
 public:
   IPlugCLAP(const InstanceInfo& info, const Config& config);
 
@@ -90,7 +94,7 @@ public:
   void InformHostOfParamChange(int idx, double normalizedValue) override;
   void EndInformHostOfParamChange(int idx) override;
   bool EditorResize(int viewWidth, int viewHeight) override;
-  
+
   // IPlugProcessor
   void SetTailSize(int tailSize) override;
   void SetLatency(int samples) override;
@@ -105,11 +109,11 @@ private:
   bool startProcessing() noexcept override { return true; }
   void stopProcessing() noexcept override {}
   clap_process_status process(const clap_process* pProcess) noexcept override;
-  
+
   // clap_plugin_latency
   bool implementsLatency() const noexcept override { return true; }
   uint32_t latencyGet() const noexcept override { return GetLatency(); }
-  
+
   // clap_plugin_tail
   bool implementsTail() const noexcept override { return true; }
   uint32_t tailGet() const noexcept override;
@@ -118,7 +122,7 @@ private:
   bool implementsRender() const noexcept override { return true; }
   bool renderHasHardRealtimeRequirement() noexcept override { return false; }
   bool renderSetMode(clap_plugin_render_mode mode) noexcept override;
-  
+
   // clap_plugin_state
   bool implementsState() const noexcept override { return true; }
   bool stateSave(const clap_ostream* pStream) noexcept override;
@@ -128,24 +132,24 @@ private:
   bool implementsAudioPorts() const noexcept override;
   uint32_t audioPortsCount(bool isInput) const noexcept override;
   bool audioPortsInfo(uint32_t index, bool isInput, clap_audio_port_info* pInfo) const noexcept override;
-  
+
   // clap_plugin_audio_ports_config
   bool implementsAudioPortsConfig() const noexcept override;
   uint32_t audioPortsConfigCount() const noexcept override;
   bool audioPortsGetConfig(uint32_t index, clap_audio_ports_config* pConfig) const noexcept override;
   bool audioPortsSetConfig(clap_id configIdx) noexcept override;
-  
+
   // clap_plugin_note_ports
   bool implementsNotePorts() const noexcept override { return DoesMIDIIn() || DoesMIDIOut(); }
   uint32_t notePortsCount(bool isInput) const noexcept override;
   bool notePortsInfo(uint32_t index, bool isInput, clap_note_port_info* pInfo) const noexcept override;
-  
+
   // clap_plugin_params
   bool implementsParams() const noexcept override { return true; }
   uint32_t paramsCount() const noexcept override { return NParams(); }
-  
+
   bool paramsInfo(uint32_t paramIdx, clap_param_info* pInfo) const noexcept override;
-  
+
   bool paramsValue(clap_id paramIdx, double* pValue) noexcept override;
   bool paramsValueToText(clap_id paramIdx, double value, char* display, uint32_t size) noexcept override;
   bool paramsTextToValue(clap_id paramIdx, const char* display, double* pValue) noexcept override;
@@ -157,12 +161,12 @@ private:
   bool implementsGui() const noexcept override;
   bool guiCreate(const char* api, bool isFloating) noexcept override;
   void guiDestroy() noexcept override;
-  
+
   bool guiSetScale(double scale) noexcept override;
   bool guiShow() noexcept override;
   bool guiHide() noexcept override;
   bool guiGetSize(uint32_t* pWidth, uint32_t* pHeight) noexcept override;
-  
+
   bool guiCanResize() const noexcept override;
   bool guiAdjustSize(uint32_t* pWidth, uint32_t* pHeight) noexcept override;
   bool guiSetSize(uint32_t width, uint32_t height) noexcept override;
@@ -170,10 +174,10 @@ private:
   // clap_plugin_gui_cocoa/win32
   bool guiIsApiSupported(const char* api, bool isFloating) noexcept override;
   bool guiSetParent(const clap_window* pWindow) noexcept override;
-  
+
   // Helper to attach GUI Windows
   bool GUIWindowAttach(void* parent) noexcept;
-  
+
   // Parameter Helpers
   void ProcessInputEvents(const clap_input_events* pInputEvents) noexcept;
   void ProcessOutputParams(const clap_output_events* pOutputParamChanges) noexcept;
@@ -181,7 +185,7 @@ private:
 
   // IPlug2-style host retrieval
   ClapHost& GetClapHost() { return _host; }
-  
+
   // IPlug Config Helpers
   void SetDefaultConfig();
   int RequiredChannels() const;
@@ -189,7 +193,7 @@ private:
   uint32_t NChannels(ERoute direction, uint32_t bus) const;
   uint32_t NBuses(ERoute direction, int configIdx) const;
   uint32_t NChannels(ERoute direction, uint32_t bus, int configIdx) const;
-  
+
   IPlugQueue<ParamToHost> mParamValuesToHost {PARAM_TRANSFER_SIZE};
   IMidiQueueBase<SysExData> mSysExToHost;
   IMidiQueue mMidiToHost;
@@ -200,9 +204,15 @@ private:
   bool mHostHasTail = false;
   bool mTailUpdate = false;
   bool mLatencyUpdate = false;
-  
-  void* mWindow = nullptr;
   bool mGUIOpen = false;
+
+  void* mWindow = nullptr;
+
+#if defined(OS_LINUX)
+  /** @brief Used on Linux to have a gui update task on the secondary thread. */
+  uint32_t mGuiTaskId = 0;
+  void* mEmbed = nullptr;
+#endif
 };
 
 IPlugCLAP* MakePlug(const InstanceInfo& info);

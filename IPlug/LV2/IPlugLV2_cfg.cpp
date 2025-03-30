@@ -1,10 +1,10 @@
 /*
  ==============================================================================
- 
- This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers. 
- 
+
+ This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers.
+
  See LICENSE.txt for  more info.
- 
+
  ==============================================================================
 */
 /*
@@ -257,7 +257,7 @@ int IPlugLV2DSP::write_also(const char* dest_dir)
     .addPrefix("urid",  "<http://lv2plug.in/ns/ext/urid#>")
     .addPrefix("iplug2", "<https://iplug2.github.io/lv2#>")
     .addPrefix(PROP_PREFIX, "<" PLUG_URI "#>");
-  
+
   // Write iplug2 units, regardless of if we use them or not.
   auto build_unit = [&](const char* name, const char* label, const char *symbol, const char *format_str) -> TTLSubject*
   {
@@ -280,7 +280,7 @@ int IPlugLV2DSP::write_also(const char* dest_dir)
     .add("rdfs:subClassOf", "atom:Object")
     .add("rdfs:label", "\"UIMessage\"")
     .add("atom:cType", "\"LV2_Atom_Object\"");
-    
+
   int portIndex = 0;
 
   // Write generic control ports
@@ -327,7 +327,7 @@ int IPlugLV2DSP::write_also(const char* dest_dir)
 /*
   port = doc->subject(PROP_PREFIX ":port_ui_in");
   build_atom_port(*port, "lv2:InputPort", "atom:Object", portIndex++, "ui_in", "UI In", minOutputSize);
-  
+
   port = doc->subject(PROP_PREFIX ":port_ui_out");
   build_atom_port(*port, "lv2:OutputPort", "atom:Object", portIndex++, "ui_out", "UI Out", minOutputSize);
 */
@@ -367,7 +367,7 @@ int IPlugLV2DSP::write_also(const char* dest_dir)
     WDL_String symbol(name);
     if(!IsValidSymbol(symbol)) // spaces are not allowed
       symbol.SetFormatted(32, "out%d", n + 1);
-    
+
     port = doc->subject(fmtStr(msg, FMT_PORT_OUT_NAME, PROP_PREFIX, n));
     (*port)
       .add("a", "lv2:AudioPort")
@@ -428,7 +428,8 @@ int IPlugLV2DSP::write_also(const char* dest_dir)
       break;
     case IParam::kTypeDouble:
     default:
-      range.Set("atom:Double");
+      range.Set("atom:Float");
+      // range.Set("atom:Double");
       break;
     }
 
@@ -566,7 +567,7 @@ int IPlugLV2DSP::write_manifest(const char* dest_dir)
 
   // Write the UI for this config
 #ifdef PLUG_HAS_UI
-  
+
   fprintf(f,  "<" PLUG_UI_URI ">\n"
               "  a " UI_TYPE " ;\n"
               "  lv2:binary <" PLUG_NAME "_ui." DLL_EXT "> ;\n"
@@ -583,7 +584,7 @@ int IPlugLV2DSP::write_manifest(const char* dest_dir)
                 "  rdfs:seeAlso <" PLUG_NAME ".ttl> .\n",
                 i);
   }
-  
+
   fclose(f);
 
   return 0;
@@ -625,7 +626,7 @@ int IPlugLV2DSP::write_also(const char* dest_dir)
 
   // Write iplug2 units
   auto write_unit = [&](const char* name, const char* label, const char *symbol, const char *fmt_str) {
-    fprintf(f, 
+    fprintf(f,
       "iplug2:%s\n"
       "  a units:Unit ;\n"
       "  rdfs:label   \"%s\" ;\n"
@@ -638,7 +639,7 @@ int IPlugLV2DSP::write_also(const char* dest_dir)
   write_unit("unit_midi_ctrl", "MIDI Ctrl", "", "%d");
   write_unit("unit_pan", "Pan", "%", "%f");
   fprintf(f, "\n");
-              
+
   write_cfg_parameters(f);
 
   // Write UI config
@@ -705,7 +706,7 @@ int IPlugLV2DSP::write_also_io(FILE* f, const IOConfig* io, int io_index)
     const char *suffix = (n == nParams - 1) ? ";" : ",";
     fprintf(f, "    %s:Par%d %s\n", PROP_PREFIX, n, suffix);
   }
-  
+
   // Current port index
   int portIndex = 0;
 
@@ -799,7 +800,7 @@ int IPlugLV2DSP::write_also_io(FILE* f, const IOConfig* io, int io_index)
     WDL_String symbol(name);
     if(!IsValidSymbol(symbol)) // spaces are not allowed
       symbol.SetFormatted(32, "out%d", n + 1);
-    
+
     msg.SetFormatted(FMT_MAX,
       "a lv2:AudioPort, lv2:OutputPort ;\n"
       "lv2:index %d ;\n"
@@ -941,7 +942,7 @@ int main(int argc, const char *argv[])
 {
   const LV2_Descriptor *dsc = lv2_descriptor(0);
   LV2_Feature *features[] = { nullptr };
-  
+
   if ( dsc && dsc->instantiate )
   {
     LV2_Handle handle = dsc->instantiate(dsc, 44.1, ".", features);
@@ -971,7 +972,7 @@ LV2_SYMBOL_EXPORT int write_ttl(int argc, char **argv)
   // This tells the plugin that we're not actually going to instantiate it.
   LV2_Feature featInvalidInstance = { LV2_IPLUG2__InvalidInstance, nullptr };
   LV2_Feature *features[] = { &featInvalidInstance, nullptr };
-  
+
   if ( dsc && dsc->instantiate )
   {
     LV2_Handle handle = dsc->instantiate(dsc, 44.1, ".", features);

@@ -116,6 +116,11 @@ elseif (IPLUG_OS MATCHES "Linux")
   list(APPEND _inc ${WDL_DIR}/swell)
   list(APPEND _lib "pthread" "rt")
   list(APPEND _opt "-Wno-multichar")
+  # We require the task thread for our gui loop on Linux and to implement IPlugTimer
+  list(APPEND _src
+    ${cwd}/IPlugTaskThread.h
+    ${cwd}/IPlugTaskThread.cpp
+  )
 
 elseif (IPLUG_OS MATCHES "Darwin")
   list(APPEND _src
@@ -138,7 +143,7 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
 endif()
 
 # Set certain compiler flags, specifically errors if there are undefined symbols
-if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND NOT IPLUG_OS MATCHES "Emscripten")
+if (CMAKE_CXX_COMPILER_ID MATCHES "(Clang)|(GNU)" AND NOT IPLUG_OS MATCHES "Emscripten")
   list(APPEND _opt "-Wl,--no-undefined")
 endif()
 

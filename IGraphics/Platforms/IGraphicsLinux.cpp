@@ -19,6 +19,7 @@
 #include <xcb/xcb_event.h>
 #include <xcb/xcb_icccm.h>
 #include <xcb/xfixes.h>
+#include <mutex.h>
 
 #ifdef OS_LINUX
   #ifdef IGRAPHICS_GL
@@ -33,6 +34,10 @@ using namespace iplug;
 using namespace igraphics;
 
 #define IPLUG_TIMER_ID 2
+
+/** @brief global xcbt connection */
+// static xcbt* gXCon = nullptr;
+// static WDL_Mutex gXLock;
 
 class IGraphicsLinux::Font : public PlatformFont
 {
@@ -172,6 +177,7 @@ void IGraphicsLinux::Paint()
   IRECTList rects;
   rects.Add(ir.GetScaled(1.f / GetBackingPixelScale()));
 
+  mXLock.Enter();
   void* ctx = xcbt_window_draw_begin(mPlugWnd);
 
   if (ctx)
@@ -179,10 +185,12 @@ void IGraphicsLinux::Paint()
     Draw(rects);
     xcbt_window_draw_end(mPlugWnd);
   }
+  mXLock.Leave();
 }
 
 void IGraphicsLinux::DrawResize()
 {
+  mXLock.Enter();
   void* ctx = xcbt_window_draw_begin(mPlugWnd);
 
   if (ctx)
@@ -190,6 +198,7 @@ void IGraphicsLinux::DrawResize()
     IGRAPHICS_DRAW_CLASS::DrawResize();
     xcbt_window_draw_stop(mPlugWnd); // WARNING: in CAN BE reentrant!!! (f.e. it is called from SetScreenScale during initialization)
   }
+  mXLock.Leave();
   // WARNING: IPlug call it on resize, but at the end. When should we call Paint() ?
   // In Windows version "Update window" is called from PlatformResize, so BEFORE DrawResize...
 }
@@ -976,11 +985,16 @@ void* IGraphicsLinux::OpenWindow(void* pParent)
     return NULL;
   }
 
+  mXLock.Enter();
+  if (!mX)
+  {
 #ifdef IGRAPHICS_GL
-  mX = xcbt_connect(XCBT_USE_GL|XCBT_INIT_ATOMS);
+    mX = xcbt_connect(XCBT_USE_GL|XCBT_INIT_ATOMS);
 #else
-  mX = xcbt_connect(0);
+    mX = xcbt_connect(0);
 #endif
+  }
+  mXLock.Leave();
   if (!mX)
   {
     return NULL;
@@ -1001,6 +1015,7 @@ void* IGraphicsLinux::OpenWindow(void* pParent)
 
   // NOTE: In case plug-in report REAPER extension in REAPER, pParent is NOT XID (SWELL HWND? I have not checked yet)
 
+  mXLock.Enter();
 #ifdef IGRAPHICS_GL
 #ifdef IGRAPHICS_GL2
   mPlugWnd = xcbt_window_gl_create(mX, xprt, &r, 2, 1, 0);
@@ -1017,6 +1032,7 @@ void* IGraphicsLinux::OpenWindow(void* pParent)
   {
     xcbt_disconnect(mX);
     mX = NULL;
+    mXLock.Leave();
     return NULL;
   }
 
@@ -1029,6 +1045,7 @@ void* IGraphicsLinux::OpenWindow(void* pParent)
     mPlugWnd = NULL;
     xcbt_disconnect(mX);
     mX = NULL;
+    mXLock.Leave();
     return NULL;
   }
 
@@ -1041,7 +1058,7 @@ void* IGraphicsLinux::OpenWindow(void* pParent)
     SetAllControlsDirty();
     GetDelegate()->OnUIOpen();
 
-    xcbt_window_draw_stop(mPlugWnd);
+    xcbt_window_draw_end(mPlugWnd);
   }
 
   xcbt_timer_set(mX, IPLUG_TIMER_ID, 10, (xcbt_timer_cb) TimerHandlerProxy, this);
@@ -1049,11 +1066,7 @@ void* IGraphicsLinux::OpenWindow(void* pParent)
 #ifdef APP_API
   xcbt_window_map(mPlugWnd);
   //xcbt_window_set_xembed_info(mPlugWnd);
-#elif defined VST2_API
-  xcbt_window_set_xembed_info(mPlugWnd);
-#elif defined VST3_API
-  xcbt_window_set_xembed_info(mPlugWnd);
-#elif defined LV2_API
+#elif defined(VST2_API) || defined(VST3_API) || defined(LV2_API) || defined(CLAP_API)
   xcbt_window_set_xembed_info(mPlugWnd);
 #else
   #error "Map or not to map... that is the question"
@@ -1064,11 +1077,13 @@ void* IGraphicsLinux::OpenWindow(void* pParent)
   mCursorLock = false;
   mMouseVisible = true;
 
+  mXLock.Leave();
   return reinterpret_cast<void*>(xcbt_window_xwnd(mPlugWnd));
 }
 
 void IGraphicsLinux::CloseWindow()
 {
+  mXLock.Enter();
   if (mPlugWnd)
   {
     OnViewDestroyed();
@@ -1086,6 +1101,7 @@ void IGraphicsLinux::CloseWindow()
     mEmbed->dtor(mEmbed);
     mEmbed = nullptr;
   }
+  mXLock.Leave();
 }
 
 void IGraphicsLinux::GetMouseLocation(float& x, float& y) const
@@ -1601,6 +1617,14 @@ uint32_t IGraphicsLinux::GetUserDblClickTimeout()
   // Read $HOME/.config/gtk-3.0/settings.ini ; Var: gtk-double-click-time
   // Read $HOME/.config/kdeglobals, [KDE] section, Var: DoubleClickInterval
   return timeout;
+}
+
+void IGraphicsLinux::ProcessFrame()
+{
+  if (mPlugWnd && mEmbed)
+  {
+    xcbt_embed_idle_cb(mEmbed);
+  }
 }
 
 IGraphicsLinux::IGraphicsLinux(IGEditorDelegate& dlg, int w, int h, int fps, float scale)

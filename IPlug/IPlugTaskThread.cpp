@@ -159,7 +159,7 @@ public:
       while (mTasks.size() > 0)
       {
         TaskImpl task;
-        
+
         task = mTasks.top();
         // Determine if we are supposed to cancel this task
         auto cancelIter = std::find(cancelList.begin(), cancelList.end(), task.id);
@@ -208,7 +208,7 @@ public:
 
   std::vector<TaskImpl> mQueueIn;
   IPlugQueue<TaskID> mCancelQueue;
-  
+
   std::mutex mSignalLock;
   std::condition_variable mSignalCond;
   std::atomic_bool mSignalFlag;
@@ -252,5 +252,17 @@ void IPlugTaskThread::Stop()
 {
   mImpl->Stop();
 }
+
+static IPlugTaskThread* sInstance = nullptr;
+IPlugTaskThread* IPlugTaskThread::instance()
+{
+  // assume that we don't have concurrent initialization, for now
+  if (!sInstance)
+  {
+    sInstance = new IPlugTaskThread();
+  }
+  return sInstance;
+}
+
 
 END_IPLUG_NAMESPACE
