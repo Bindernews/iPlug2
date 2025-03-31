@@ -88,12 +88,15 @@ elseif (IPLUG_OS MATCHES "Linux")
   endif()
 
   list(APPEND _src
+    ${cwd}/Platforms/PlatformX11.hpp
+    ${cwd}/Platforms/PlatformX11.cpp
     ${cwd}/Platforms/IGraphicsLinux.cpp
     ${deps_dir}/xcbt/xcbt.c
   )
   list(APPEND _inc
     ${deps_dir}/xcbt
     ${WDL_DIR}
+    ${IPLUG2_SDK_PATH}/../SDL/include
   )
   list(APPEND _lib
     PkgConfig::X11Libraries
