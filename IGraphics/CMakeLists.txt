@@ -76,7 +76,7 @@ elseif (IPLUG_OS MATCHES "Linux")
         libxcb-util-dev
         libxcb-icccm4-dev
         libxcb-xfixes0-dev
-        libglx-dev
+        libglx-dev # only required for APP
       )
     else()
       set(apt_prog "<package_manager install>")

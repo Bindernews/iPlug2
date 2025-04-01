@@ -11,8 +11,8 @@
 #pragma once
 
 #include "IGraphics_select.h"
+#include "PlatformX11.hpp"
 #include <memory>
-#include <xcbt.h>
 #include <mutex.h>
 
 BEGIN_IPLUG_NAMESPACE
@@ -32,8 +32,8 @@ public:
 
   void* OpenWindow(void* pWindow) override;
   void CloseWindow() override;
-  void* GetWindow() override { return (void *)(intptr_t)mPlugWnd; }
-  bool WindowIsOpen() override { return (mPlugWnd); }
+  void* GetWindow() override { return mWindow->GetHandle(); }
+  bool WindowIsOpen() override { return mWindow != nullptr; }
   void PlatformResize(bool parentHasResized) override;
   void GetMouseLocation(float& x, float& y) const override;
   void HideMouseCursor(bool hide, bool lock) override;
@@ -62,10 +62,10 @@ public:
   void SetIntegration(void* mainLoop) override;
 
   /**
-   * @brief Process a GUI frame, must be called at least as often as necessary for the desired FPS.
+   * @brief Update the UI. This must be called frequently, usually at least once every 13 ms for 60 FPS.
    * @remark This should be called from the GUI thread, but it's usually safe to call from other threads as well.
    */
-  void ProcessFrame();
+  void Update();
 
 protected:
   IPopupMenu* CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT bounds, bool& isAsync) override { /* NO-OP */ return nullptr; }
@@ -74,30 +74,25 @@ protected:
 
   friend class IGraphics;
 private:
-  xcbt mX = NULL;
-  xcbt_embed* mEmbed = NULL;
-  xcbt_window mPlugWnd = NULL;
-  xcbt_window_handler mBaseWindowHandler;
+  /// @brief Window pointer
+  X11Window* mWindow = NULL;
+  /// @brief timestamp when we should re-render,
+  uint64_t mNextDrawTime;
+  /// @brief If true, then we should re-paint at the end of the call to Update().
+  bool mShouldPaint = false;
+  /// @brief Locked mouse position
+  IVec2 mMouseLockPos;
+
   WDL_Mutex mXLock;
 
-  void* mBaseWindowData;
-
-  /** Double-click timeout in milliseconds */
-  uint32_t mDblClickTimeout = 400;
-  xcb_timestamp_t mLastLeftClickStamp; // it will be not zero in case there is a chance for double click
-
-  IVec2 mMouseLockPos;
-  bool mMouseVisible;
+  /** Loop through the events provided by the window. */
+  void LoopEvents();
 
   void Paint();
   inline IMouseInfo GetMouseInfo(int16_t x, int16_t y, int16_t state);
   inline IMouseInfo GetMouseInfoDeltas(float& dX, float& dY, int16_t x, int16_t y, int16_t state);
-  void WindowHandler(xcb_generic_event_t* evt);
-  void TimerHandler(int id);
 
   static uint32_t GetUserDblClickTimeout();
-  static void WindowHandlerProxy(xcbt_window xw, xcb_generic_event_t* evt, IGraphicsLinux* pGraphics) { pGraphics->WindowHandler(evt); }
-  static void TimerHandlerProxy(xcbt x, int timer_id, IGraphicsLinux* pGraphics) { pGraphics->TimerHandler(timer_id); }
 };
 
 END_IGRAPHICS_NAMESPACE

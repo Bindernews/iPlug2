@@ -13,6 +13,7 @@
 #include "IPlugPlatform.h"
 #include <cstdint>
 #include <SDL3/SDL_events.h>
+#include <heapbuf.h>
 
 BEGIN_IPLUG_NAMESPACE
 BEGIN_IGRAPHICS_NAMESPACE
@@ -32,6 +33,29 @@ struct WRect
   uint32_t h;
 };
 
+/// @brief Indicates how to position the cursor when calling \c X11Window::MoveMouse
+enum EMouseMoveMode {
+  /// @brief The coordinates are inside the window
+  MOUSE_MOVE_WINDOW,
+  /// @brief The coordinates are relative to the screen
+  MOUSE_MOVE_SCREEN,
+  /// @brief The coordinates are an offset to the current cursor position
+  MOUSE_MOVE_RELATIVE,
+};
+
+enum PixelFormat {
+  /// @brief Pixels are RGB with 8 bits per channel (3 bpp)
+  kPF_RGB8 = 1,
+  /// @brief Pixels are RGBA with 8 bits per channel (4 bpp)
+  kPF_RGBA8 = 2,
+};
+
+/// @brief Lists the supported clipboard data formats.
+enum EClipboardFormat {
+  CLIPBOARD_FORMAT_UNKNOWN = 0,
+  CLIPBOARD_FORMAT_UTF8,
+};
+
 /// @brief The configuration options available when creating a new window.
 struct WindowOptions
 {
@@ -44,7 +68,7 @@ struct WindowOptions
   };
 
   /// @brief The parent window ID, 0 means no parent
-  uintptr_t parent = 0;
+  void* parent = 0;
   /// @brief The major OpenGL / GLES version, 0 means no GL context
   uint16_t glMajor = 0;
   /// @brief The minor OpenGL / GLES version
@@ -55,13 +79,6 @@ struct WindowOptions
   WRect bounds;
   /// @brief Other flags
   uint32_t flags;
-};
-
-enum PixelFormat {
-  /// @brief Pixels are RGB with 8 bits per channel (3 bpp)
-  kPF_RGB8 = 1,
-  /// @brief Pixels are RGBA with 8 bits per channel (4 bpp)
-  kPF_RGBA8 = 2,
 };
 
 class X11Window
@@ -96,6 +113,21 @@ public:
    */
   void SetTitle(const char* title);
 
+  void Resize(uint32_t w, uint32_t h);
+  void Move(int32_t x, int32_t y);
+  void RequestFocus();
+
+  void SetCursorVisible(bool visible);
+  bool IsCursorVisible() const;
+
+  void SetCursorLocked(bool lock);
+  bool IsCursorLocked() const;
+
+  void MoveMouse(EMouseMoveMode mode, int x, int y);
+
+  /// @brief Get the platform's native window handle.
+  void* GetHandle() const;
+
   /// @brief Take the next event from the list of queued events for
   /// this window, placing it into \c event .
   /// @param event destination for event data
@@ -124,6 +156,28 @@ public:
   /// @param options
   /// @return The newly created window, or \c NULL on failure
   X11Window* CreateWindow(const WindowOptions& options);
+
+  /// @brief Set the clipboard contents
+  /// @param format the format of the data
+  /// @param data the clipboard data
+  /// @param data_length length of \c data
+  /// @return true if setting the clipboard succeeded, false if it failed
+  bool SetClipboard(EClipboardFormat format, const void* data, uint32_t data_length);
+
+  /// @brief Get the clipboard format and, optionally, the contents.
+  /// @details
+  /// If \c *pFormat is \c CLIPBOARD_FORMAT_UNKNOWN then it will be set
+  /// to the correct format, otherwise it acts as a request for that format,
+  /// and thus \c pData will only be set if it's not \c NULL and if the
+  /// data in the clipboard matches the requested format.
+  /// @param pFormat the clipboard format; used to either obtain the current
+  /// format, or request a specific format
+  /// @param pData the clipboard data; may be \c NULL
+  /// @return true if there was clipboard data, false if not
+  bool GetClipboard(EClipboardFormat* pFormat, WDL_TypedBuf<uint8_t>* pData);
+
+  /// @brief Request that the platform commit any pending changes.
+  void Flush();
 
   /// @brief Process platform-specific events and update all windows
   /// attached to this platform. This is the "main loop" function

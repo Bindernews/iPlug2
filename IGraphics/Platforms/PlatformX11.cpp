@@ -36,9 +36,8 @@
 #include <X11/keysym.h>
 #define VKEY_UNSUPPORTED VKEY_UNKNOWN
 
-// glad_gl
-// #include <glad/glad.h>
 // use GLX loaded by GLAD, linking with glx librariy is required otherwise
+#include <glad/glad.h>
 #include <glad/glad_glx.h>
 
 #undef TRACE
@@ -116,12 +115,6 @@ struct XcbPlatform
     WM_DECORATIONS = 1 << 9,
   };
 
-  enum MouseMoveMode {
-    MOUSE_MOVE_SCREEN,
-    MOUSE_MOVE_WINDOW,
-    MOUSE_MOVE_RELATIVE,
-  };
-
   //------//
   // Xlib //
   //------//
@@ -167,7 +160,7 @@ struct XcbPlatform
   //---------------------------//
 
   /// @brief Contents of the clipboard, currently only supports UTF-8 / ASCII text
-  std::vector<uint8_t> mClipboardData;
+  WDL_TypedBuf<uint8_t> mClipboardData;
   // ID of window that owns clipboard data or 0 if not one of ours
   xcb_window_t mClipboardOwner;
 
@@ -200,25 +193,22 @@ struct XcbPlatform
   RealWindow* CreateBasicWindow(const WindowOptions& options);
   RealWindow* CreateGlxWindow(const WindowOptions& options);
 
-  /**
-   * @brief Initializes \c catoms
-   */
+  /// @brief Initializes \c catoms
   void LoadAtoms();
 
-  /**
-   * @brief Find and return screen number for xcb <window>.
-   * @return -1 in case of errors, the <window> is not found or its screen is not known
-   */
+  /// @brief Find and return screen number for xcb <window>.
+  /// @return -1 in case of errors, the <window> is not found or its screen is not known
   int WindowToScreen(xcb_window_t wnd);
 
   bool CheckScreenIsTrueColor(int screen) const;
 
-  bool MoveCursor(RealWindow* wnd, MouseMoveMode mode, int cx, int cy);
+  bool MoveCursor(RealWindow* wnd, EMouseMoveMode mode, int cx, int cy);
 
-  /**
-   * @brief Process a single X event.
-   * @details The event will be propogated to the appropriate child window(s).
-   */
+  bool SetClipboard(EClipboardFormat format, const void* data, size_t data_len);
+  bool GetClipboard(EClipboardFormat* pFormat, WDL_TypedBuf<uint8_t>* pData);
+
+  /// @brief Process a single X event.
+  /// @details The event will be propogated to the appropriate child window(s).
   void ProcessXEvent(xcb_generic_event_t* evt);
 
   /// @brief Process all events currently in the X event queue
@@ -269,6 +259,8 @@ struct RealWindow
   bool mVisible = false;
   /// @brief Are we locking the cursor?
   bool mCursorLock = false;
+  /// @brief Are we showing the cursor (true) or hiding it (false)?
+  bool mCursorVisible = true;
   /// @brief If we are locking the cursor, this is where
   xcb_point_t mLock;
   /// @brief Current known cursor position IN the window.
@@ -294,18 +286,18 @@ struct RealWindow
   ~RealWindow();
 
   /// @brief Convert the PlatformX11 pointer into an \c XcbPlatform pointer
-  inline XcbPlatform* CastX()
+  inline XcbPlatform* CastX() const
   { return reinterpret_cast<XcbPlatform*>(mPlatform); }
 
   /// @brief Get the \c xcb_connection_t* this window is bound to
-  inline xcb_connection_t* conn()
+  inline xcb_connection_t* conn() const
   { return CastX()->mConn; }
 
   /// @brief Initialize the window, filling in \c mWnd and \c mCmap
   /// @param options
   /// @param visualId
   /// @return success/failure
-  bool Create(const WindowOptions& options, int visualId);
+  bool CreateXWindow(const WindowOptions& options, int visualId);
 
   /// @brief Destroy the window and release associated data.
   void Destroy();
@@ -313,6 +305,15 @@ struct RealWindow
   void SetVisible(bool show);
   void SetTitle(const char* title);
   void EnableEmbed(bool on);
+  void Resize(uint32_t w, uint32_t h);
+  void Move(int32_t x, int32_t y);
+  void RequestFocus();
+
+  void SetCursorVisible(bool on);
+  bool IsCursorVisible() const;
+
+  void SetCursorLocked(bool lock);
+  bool IsCursorLocked() const;
 
   bool DrawBegin();
   void DrawEnd();
@@ -326,7 +327,8 @@ struct RealWindow
 
   bool PutPixels(const xcb_rectangle_t& area, unsigned depth, unsigned data_length, const uint8_t *data);
 
-  xcb_rectangle_t GetBounds();
+  /// @brief Get the position of this window relative to the screen root
+  xcb_point_t GetScreenPosition() const;
 
   void ProcessXEvent(xcb_generic_event_t* ev);
 
@@ -354,6 +356,7 @@ static xcb_get_property_reply_t* GetProperty(
   return prop;
 }
 
+/// @brief Convert a \c WRect into an \c xcb_rectangle_t
 static xcb_rectangle_t make_xrect(const WRect& r)
 {
   xcb_rectangle_t bb;
@@ -362,6 +365,29 @@ static xcb_rectangle_t make_xrect(const WRect& r)
   bb.width = (uint16_t)r.w;
   bb.height = (uint16_t)r.w;
   return bb;
+}
+
+/// @brief Convert an \c xcb_rectangle_t into a \c WRect
+static WRect make_wrect(const xcb_rectangle_t& r)
+{
+  WRect b;
+  b.x = r.x;
+  b.y = r.y;
+  b.w = r.width;
+  b.h = r.height;
+  return b;
+}
+
+/// @brief Cast a void pointer to an XID
+static uint32_t voidp_to_xid(void* p)
+{
+  return (uint32_t)reinterpret_cast<uintptr_t>(p);
+}
+
+/// @brief Cast an xcb ID/XID to a void*
+static void* xid_to_voidp(uint32_t x)
+{
+  return reinterpret_cast<void*>((uintptr_t)x);
 }
 
 #pragma endregion static helpers
@@ -383,6 +409,7 @@ static int XlibErrorHandler(Display *dpy, XErrorEvent *ev ){
 }
 
 XcbPlatform::XcbPlatform()
+: mClipboardData{1024}
 {
   mStatus = kNotAttempted;
   mClipboardOwner = 0;
@@ -488,7 +515,7 @@ RealWindow* XcbPlatform::CreateBasicWindow(const WindowOptions& options)
   RealWindow* w = new RealWindow(this);
   int visual_id;
 
-  int screen = WindowToScreen(options.parent);
+  int screen = WindowToScreen(voidp_to_xid(options.parent));
   if (screen < 0) {
     TRACE(LOG_PREFIX ": could not find parent screen");
     return nullptr;
@@ -499,7 +526,7 @@ RealWindow* XcbPlatform::CreateBasicWindow(const WindowOptions& options)
   }
   visual_id = mScreens[screen]->root_visual;
 
-  if (!w->Create(options, visual_id)) {
+  if (!w->CreateXWindow(options, visual_id)) {
     delete w;
     return nullptr;
   }
@@ -588,7 +615,10 @@ RealWindow* XcbPlatform::CreateGlxWindow(const WindowOptions& options)
     }
   }
 
-  if (!w->Create(options, visual_id)) {
+  // Set the GL context for the window
+  w->mGlContext = ctx;
+
+  if (!w->CreateXWindow(options, visual_id)) {
     return nullptr;
   }
 
@@ -684,7 +714,7 @@ bool XcbPlatform::CheckScreenIsTrueColor(int screen) const
         && (vt->red_mask == 0xff0000) && (vt->green_mask == 0xff00) && (vt->blue_mask == 0xff);
 }
 
-bool XcbPlatform::MoveCursor(RealWindow* wnd, MouseMoveMode mode, int cx, int cy)
+bool XcbPlatform::MoveCursor(RealWindow* wnd, EMouseMoveMode mode, int cx, int cy)
 {
   int screenIx = WindowToScreen(wnd->mWnd);
   xcb_screen_t* screen = mScreens[screenIx];
@@ -694,7 +724,7 @@ bool XcbPlatform::MoveCursor(RealWindow* wnd, MouseMoveMode mode, int cx, int cy
   if (mode == MOUSE_MOVE_WINDOW)
   {
     // Get the window position relative to the screen root.
-    xcb_rectangle_t re = wnd->GetBounds();
+    xcb_rectangle_t re = wnd->mBounds;
     ck = xcb_warp_pointer_checked(mConn, XCB_NONE, screen->root, 0, 0, 0, 0, re.x + cx16, re.y + cy16);
   }
   else if (mode == MOUSE_MOVE_RELATIVE)
@@ -715,6 +745,130 @@ bool XcbPlatform::MoveCursor(RealWindow* wnd, MouseMoveMode mode, int cx, int cy
     return false;
   }
   return true;
+}
+
+bool XcbPlatform::SetClipboard(EClipboardFormat format, const void* data, size_t data_len)
+{
+/*
+  This probably needs to be done on a root window, not embedded.
+
+  xcb_void_cookie_t cookie1 = xcb_set_selection_owner_checked(
+      x->conn, xw->wnd, XCBT_ATOM_CLIPBOARD(x), XCB_CURRENT_TIME);
+  xcb_void_cookie_t cookie2 = xcb_set_selection_owner_checked(
+      x->conn, xw->wnd, XCB_ATOM_PRIMARY, XCB_CURRENT_TIME);
+  xcbt_flush(x);
+  xcb_generic_error_t* err1 = xcb_request_check(x->conn, cookie1);
+  xcb_generic_error_t* err2 = xcb_request_check(x->conn, cookie2);
+  int ok = !err1 && !err2;
+  if (ok)
+  {
+    // Data length includes terminating null
+    x->clipboard_length = strlen(str) + 1;
+    x->clipboard_data = calloc(1, x->clipboard_length);
+    memcpy(x->clipboard_data, str, x->clipboard_length);
+    x->clipboard_owner = xw->wnd;
+  }
+  free(err1);
+  free(err2);
+  return ok;
+  */
+
+  // currently only support UTF8
+  if (format != CLIPBOARD_FORMAT_UTF8) {
+    return false;
+  }
+
+  // For now we implement this using xclip.
+  FILE* fd = popen("xclip -i -selection c", "w");
+  if (fd)
+  {
+    fwrite(data, 1, data_len, fd);
+    pclose(fd);
+    return true;
+  }
+  else
+  {
+    return false;
+  }
+}
+
+bool XcbPlatform::GetClipboard(EClipboardFormat *pFormat, WDL_TypedBuf<uint8_t>* pData)
+{
+#define LOG_PREFIX "PX11:GetClipboard"
+  if (!pFormat) {
+    TRACE(LOG_PREFIX ": pFormat cannot be NULL\n");
+    return false;
+  }
+  // TODO check formats for real
+  // Do that either using xclip -o -t TARGETS and string search, or
+  // implementing it ourselves (the preferred method)
+  if (*pFormat == CLIPBOARD_FORMAT_UNKNOWN) {
+    *pFormat = CLIPBOARD_FORMAT_UTF8;
+  }
+
+  if (pData) {
+    const int BUF_INCREMENT = 2048;
+    // For now we implement this using xclip.
+    FILE* fd = popen("xclip -o -selection c", "r");
+    if (fd) {
+      pData->Resize(0);
+      while (true) {
+        // resize buffer and set pointer to append to it
+        pData->Resize(pData->GetSize() + BUF_INCREMENT);
+        void* dst_ptr = pData->Get() + pData->GetSize() - BUF_INCREMENT;
+        size_t amount = fread(dst_ptr, 1, BUF_INCREMENT, fd);
+        if ((int)amount < BUF_INCREMENT) {
+          // resize buffer to real size
+          pData->Resize(pData->GetSize() + (int)amount);
+          break;
+        }
+      }
+
+      int exitCode = pclose(fd);
+      return exitCode == 0;
+    } else {
+      return false;
+    }
+  }
+  return true;
+
+  /*
+  // Either we don't own the window with the clipboard, or we don't know who does
+  x->clipboard_owner = 0;
+  x->clipboard_length = 0;
+  free(x->clipboard_data);
+  x->clipboard_data = NULL;
+
+  xcb_convert_selection(x->conn, xw->wnd,
+      XCBT_ATOM_CLIPBOARD(x), XCBT_ATOM_UTF8_STRING(x), XCBT_ATOM_CLIPBOARD(x), XCB_CURRENT_TIME);
+  xcbt_flush(x);
+
+  struct timespec now;
+  struct timespec until;
+  clock_gettime(CLOCK_MONOTONIC_RAW, &now);
+  until = now;
+  // Default timeout is 1 second
+  until.tv_sec += 1;
+
+  // We have a timeout because getting the clipboard might fail.
+  // https://jtanx.github.io/2016/08/19/a-cross-platform-clipboard-library/#linux
+  while (x->clipboard_length == 0 && timespec_cmp(&now, &until) < 0)
+  {
+    xcbt_process((xcbt)x);
+    clock_gettime(CLOCK_MONOTONIC_RAW, &now);
+  }
+  if (x->clipboard_length > 0)
+  {
+    *length = x->clipboard_length;
+    return x->clipboard_data;
+  }
+  else
+  {
+    *length = 0;
+    return NULL;
+  }
+  */
+#undef LOG_PREFIX
 }
 
 void XcbPlatform::ProcessXEvent(xcb_generic_event_t* evt)
@@ -783,12 +937,13 @@ void XcbPlatform::ProcessXEvent(xcb_generic_event_t* evt)
       auto e = (xcb_selection_clear_event_t*) evt;
       if (e->owner != mClipboardOwner) {
         mClipboardOwner = 0;
-        mClipboardData.clear();
+        mClipboardData.Resize(0);
       }
       // TODO Now we want to know who the new owner is.
       break;
     }
-    case XCB_SELECTION_REQUEST: {
+    case XCB_SELECTION_REQUEST:
+    {
       // This is clipboard-related request
       xcb_selection_request_event_t* e = (xcb_selection_request_event_t*) evt;
       if (e->property == XCB_NONE) {
@@ -801,7 +956,7 @@ void XcbPlatform::ProcessXEvent(xcb_generic_event_t* evt)
           || e->target == catoms[ATOM_TEXT]) {
         // Request clipboard contents
         ReplaceProperty(
-          e->requestor, e->property, e->target, 8, mClipboardData.size(), mClipboardData.data());
+          e->requestor, e->property, e->target, 8, mClipboardData.GetSize(), mClipboardData.GetFast());
       }
       else if (e->target == catoms[ATOM_TARGETS]) {
         // Request to see what type of targets we support
@@ -846,10 +1001,10 @@ void XcbPlatform::ProcessXEvent(xcb_generic_event_t* evt)
 
         if (xcb_icccm_get_text_property_reply(mConn, cookie, &prop, NULL)) {
           // resize clipboard data and copy it
-          mClipboardData.resize(prop.name_len + 1);
-          memcpy(mClipboardData.data(), prop.name, prop.name_len);
+          mClipboardData.Resize(prop.name_len + 1);
+          memcpy(mClipboardData.Get(), prop.name, prop.name_len);
           // ensure we have a null-terminator
-          mClipboardData[prop.name_len] = 0;
+          mClipboardData.Get()[prop.name_len] = 0;
           // Wipe the property and then delete it. Not sure why deleting is
           // required, but that's what the examples I've seen do.
           xcb_icccm_get_text_property_reply_wipe(&prop);
@@ -933,7 +1088,7 @@ RealWindow::~RealWindow()
   Destroy();
 }
 
-bool RealWindow::Create(const WindowOptions& options, int visual_id)
+bool RealWindow::CreateXWindow(const WindowOptions& options, int visual_id)
 {
   uint32_t eventmask =
     XCB_EVENT_MASK_EXPOSURE | // we want to know when we need to redraw
@@ -958,14 +1113,16 @@ bool RealWindow::Create(const WindowOptions& options, int visual_id)
   uint32_t wa[] = { eventmask, mCmap, 0 };
   // window's value mask.
   uint32_t value_mask = XCB_CW_EVENT_MASK | (hasCmap ? XCB_CW_COLORMAP : 0);
+  // parent XID
+  uint32_t parent = voidp_to_xid(options.parent);
 
   if (hasCmap) {
-    xcb_create_colormap(conn(), XCB_COLORMAP_ALLOC_NONE, mCmap, options.parent, visual_id);
+    xcb_create_colormap(conn(), XCB_COLORMAP_ALLOC_NONE, mCmap, parent, visual_id);
   }
   xcb_rectangle_t bb = make_xrect(options.bounds);
   xcb_void_cookie_t create_ok = xcb_create_window_checked(
     conn(), XCB_COPY_FROM_PARENT, mWnd,
-    options.parent, bb.x, bb.y, bb.width, bb.height, 0,
+    parent, bb.x, bb.y, bb.width, bb.height, 0,
     XCB_WINDOW_CLASS_INPUT_OUTPUT, visual_id, value_mask, wa);
   err = xcb_request_check(conn(), create_ok);
   if (err)
@@ -982,7 +1139,7 @@ bool RealWindow::Create(const WindowOptions& options, int visual_id)
   }
 
   // enable embedding by default
-
+  this->EnableEmbed(true);
 
   return true;
 }
@@ -1027,6 +1184,13 @@ bool RealWindow::DrawBegin()
   if (mInDraw == 1 && mGlContext) {
     if (!glXMakeContextCurrent(xp->dpy, mGlWindow, mGlWindow, mGlContext)) {
       TRACE(LOG_PREFIX ":BUG: glXMakeContextCurrent failed\n");
+      return false;
+    }
+    // TODO do these when we create a glX window, instead of every time we start a frame.
+    if (!gladLoadGLX(xp->dpy, xp->mDefaultScreen)) {
+      return false;
+    }
+    if (!gladLoadGL()) {
       return false;
     }
   }
@@ -1080,6 +1244,70 @@ void RealWindow::SetVisible(bool show)
     this->mVisible = show;
 }
 
+void RealWindow::Resize(uint32_t w, uint32_t h)
+{
+  uint32_t values[] = { w, h };
+  xcb_configure_window(conn(), mWnd, XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT, values);
+  xcb_flush(conn());
+}
+
+void RealWindow::Move(int32_t x, int32_t y)
+{
+  if (x < 0) x = 0;
+  if (y < 0) y = 0;
+  uint32_t values[] = { (uint32_t)x, (uint32_t)y };
+  xcb_configure_window(conn(), mWnd, XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, values);
+  xcb_flush(conn());
+}
+
+void RealWindow::RequestFocus()
+{
+  xcb_set_input_focus(conn(), XCB_INPUT_FOCUS_POINTER_ROOT, mWnd, XCB_CURRENT_TIME);
+  // xcb_set_input_focus_checked(xcbt_conn(mX), XCB_INPUT_FOCUS_POINTER_ROOT, mPlugWnd->wnd, XCB_CURRENT_TIME);
+}
+
+void RealWindow::SetCursorVisible(bool show)
+{
+  if (mCursorVisible == show) {
+    // nothing to do
+    return;
+  }
+  mCursorVisible = show;
+  // https://stackoverflow.com/questions/57841785/how-to-hide-cursor-in-xcb
+  if (mCursorVisible) {
+    xcb_xfixes_show_cursor_checked(conn(), mWnd);
+  } else {
+    xcb_xfixes_hide_cursor_checked(conn(), mWnd);
+  }
+}
+
+bool RealWindow::IsCursorVisible() const
+{
+  return mCursorVisible;
+}
+
+void RealWindow::SetCursorLocked(bool locked)
+{
+  if (mCursorLock == locked) {
+    // nothing to do
+    return;
+  }
+  mCursorLock = locked;
+  if (mCursorLock) {
+    mLock = mCursorPos;
+    xcb_grab_pointer(conn(), 1, mWnd,
+      XCB_EVENT_MASK_BUTTON_MOTION | XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE,
+      XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, mWnd, XCB_NONE, XCB_CURRENT_TIME);
+  } else {
+    xcb_ungrab_pointer(conn(), XCB_CURRENT_TIME);
+  }
+}
+
+bool RealWindow::IsCursorLocked() const
+{
+  return mCursorLock;
+}
+
 void RealWindow::EnableEmbed(bool on)
 {
   auto xp = CastX();
@@ -1097,32 +1325,30 @@ void RealWindow::EnableEmbed(bool on)
   }
 }
 
-xcb_rectangle_t RealWindow::GetBounds()
+xcb_point_t RealWindow::GetScreenPosition() const
 {
-  xcb_rectangle_t bb {0, 0, 0, 0};
+  xcb_point_t pt { -1, -1 };
 
   // Get the window position relative to the screen root.
   xcb_query_tree_cookie_t cookie1 = xcb_query_tree(conn(), mWnd);
   xcb_query_tree_reply_t* tree = xcb_query_tree_reply(conn(), cookie1, NULL);
   if (!tree) {
-    return bb;
-  }
-  // TODO finish
-  return mBounds;
-#if 0
-  xcb_translate_coordinates_cookie_t cookie2 = xcb_translate_coordinates(
-      conn(), mWnd, tree->root, xw->pos.x, xw->pos.y);
-  xcb_translate_coordinates_reply_t* trans = xcb_translate_coordinates_reply(x->conn, cookie2, NULL);
-  if (!trans) {
-    free(tree);
-    return;
+    return pt;
   }
 
-  rect->x = trans->dst_x;
-  rect->y = trans->dst_y;
+  xcb_translate_coordinates_cookie_t cookie2 = xcb_translate_coordinates(
+      conn(), mWnd, tree->root, mBounds.x, mBounds.y);
+  xcb_translate_coordinates_reply_t* trans = xcb_translate_coordinates_reply(conn(), cookie2, NULL);
+  if (!trans) {
+    free(tree);
+    return pt;
+  }
+
+  pt.x = trans->dst_x;
+  pt.y = trans->dst_y;
   free(tree);
   free(trans);
-#endif
+  return pt;
 }
 
 bool RealWindow::DrawImage(const WRect& area, int format, const uint8_t* data)
@@ -1222,11 +1448,19 @@ void RealWindow::ProcessXEvent(xcb_generic_event_t* evt)
       }
       #endif
 
+      // info.ms = IMouseMod((state & XCB_BUTTON_MASK_1), (state & XCB_BUTTON_MASK_3), // Note "2" is the middle button
+      //     (state & XCB_KEY_BUT_MASK_SHIFT), (state & XCB_KEY_BUT_MASK_CONTROL), (state & XCB_KEY_BUT_MASK_MOD_1) // shift, ctrl, alt
+      //   );
+
       qevent.type = isDown ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
       qevent.key.down = isDown;
       qevent.key.key = vk;
       qevent.key.windowID = mWnd;
-      qevent.key.mod = kp->state;
+      qevent.key.mod = 0
+        | (kp->state & XCB_MOD_MASK_CONTROL ? SDL_KMOD_CTRL : 0)
+        | (kp->state & XCB_MOD_MASK_SHIFT ? SDL_KMOD_SHIFT : 0)
+        | (xp->mAltDown ? SDL_KMOD_ALT : 0);
+      // ideally parse kp->state for KMOD_ALT, but I can't figure it out right now
       qevent.key.repeat = false;
       break;
     }
@@ -1311,7 +1545,7 @@ void RealWindow::ProcessXEvent(xcb_generic_event_t* evt)
 
       if (mCursorLock) {
         // Reset mouse position back to lock
-        xp->MoveCursor(this, XcbPlatform::MOUSE_MOVE_WINDOW, mLock.x, mLock.y);
+        xp->MoveCursor(this, MOUSE_MOVE_WINDOW, mLock.x, mLock.y);
       } else {
         // Update known cursor position
         mCursorPos.x = e->event_x;
@@ -1450,7 +1684,6 @@ void RealWindow::ProcessXEvent(xcb_generic_event_t* evt)
 
     case XCB_CLIENT_MESSAGE:
     {
-
       auto e = (xcb_client_message_event_t*) evt;
       if (e->type == xp->catoms[ATOM_XEMBED]) {
         // TODO: process different xembed messages
@@ -1459,6 +1692,10 @@ void RealWindow::ProcessXEvent(xcb_generic_event_t* evt)
       }
       break;
     }
+  }
+
+  if (qevent.type != 0) {
+    mEvents.push_back(qevent);
   }
 
 #undef LOG_PREFIX
@@ -1513,6 +1750,17 @@ X11Window* PlatformX11::CreateWindow(const WindowOptions& options)
   return reinterpret_cast<X11Window*>(PSELF->CreateWindow(options));
 }
 
+bool PlatformX11::SetClipboard(EClipboardFormat format, const void* data, uint32_t data_len)
+{ return PSELF->SetClipboard(format, data, data_len); }
+
+bool PlatformX11::GetClipboard(EClipboardFormat* pFormat, WDL_TypedBuf<uint8_t>* pData)
+{ return PSELF->GetClipboard(pFormat, pData); }
+
+void PlatformX11::Flush()
+{
+  xcb_flush(PSELF->mConn);
+}
+
 void PlatformX11::ProcessEvents()
 {
   PSELF->ProcessEventQueue();
@@ -1547,6 +1795,36 @@ bool X11Window::IsVisible() const
 
 void X11Window::SetTitle(const char* title)
 { PSELF->SetTitle(title); }
+
+void X11Window::Resize(uint32_t w, uint32_t h)
+{ PSELF->Resize(w, h); }
+
+void X11Window::Move(int32_t x, int32_t y)
+{ PSELF->Move(x, y); }
+
+void X11Window::RequestFocus()
+{ PSELF->RequestFocus(); }
+
+void X11Window::SetCursorVisible(bool show)
+{ PSELF->SetCursorVisible(show); }
+
+bool X11Window::IsCursorVisible() const
+{ return PCSELF->IsCursorVisible(); }
+
+void X11Window::SetCursorLocked(bool lock)
+{ PSELF->SetCursorLocked(lock); }
+
+bool X11Window::IsCursorLocked() const
+{ return PCSELF->mCursorLock; }
+
+void X11Window::MoveMouse(EMouseMoveMode mode, int x, int y)
+{
+  auto xp = PSELF->CastX();
+  xp->MoveCursor(PSELF, mode, x, y);
+}
+
+void* X11Window::GetHandle() const
+{ return xid_to_voidp(PCSELF->mWnd); }
 
 bool X11Window::PollEvent(SDL_Event* event)
 { return PSELF->PollEvent(event); }
