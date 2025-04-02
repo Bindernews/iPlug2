@@ -319,10 +319,12 @@ int main(int argc, char **argv)
 
   SWELLAppMain(SWELLAPP_ONLOAD,0,0);
   SWELLAppMain(SWELLAPP_LOADED,0,0);
+  SetTimer(gHWND, UPDATE_UI_TIMER_ID, 4, NULL);
+
   while (gHWND && !gHWND->m_hashaddestroy)
   {
     SWELL_RunMessageLoop();
-    Sleep(10);
+    Sleep(4);
   }
   SWELLAppMain(SWELLAPP_DESTROY,0,0);
 

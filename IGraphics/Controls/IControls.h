@@ -75,7 +75,7 @@ class IVSwitchControl : public ISwitchControlBase
 {
 public:
   IVSwitchControl(const IRECT& bounds, int paramIdx = kNoParameter, const char* label = "", const IVStyle& style = DEFAULT_STYLE, bool valueInButton = true);
-  
+
   IVSwitchControl(const IRECT& bounds, IActionFunction aF = SplashClickActionFunc, const char* label = "", const IVStyle& style = DEFAULT_STYLE, int numStates = 2, bool valueInButton = true);
 
   void Draw(IGraphics& g) override;
@@ -92,9 +92,9 @@ class IVToggleControl : public IVSwitchControl
 {
 public:
   IVToggleControl(const IRECT& bounds, int paramIdx = kNoParameter, const char* label = "", const IVStyle& style = DEFAULT_STYLE, const char* offText = "OFF", const char* onText = "ON");
-  
+
   IVToggleControl(const IRECT& bounds, IActionFunction aF = SplashClickActionFunc, const char* label = "", const IVStyle& style = DEFAULT_STYLE, const char* offText = "OFF", const char* onText = "ON", bool initialState = false);
-  
+
   void DrawValue(IGraphics& g, bool mouseOver) override;
   void DrawWidget(IGraphics& g) override;
 protected:
@@ -114,7 +114,7 @@ public:
    * @param valueInButton if the value inside or outside the button
    * @param direction The direction of the buttons */
   IVSlideSwitchControl(const IRECT& bounds, int paramIdx = kNoParameter, const char* label = "", const IVStyle& style = DEFAULT_STYLE, bool valueInButton = false, EDirection direction = EDirection::Horizontal);
-  
+
   /** Construct a new IVSlideSwitchControl, with an action function
    * @param bounds The control's bounds
    * @param aF An action function to execute when a button is clicked \see IActionFunction
@@ -125,7 +125,7 @@ public:
    * @param numStates How many states the switch has
    * @param initialState The initial state of the switch */
   IVSlideSwitchControl(const IRECT& bounds, IActionFunction aF = EmptyClickActionFunc, const char* label = "", const IVStyle& style = DEFAULT_STYLE, bool valueInButton = false, EDirection direction = EDirection::Horizontal, int numStates = 2, int initialState = 0);
-  
+
   void Draw(IGraphics& g) override;
   virtual void DrawWidget(IGraphics& g) override;
   virtual void DrawHandle(IGraphics& g, const IRECT& filledArea);
@@ -168,7 +168,7 @@ public:
    * @param shape The buttons shape \see IVShape
    * @param direction The direction of the buttons */
   IVTabSwitchControl(const IRECT& bounds, IActionFunction aF, const std::vector<const char*>& options, const char* label = "", const IVStyle& style = DEFAULT_STYLE, EVShape shape = EVShape::Rectangle, EDirection direction = EDirection::Horizontal);
-  
+
   virtual ~IVTabSwitchControl() { mTabLabels.Empty(true); }
   void Draw(IGraphics& g) override;
   void OnInit() override;
@@ -182,11 +182,11 @@ public:
   void OnMouseOut() override { mMouseOverButton = -1; ISwitchControlBase::OnMouseOut(); SetDirty(false); }
   void OnResize() override;
   virtual bool IsHit(float x, float y) const override;
-  
+
   /** returns the label string on the selected tab */
   const char* GetSelectedLabelStr() const;
 protected:
-  
+
   /** @return the index of the entry at the given point or -1 if no entry was hit */
   virtual int GetButtonForPoint(float x, float y) const;
 
@@ -220,7 +220,7 @@ public:
    * @param direction The direction of the buttons
    * @param buttonSize The size of the buttons */
   IVRadioButtonControl(const IRECT& bounds, IActionFunction aF, const std::initializer_list<const char*>& options, const char* label = "", const IVStyle& style = DEFAULT_STYLE, EVShape shape = EVShape::Ellipse, EDirection direction = EDirection::Vertical, float buttonSize = 10.f);
-  
+
   virtual void DrawWidget(IGraphics& g) override;
 protected:
   /** @return the index of the clickable entry at the given point or -1 if no entry was hit */
@@ -243,7 +243,7 @@ public:
    * @param style The styling of this vector control \see IVStyle
    * @param shape The shape of the button */
   IVMenuButtonControl(const IRECT& bounds, int paramIdx, const char* label = "", const IVStyle& style = DEFAULT_STYLE, EVShape shape = EVShape::Rectangle);
-  
+
   void OnPopupMenuSelection(IPopupMenu* pSelectedMenu, int valIdx) override;
   void SetValueFromUserInput(double value, int valIdx) override;
 
@@ -298,7 +298,7 @@ public:
 
   float GetRadius() const;
   IRECT GetTrackBounds() const;
-  
+
 protected:
   virtual IRECT GetKnobDragBounds() override;
 
@@ -317,7 +317,7 @@ class IVSliderControl : public ISliderControlBase
 {
 public:
   IVSliderControl(const IRECT& bounds, int paramIdx = kNoParameter, const char* label = "", const IVStyle& style = DEFAULT_STYLE, bool valueIsEditable = false, EDirection dir = EDirection::Vertical, double gearing = DEFAULT_GEARING, float handleSize = 8.f, float trackSize = 2.f, bool handleInsideTrack = false, float handleXOffset = 0.f, float handleYOffset = 0.f);
-  
+
   IVSliderControl(const IRECT& bounds, IActionFunction aF, const char* label = "", const IVStyle& style = DEFAULT_STYLE, bool valueIsEditable = false, EDirection dir = EDirection::Vertical, double gearing = DEFAULT_GEARING, float handleSize = 8.f, float trackSize = 2.f, bool handleInsideTrack = false, float handleXOffset = 0.f, float handleYOffset = 0.f);
 
   virtual ~IVSliderControl() {}
@@ -335,7 +335,7 @@ public:
   void OnResize() override;
   void SetDirty(bool push, int valIdx = kNoValIdx) override;
   void OnInit() override;
-  
+
   IRECT GetTrackBounds() const
   {
     auto offset = -mHandleSize + (mStyle.frameThickness / 2.0f);
@@ -370,7 +370,7 @@ public:
 protected:
   void MakeTrackRects(const IRECT& bounds) override;
   IRECT GetHandleBounds(int trackIdx);
-  
+
   int mMouseOverHandle = -1;
   float mHandleSize;
   bool mMouseIsDown = false;
@@ -404,7 +404,7 @@ class IVPlotControl : public IControl
 public:
   /** IVPlotControl passes values between 0 and 1 to this object, that are the plot normalized x values */
   using IPlotFunc = std::function<double(double)>;
-    
+
   /** Groups a plot function and color
    * @param color The color of the function
    * @param func A callable object that must contain the function to display */
@@ -412,7 +412,7 @@ public:
     IColor color;
     IPlotFunc func;
   };
-  
+
   /** Constructs an IVPlotControl
    * @param bounds The control's bounds
    * @param funcs A function list reference containing the functions to display
@@ -424,15 +424,15 @@ public:
    * @param max The maximum y axis plot value
    * @param useLayer A flag to draw the control layer */
   IVPlotControl(const IRECT& bounds, const std::initializer_list<Plot>& funcs, int numPoints, const char* label = "", const IVStyle& style = DEFAULT_STYLE, float min = -1., float max = 1., bool useLayer = false);
-  
+
   void Draw(IGraphics& g) override;
   void OnResize() override;
-  
+
   /** add a new function to the plot
    * @param color The function color
    * @param func A reference object containing the function implementation to display */
   void AddPlotFunc(const IColor& color, const IPlotFunc& func);
-  
+
 protected:
   ILayerPtr mLayer;
   std::vector<Plot> mPlots;
@@ -441,7 +441,7 @@ protected:
   bool mUseLayer = true;
   int mHorizontalDivisions = 10;
   int mVerticalDivisions = 10; // always + 2 when drawing
-  
+
   std::vector<float> mPoints;
 };
 
@@ -458,7 +458,7 @@ public:
    * @param attachFunc A function to execute when the group control is attached
    * @param resizeFunc A function to execute when the group control is resized */
   IVGroupControl(const IRECT& bounds, const char* label = "", float labelOffset = 10.f, const IVStyle& style = DEFAULT_STYLE, IContainerBase::AttachFunc attachFunc = nullptr, IContainerBase::ResizeFunc resizeFunc = nullptr);
-  
+
   /** Construct the group control, with its bounds based on an IControl group
    * Note: the group control needs to be attached after the group members
    * @param label The label for the vector control, leave empty for no label
@@ -469,13 +469,13 @@ public:
    * @param padB The bottom padding
    * @param style The styling of this vector control \see IVStyle */
   IVGroupControl(const char* label, const char* groupName, float padL = 0.f, float padT = 0.f, float padR = 0.f, float padB = 0.f, const IVStyle& style = DEFAULT_STYLE);
-  
+
   void Draw(IGraphics& g) override;
   void DrawWidget(IGraphics& g) override;
   void OnResize() override;
   void OnInit() override;
-  
-  /** Set the bounds of the group control based on the area occupied by the controls in a particular group 
+
+  /** Set the bounds of the group control based on the area occupied by the controls in a particular group
    * @param groupName The name of the group to base the bounds on
    * @param padL The left padding
    * @param padT The top padding
@@ -504,7 +504,7 @@ public:
     mIgnoreMouse = true;
     AttachIControl(this, label);
   }
-  
+
   void Draw(IGraphics& g) override
   {
     DrawBackground(g, mRECT);
@@ -512,7 +512,7 @@ public:
     DrawLabel(g);
     DrawValue(g, mMouseIsOver);
   }
-  
+
   void DrawWidget(IGraphics& g) override
   {
     DrawPressableRectangle(g, mWidgetBounds, false, false, false);
@@ -523,7 +523,7 @@ public:
     if (mAttachFunc)
       mAttachFunc(this, mWidgetBounds);
   }
-  
+
   void OnResize() override
   {
     SetTargetRECT(MakeRects(mRECT));
@@ -539,15 +539,15 @@ class IVColorSwatchControl : public IControl
 {
 public:
   enum class ECellLayout { kGrid, kHorizontal, kVertical };
-  
+
   using ColorChosenFunc = std::function<void(int, IColor)>;
 
   IVColorSwatchControl(const IRECT& bounds, const char* label = "", ColorChosenFunc func = nullptr, const IVStyle& spec = DEFAULT_STYLE, ECellLayout layout = ECellLayout::kGrid,
     const std::initializer_list<EVColor>& colorIDs = { kBG, kFG, kPR, kFR, kHL, kSH, kX1, kX2, kX3 },
     const std::initializer_list<const char*>& labelsForIDs = { kVColorStrs[kBG],kVColorStrs[kFG],kVColorStrs[kPR],kVColorStrs[kFR],kVColorStrs[kHL],kVColorStrs[kSH],kVColorStrs[kX1],kVColorStrs[kX2],kVColorStrs[kX3] });
-  
+
   virtual ~IVColorSwatchControl() { mLabels.Empty(true); }
-  
+
   void Draw(IGraphics& g) override;
   void OnMouseOver(float x, float y, const IMouseMod& mod) override;
   void OnMouseOut() override;
@@ -572,10 +572,10 @@ class ISVGKnobControl : public IKnobControlBase
 {
 public:
   ISVGKnobControl(const IRECT& bounds, const ISVG& svg, int paramIdx = kNoParameter);
-  
+
   void Draw(IGraphics& g) override;
   void SetSVG(ISVG& svg);
-  
+
 private:
   ISVG mSVG;
   float mStartAngle = -135.f;
@@ -588,15 +588,15 @@ class ISVGButtonControl : public IButtonControlBase
 public:
   /** Constructs an SVG button control, with an action function
    * @param bounds The control's bounds
-   * @param aF An action function to execute when a button is clicked \see IActionFunction 
+   * @param aF An action function to execute when a button is clicked \see IActionFunction
    * @param offImage An SVG for the off state of the button
    * @param onImage An SVG for the on state of the button */
   ISVGButtonControl(const IRECT& bounds, IActionFunction aF, const ISVG& offImage, const ISVG& onImage);
-  
+
   /** Constructs an SVG button control, with an action function and a single image, with color overrides
    * @param bounds The control's bounds
    * @param aF An action function to execute when a button is clicked \see IActionFunction
-   * @param image An SVG for the on/off state of the button  
+   * @param image An SVG for the on/off state of the button
    * @param colors Colors to replace the SVG's fill/stroke in the off/on/mouse-over-off/mouse-over-on states
    * @param colorReplacement Should the fill or stroke in the SVG be colored */
   ISVGButtonControl(const IRECT& bounds, IActionFunction aF, const ISVG& image, const std::array<IColor, 4> colors = {COLOR_BLACK, COLOR_WHITE, COLOR_DARK_GRAY, COLOR_LIGHT_GRAY}, EColorReplacement colorReplacement = EColorReplacement::Fill);
@@ -627,7 +627,7 @@ public:
    * @param offImage An SVG for the off state of the button
    * @param onImage An SVG for the on state of the button */
   ISVGToggleControl(const IRECT& bounds, int paramIdx, const ISVG& offImage, const ISVG& onImage);
-  
+
   /** Constructs an SVG button control, with an action function and a single image, with color overrides
    * @param bounds The control's bounds
    * @param aF An action function to execute when a button is clicked \see IActionFunction
@@ -727,7 +727,7 @@ public:
    * @param bitmap The bitmap resource for the control
    * @param paramIdx The parameter index to link this control to */
   IBSwitchControl(const IRECT& bounds, const IBitmap& bitmap, int paramIdx = kNoParameter);
-  
+
   virtual ~IBSwitchControl() {}
   void Draw(IGraphics& g) override { DrawBitmap(g); }
   void OnRescale() override { mBitmap = GetUI()->GetScaledBitmap(mBitmap); }
@@ -780,7 +780,7 @@ public:
   void Draw(IGraphics& g) override;
   void OnRescale() override { mBitmap = GetUI()->GetScaledBitmap(mBitmap); }
   void OnResize() override;
-  
+
   IRECT GetHandleBounds(double value = -1.0) const;
 
 protected:
@@ -812,7 +812,7 @@ public:
     Linear,
     Log,
   };
-  
+
   /** Constructs a bitmap meter control
    * @param x The x position of the top left point in the control's bounds (width will be determined by bitmap's dimensions)
    * @param y The y position of the top left point in the control's bounds (height will be determined by bitmap's dimensions)
@@ -823,7 +823,7 @@ public:
   , mLowRangeDB(lowRangeDB)
   , mHighRangeDB(highRangeDB)
   {}
-  
+
   /** Constructs a bitmap meter control
    * @param bounds The control's bounds
    * @param bitmap The bitmap resource for the control */
@@ -833,12 +833,12 @@ public:
   , mLowRangeDB(lowRangeDB)
   , mHighRangeDB(highRangeDB)
   {}
-  
+
   virtual ~IBMeterControl() {}
   void Draw(IGraphics& g) override { DrawBitmap(g); }
   void OnRescale() override { mBitmap = GetUI()->GetScaledBitmap(mBitmap); }
   void OnMsgFromDelegate(int msgTag, int dataSize, const void* pData) override;
-  
+
 protected:
   float mHighRangeDB;
   float mLowRangeDB;

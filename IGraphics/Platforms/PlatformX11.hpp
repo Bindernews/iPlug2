@@ -120,8 +120,8 @@ public:
   void SetCursorVisible(bool visible);
   bool IsCursorVisible() const;
 
-  void SetCursorLocked(bool lock);
-  bool IsCursorLocked() const;
+  void SetCursorGrabbed(bool grab);
+  bool IsCursorGrabbed() const;
 
   void MoveMouse(EMouseMoveMode mode, int x, int y);
 
@@ -140,7 +140,7 @@ class PlatformX11
 private:
   // implementation fields hidden to simplify public API.
   // This struct MUST NOT be copied, it's a pointer-only object.
-  char hidden[sizeof(void*) * 20];
+  char hidden[sizeof(void*) * 21];
 
   PlatformX11();
   PlatformX11(const PlatformX11&) = delete;

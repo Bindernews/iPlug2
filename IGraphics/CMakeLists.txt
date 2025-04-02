@@ -55,6 +55,7 @@ elseif (IPLUG_OS MATCHES "Linux")
     "xcb-util"
     "xcb-icccm"
     "xcb-xfixes"
+    "xcb-ewmh"
   )
 
   # Try to help user by listing required dev packages for their platform.

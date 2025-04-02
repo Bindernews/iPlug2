@@ -14,6 +14,8 @@
 #include "PlatformX11.hpp"
 #include <memory>
 #include <mutex.h>
+#include <functional>
+#include <vector>
 
 BEGIN_IPLUG_NAMESPACE
 class Timer;
@@ -59,17 +61,13 @@ public:
   PlatformFontPtr LoadPlatformFont(const char* fontID, const char* fontName, ETextStyle style) override;
 
   void CachePlatformFont(const char* fontID, const PlatformFontPtr& font) override { } // No reason to cache (no universal font handle)
-  void SetIntegration(void* mainLoop) override;
 
-  /**
-   * @brief Update the UI. This must be called frequently, usually at least once every 13 ms for 60 FPS.
-   * @remark This should be called from the GUI thread, but it's usually safe to call from other threads as well.
-   */
-  void Update();
+  /// @see iplug::igraphics::IGraphics::UpdateUI
+  void UpdateUI() override;
 
 protected:
-  IPopupMenu* CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT bounds, bool& isAsync) override { /* NO-OP */ return nullptr; }
-  void CreatePlatformTextEntry(int paramIdx, const IText& text, const IRECT& bounds, int length, const char* str) override { /* NO-OP */ }
+  IPopupMenu* CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT bounds, bool& isAsync) override;
+  virtual void CreatePlatformTextEntry(int paramIdx, const IText& text, const IRECT& bounds, int length, const char* str) override;
   void RequestFocus();
 
   friend class IGraphics;
@@ -82,15 +80,14 @@ private:
   bool mShouldPaint = false;
   /// @brief Locked mouse position
   IVec2 mMouseLockPos;
-
   WDL_Mutex mXLock;
+  /// @brief Id for IPlugTaskThread task that calls UpdateUI
+  uint32_t mTaskId = 0;
 
   /** Loop through the events provided by the window. */
   void LoopEvents();
 
   void Paint();
-  inline IMouseInfo GetMouseInfo(int16_t x, int16_t y, int16_t state);
-  inline IMouseInfo GetMouseInfoDeltas(float& dX, float& dY, int16_t x, int16_t y, int16_t state);
 
   static uint32_t GetUserDblClickTimeout();
 };

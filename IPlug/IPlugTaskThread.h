@@ -49,6 +49,10 @@ public:
 
   /** Push a new task. */
   TaskID Push(const Task& t);
+
+  /** Add a one-shot task. */
+  void AddOnce(Task::Callback&& callback);
+
   /** Cancel the task with the given task ID. */
   void Cancel(TaskID id);
   /** Stop the task thread. */

@@ -18,7 +18,9 @@
 #include <xcb/xcb_event.h>
 #include <xcb/xcb_icccm.h>
 #include <xcb/xfixes.h>
+#include <xcb/xcb_ewmh.h>
 #include <sys/wait.h>
+#include <poll.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -95,24 +97,36 @@ enum AtomIds {
   kAtomIdsCount,
 };
 
+static const char *common_atom_names[kAtomIdsCount] = {
+  "WM_PROTOCOLS",
+  "WM_DELETE_WINDOW",
+  "_XEMBED_INFO",
+  "_XEMBED",
+  "CLIPBOARD",
+  "UTF8_STRING",
+  "XSEL_DATA",
+  "STRING",
+  "TEXT",
+  "TARGETS",
+};
+
 struct XcbPlatform
 {
   /// @brief Loading status
-  enum EConnectionStatus {
+  enum ELoadStatus : uint8_t {
     /// @brief Have not attempted to connect
     kNotAttempted = 0,
     /// @brief Tried to load, but failed
     kLoadFailed = 1,
     /// @brief Loaded successfully
-    kSuccess = 2,
-    /// @brief Loaded with GLX
-    kHasGlx = 4,
+    kLoadSuccess = 2,
   };
 
   /// @brief Private flags for \c WindowOptions
   enum PrivFlags {
     NO_COLORMAP = 1 << 8,
     WM_DECORATIONS = 1 << 9,
+    WM_NO_DECORATIONS = 1 << 10,
   };
 
   //------//
@@ -137,14 +151,21 @@ struct XcbPlatform
   //-----//
 
   /// @brief XCB connection
-  xcb_connection_t *mConn = nullptr;
+  xcb_connection_t* mConn = nullptr;
+
+  xcb_ewmh_connection_t* mWmhConn = nullptr;
 
   /// @brief default X11 screen
   int mDefaultScreen;
 
   /// @brief Overall loading/connected status
-  /// @see EConnectionStatus
-  int mStatus = kNotAttempted;
+  ELoadStatus mStatus = kNotAttempted;
+
+  /// @brief Can we control the mouse cursor?
+  ELoadStatus mCanMoveCursor = kNotAttempted;
+
+  /// @brief Do we have GLX support?
+  ELoadStatus mGlxLoaded = kNotAttempted;
 
   /// @brief List of available screens
   std::vector<xcb_screen_t*> mScreens;
@@ -183,14 +204,26 @@ struct XcbPlatform
   XcbPlatform();
   ~XcbPlatform();
 
+  // for compatibility with the conn() function in RealWindow
+  inline xcb_connection_t* conn() const
+  { return mConn; }
+
   inline bool HasGLX() const
-  { return (mStatus & kHasGlx) != 0; }
+  { return mGlxLoaded == kLoadSuccess; }
 
   /// @brief Try to connect to the X11 server with xcb. Updates \c mStatus .
   void Connect();
 
+  /// @brief Create a window using the provided options.
+  /// @remark This delegates to the \c Create*Window methods depending on the options
+  /// @param options
+  /// @return A pointer to the new window, or NULL on error
   RealWindow* CreateWindow(const WindowOptions& options);
+
+  /// @brief Create a basic window
   RealWindow* CreateBasicWindow(const WindowOptions& options);
+
+  /// @brief Create a window with a GLX context
   RealWindow* CreateGlxWindow(const WindowOptions& options);
 
   /// @brief Initializes \c catoms
@@ -202,7 +235,20 @@ struct XcbPlatform
 
   bool CheckScreenIsTrueColor(int screen) const;
 
+  /// @brief Test if we can control the cursor.
+  /// @return true if the cursor can be controlled, false if not
+  /// @remark This caches the test results in \c mCanMoveCursor
+  bool TestMoveCursor();
+
+  /// @brief Move the cursor according to \c mode
+  /// @param wnd window to move relative to, if \c mode==MOUSE_MOVE_WINDOW
+  /// @param mode movement mode, or what (cx, cy) is relative to
+  /// @param cx cursor x
+  /// @param cy cursor y
+  /// @return true on success, false on failure
   bool MoveCursor(RealWindow* wnd, EMouseMoveMode mode, int cx, int cy);
+
+  bool GetCursorPosition(int* pX, int* pY);
 
   bool SetClipboard(EClipboardFormat format, const void* data, size_t data_len);
   bool GetClipboard(EClipboardFormat* pFormat, WDL_TypedBuf<uint8_t>* pData);
@@ -212,7 +258,9 @@ struct XcbPlatform
   void ProcessXEvent(xcb_generic_event_t* evt);
 
   /// @brief Process all events currently in the X event queue
-  void ProcessEventQueue();
+  /// @param timeout if a positive integer, wait up to this many milliseconds
+  /// for more data from the X server, otherwise don't wait.
+  void ProcessEventQueue(int timeout);
 
   /**
    * @brief Check if a cookie returned an error or not, printing a message if so
@@ -257,12 +305,12 @@ struct RealWindow
   short mScreen = 0;
   /// @brief Is the window currently visible?
   bool mVisible = false;
-  /// @brief Are we locking the cursor?
-  bool mCursorLock = false;
   /// @brief Are we showing the cursor (true) or hiding it (false)?
   bool mCursorVisible = true;
+  /// @brief Are we locking the cursor?
+  bool mCursorGrab = false;
   /// @brief If we are locking the cursor, this is where
-  xcb_point_t mLock;
+  xcb_point_t mLockPos;
   /// @brief Current known cursor position IN the window.
   /// If this is (-1, -1) then the cursor is outside the window.
   xcb_point_t mCursorPos { -1, -1 };
@@ -312,8 +360,8 @@ struct RealWindow
   void SetCursorVisible(bool on);
   bool IsCursorVisible() const;
 
-  void SetCursorLocked(bool lock);
-  bool IsCursorLocked() const;
+  void SetCursorGrabbed(bool lock, bool internal);
+  bool IsCursorGrabbed() const;
 
   bool DrawBegin();
   void DrawEnd();
@@ -390,6 +438,57 @@ static void* xid_to_voidp(uint32_t x)
   return reinterpret_cast<void*>((uintptr_t)x);
 }
 
+static uint64_t get_time_ms()
+{
+  struct timespec t;
+  clock_gettime(CLOCK_MONOTONIC_RAW, &t);
+  return (t.tv_sec * 1000) + (t.tv_nsec / 1000000);
+}
+
+static uint32_t xevent_get_window_id(xcb_generic_event_t* evt)
+{
+  switch(evt->response_type & ~0x80) {
+    // These are all window events with the same general layout,
+    // so we can grab the window ID the same way from all of them.
+    case XCB_EXPOSE:
+    case XCB_MAP_NOTIFY:
+    case XCB_UNMAP_NOTIFY:
+    case XCB_CONFIGURE_NOTIFY:
+    case XCB_REPARENT_NOTIFY:
+    case XCB_CLIENT_MESSAGE:
+    case XCB_PROPERTY_NOTIFY:
+    {
+      auto e = (xcb_configure_notify_event_t*)evt;
+      return e->window;
+    }
+    // These all have the window as the "event" field.
+    case XCB_MOTION_NOTIFY:
+    case XCB_ENTER_NOTIFY:
+    case XCB_LEAVE_NOTIFY:
+    case XCB_KEY_PRESS:
+    case XCB_KEY_RELEASE:
+    case XCB_BUTTON_PRESS:
+    case XCB_BUTTON_RELEASE:
+    {
+      auto e = (xcb_enter_notify_event_t*)evt;
+      return e->event;
+    }
+    case XCB_SELECTION_CLEAR:
+    case XCB_SELECTION_REQUEST:
+    {
+      auto e = (xcb_selection_clear_event_t*) evt;
+      return e->owner;
+    }
+    case XCB_SELECTION_NOTIFY:
+    {
+      auto e = (xcb_selection_notify_event_t*) evt;
+      return e->target;
+    }
+    default:
+      return 0;
+  }
+}
+
 #pragma endregion static helpers
 
 
@@ -422,6 +521,11 @@ XcbPlatform::~XcbPlatform()
       XCloseDisplay(this->dpy);
       this->dpy = NULL;
   }
+  if (mWmhConn) {
+    xcb_ewmh_connection_wipe(mWmhConn);
+    free(mWmhConn);
+    mWmhConn = nullptr;
+  }
   if (mConn) {
     xcb_disconnect(mConn);
     mConn = nullptr;
@@ -430,16 +534,17 @@ XcbPlatform::~XcbPlatform()
 
 void XcbPlatform::Connect()
 {
+#define LOG_PREFIX "PX11:Connect"
   // if we already have a connection, nothing else to do
   if (mStatus != kNotAttempted) {
     return;
   }
 
   // track if we got glx
-  bool hasGlx = true;
-
+  mGlxLoaded = kLoadFailed;
   // default to failing to load
   mStatus = kLoadFailed;
+
 
   this->dpy = XOpenDisplay(nullptr);
   if (!this->dpy) {
@@ -458,10 +563,29 @@ void XcbPlatform::Connect()
       return;
   }
 
-  // Try to load GLX
+  xcb_generic_error_t* err;
+
+  mWmhConn = (xcb_ewmh_connection_t*)malloc(sizeof(xcb_ewmh_connection_t));
+  if (!mWmhConn) {
+    return;
+  }
+  auto wmhCookie = xcb_ewmh_init_atoms(conn(), mWmhConn);
+  if (!wmhCookie) {
+    return;
+  }
+  if (!xcb_ewmh_init_atoms_replies(mWmhConn, wmhCookie, &err)) {
+    auto msg = xcb_event_get_error_label(err->error_code);
+    TRACE(LOG_PREFIX ":ERR: unable to initialize ewmh: %s\n", msg);
+    free(err);
+    return;
+  }
+
+  // Try to load GLX, but don't exit if this fails.
   if (!gladLoadGLX(this->dpy, this->mDefaultScreen)) {
     TRACE("Could not load GLX\n");
-    hasGlx = false;
+    mGlxLoaded = kLoadFailed;
+  } else {
+    mGlxLoaded = kLoadSuccess;
   }
 
   TRACE("INFO: Xlib/XCB FD: %d\n", xcb_get_file_descriptor(mConn));
@@ -478,7 +602,6 @@ void XcbPlatform::Connect()
   // Load xfixes extension
   xcb_xfixes_query_version_cookie_t cookie = xcb_xfixes_query_version(mConn, 4, 0);
   xcb_flush(mConn);
-  xcb_generic_error_t* err;
   xcb_xfixes_query_version_reply_t* reply = xcb_xfixes_query_version_reply(mConn, cookie, &err);
   if (!reply) {
       printf("Unable to load xfixes extension: codes %d,%d\n", err->major_code, err->minor_code);
@@ -488,10 +611,13 @@ void XcbPlatform::Connect()
   free(reply);
 
   // Load successful
-  mStatus = kSuccess;
-  if (hasGlx) {
-    mStatus |= kHasGlx;
+  mStatus = kLoadSuccess;
+
+  // Test if we can move the cursor on start-up instead of dynamically.
+  if (!TestMoveCursor()) {
+    TRACE(LOG_PREFIX ": cannot move the cursor, grabbing and warping disabled\n");
   }
+#undef LOG_PREFIX
 }
 
 RealWindow* XcbPlatform::CreateWindow(const WindowOptions& options)
@@ -629,6 +755,13 @@ RealWindow* XcbPlatform::CreateGlxWindow(const WindowOptions& options)
     return nullptr;
   }
 
+  glXMakeContextCurrent(dpy, w->mGlWindow, w->mGlWindow, w->mGlContext);
+  if (!gladLoadGL()) {
+    TRACE(LOG_PREFIX " gladLoadGL failed\n");
+    return nullptr;
+  }
+  glXMakeContextCurrent(dpy, XCB_NONE, XCB_NONE, nullptr);
+
   // return the window, taking it from unique_ptr so it doesn't get free'd
   return w.release();
 
@@ -640,18 +773,6 @@ RealWindow* XcbPlatform::CreateGlxWindow(const WindowOptions& options)
  */
 void XcbPlatform::LoadAtoms()
 {
-  static const char *common_atom_names[kAtomIdsCount] = {
-    "WM_PROTOCOLS",
-    "WM_DELETE_WINDOW",
-    "_XEMBED_INFO",
-    "_XEMBED",
-    "CLIPBOARD",
-    "UTF8_STRING",
-    "XSEL_DATA",
-    "STRING",
-    "TEXT",
-    "TARGETS",
-  };
   if (catoms[0]) {
     return;
   }
@@ -714,8 +835,112 @@ bool XcbPlatform::CheckScreenIsTrueColor(int screen) const
         && (vt->red_mask == 0xff0000) && (vt->green_mask == 0xff00) && (vt->blue_mask == 0xff);
 }
 
+bool XcbPlatform::TestMoveCursor()
+{
+#define LOG_PREFIX "PX11:TestMoveCursor"
+  // If we've already tested, just return the results of the test
+  if (mCanMoveCursor != 0) {
+    return mCanMoveCursor == kLoadSuccess;
+  }
+  // Assume we failed unless we say otherwise
+  mCanMoveCursor = kLoadFailed;
+  // To test, we create a window, grab the cursor, move it, and check if we got any events.
+  xcb_screen_t* defScreen = mScreens[mDefaultScreen];
+  WindowOptions opts;
+  opts.bounds = WRect{.x = 0, .y = 0, .w = 20, .h = 20};
+  opts.parent = xid_to_voidp(defScreen->root);
+  opts.flags |= WM_NO_DECORATIONS;
+  std::unique_ptr<RealWindow> wnd {CreateWindow(opts)};
+  if (!wnd) {
+    return false;
+  }
+
+  // how long to run the test, about ~1/3 of a second
+  const int TEST_TIME = 300;
+  // current time
+  uint64_t tNow = get_time_ms();
+  // test end time
+  uint64_t tEnd = tNow + TEST_TIME;
+  SDL_Event event;
+
+  // original X and Y of the cursor
+  int originalX, originalY;
+  if (!GetCursorPosition(&originalX, &originalY)) {
+    return false;
+  }
+
+  auto isNear = [](int a, int b, int max) -> bool {
+    int d = a - b;
+    if (d < 0) d = -d;
+    return d <= max;
+  };
+
+  // set visible
+  wnd->SetVisible(true);
+  wnd->Move(0, 0);
+  wnd->Resize(20, 20);
+  ProcessEventQueue(TEST_TIME);
+  // Move pointer to our window
+  xcb_warp_pointer(mConn, XCB_NONE, wnd->mWnd, 0,0,0,0, 5, wnd->mBounds.height - 5);
+
+  // Work through the events until our test timeout ends.
+  // If we hit state 3, then we can't control the mouse.
+  int state = 0;
+  while (tNow < tEnd) {
+    ProcessEventQueue(TEST_TIME);
+    while (wnd->PollEvent(&event)) {
+      int lastState = state;
+      if (state == 0 && event.type == SDL_EVENT_WINDOW_SHOWN) {
+        state = 2;
+      } else if (state == 2 && event.type == SDL_EVENT_MOUSE_MOTION) {
+        state = 3;
+      } else if (state == 3 && event.type == SDL_EVENT_WINDOW_MOUSE_LEAVE) {
+        state = 4;
+      } else if (state == 4) {
+        // If the position of the mouse is where it was initially, then there's
+        // something forcing the mouse to that spot (e.g. VM mouse integration).
+        // It could be another program grabbing the mouse, but better safe than sorry.
+        int mX, mY;
+        if (GetCursorPosition(&mX, &mY)) {
+          if (isNear(mX, originalX, 5) && isNear(mY, originalY, 5)) {
+            // failure state
+            state = 5;
+          } else {
+            state = 6;
+          }
+        } else {
+          // go back to step 1
+          state = 1;
+        }
+      }
+      if (state != lastState) {
+        TRACE(LOG_PREFIX ": state = %d\n", state);
+      }
+    }
+    tNow = get_time_ms();
+  }
+
+  // Move cursor back to where it started
+  xcb_warp_pointer(mConn, XCB_NONE, mScreens[mDefaultScreen]->root, 0,0,0,0, (int16_t)originalX, (int16_t)originalY);
+
+  // flush the connection
+  xcb_flush(mConn);
+  // only if we got to state 2, but not state 3, did this work
+  if (state == 3 || state == 6) {
+    mCanMoveCursor = kLoadSuccess;
+  }
+
+  // Return success or failure
+  return mCanMoveCursor == kLoadSuccess;
+#undef LOG_PREFIX
+}
+
 bool XcbPlatform::MoveCursor(RealWindow* wnd, EMouseMoveMode mode, int cx, int cy)
 {
+  if (!TestMoveCursor()) {
+    return false;
+  }
+
   int screenIx = WindowToScreen(wnd->mWnd);
   xcb_screen_t* screen = mScreens[screenIx];
   xcb_void_cookie_t ck;
@@ -723,18 +948,19 @@ bool XcbPlatform::MoveCursor(RealWindow* wnd, EMouseMoveMode mode, int cx, int c
   int16_t cy16 = (int16_t)cy;
   if (mode == MOUSE_MOVE_WINDOW)
   {
-    // Get the window position relative to the screen root.
-    xcb_rectangle_t re = wnd->mBounds;
-    ck = xcb_warp_pointer_checked(mConn, XCB_NONE, screen->root, 0, 0, 0, 0, re.x + cx16, re.y + cy16);
+    auto& re = wnd->mBounds;
+    ck = xcb_warp_pointer(mConn, wnd->mWnd, wnd->mWnd, 0, 0, re.width, re.height, cx16, re.height - cy16);
   }
   else if (mode == MOUSE_MOVE_RELATIVE)
   {
-    ck = xcb_warp_pointer_checked(mConn, XCB_NONE, XCB_NONE, 0, 0, 0, 0, cx16, cy16);
+    ck = xcb_warp_pointer(mConn, XCB_NONE, XCB_NONE, 0, 0, 0, 0, cx16, cy16);
   }
   else if (mode == MOUSE_MOVE_SCREEN)
   {
-    ck = xcb_warp_pointer_checked(mConn, XCB_NONE, screen->root, 0, 0, 0, 0, cx16, cy16);
+    ck = xcb_warp_pointer(mConn, XCB_NONE, screen->root, 0, 0, 0, 0, cx16, cy16);
   }
+  /*
+  xcb_flush(mConn);
   xcb_generic_error_t* err = xcb_request_check(mConn, ck);
   if (err)
   {
@@ -744,7 +970,27 @@ bool XcbPlatform::MoveCursor(RealWindow* wnd, EMouseMoveMode mode, int cx, int c
     free(err);
     return false;
   }
+    */
   return true;
+}
+
+bool XcbPlatform::GetCursorPosition(int* pX, int* pY)
+{
+  const xcb_setup_t *setup = xcb_get_setup(mConn);
+  xcb_screen_iterator_t screen_iter = xcb_setup_roots_iterator(setup);
+  xcb_screen_t *screen = screen_iter.data;
+  xcb_window_t root_window = screen->root;
+
+  xcb_query_pointer_cookie_t cookie = xcb_query_pointer(mConn, root_window);
+  xcb_query_pointer_reply_t *reply = xcb_query_pointer_reply(mConn, cookie, NULL);
+  if (reply) {
+      *pX = reply->root_x;
+      *pY = reply->root_y;
+      free(reply); // Important: Free the reply!
+      return true;
+  } else {
+      return false;
+  }
 }
 
 bool XcbPlatform::SetClipboard(EClipboardFormat format, const void* data, size_t data_len)
@@ -887,8 +1133,9 @@ void XcbPlatform::ProcessXEvent(xcb_generic_event_t* evt)
     {
       // type 0 means error
       auto err = (xcb_value_error_t*) evt;
-      TRACE(LOG_PREFIX ":XCB ERROR: code %d, sequence %d, value %d, opcode %d:%d\n",
-        err->error_code, err->sequence, err->bad_value, err->minor_opcode, err->major_opcode);
+      auto msg = xcb_event_get_error_label(err->error_code);
+      TRACE(LOG_PREFIX ":XCB ERROR: code %d, sequence %d, value %d, opcode %d:%d\n  message: %s\n",
+        err->error_code, err->sequence, err->bad_value, err->minor_opcode, err->major_opcode, msg);
       break;
     }
 
@@ -1030,10 +1277,18 @@ void XcbPlatform::ProcessXEvent(xcb_generic_event_t* evt)
 #undef LOG_PREFIX
 }
 
-void XcbPlatform::ProcessEventQueue()
+void XcbPlatform::ProcessEventQueue(int timeout)
 {
   xcb_generic_event_t* evt;
   xcb_flush(mConn);
+  if (timeout > 0) {
+    // make it so we can wait for events from XCB
+    pollfd pfd;
+    pfd.fd = xcb_get_file_descriptor(mConn);
+    pfd.events = POLL_IN;
+    // Wait for events from the xcb file descriptor
+    poll(&pfd, 1, timeout);
+  }
   while((evt = xcb_poll_for_event(mConn))) {
     ProcessXEvent(evt);
     free(evt);
@@ -1138,8 +1393,16 @@ bool RealWindow::CreateXWindow(const WindowOptions& options, int visual_id)
     xp->ReplaceProperty(mWnd, xp->catoms[ATOM_WM_PROTOCOLS], XCB_ATOM_ATOM, 32, 1, wm_protocols);
   }
 
+  if (options.flags & XcbPlatform::WM_NO_DECORATIONS) {
+    uint32_t values[] = {xp->mWmhConn->_NET_WM_WINDOW_TYPE_SPLASH};
+    xcb_ewmh_set_wm_window_type(xp->mWmhConn, mWnd, 1, values);
+  }
+
   // enable embedding by default
   this->EnableEmbed(true);
+
+  // Add this to the list of managed windows.
+  xp->mWindows.push_back(this);
 
   return true;
 }
@@ -1184,13 +1447,6 @@ bool RealWindow::DrawBegin()
   if (mInDraw == 1 && mGlContext) {
     if (!glXMakeContextCurrent(xp->dpy, mGlWindow, mGlWindow, mGlContext)) {
       TRACE(LOG_PREFIX ":BUG: glXMakeContextCurrent failed\n");
-      return false;
-    }
-    // TODO do these when we create a glX window, instead of every time we start a frame.
-    if (!gladLoadGLX(xp->dpy, xp->mDefaultScreen)) {
-      return false;
-    }
-    if (!gladLoadGL()) {
       return false;
     }
   }
@@ -1241,7 +1497,7 @@ void RealWindow::SetVisible(bool show)
     } else {
       xcb_unmap_window(conn(), mWnd);
     }
-    this->mVisible = show;
+    // this->mVisible = show;
 }
 
 void RealWindow::Resize(uint32_t w, uint32_t h)
@@ -1273,11 +1529,14 @@ void RealWindow::SetCursorVisible(bool show)
     return;
   }
   mCursorVisible = show;
+  if (!CastX()->TestMoveCursor()) {
+    return;
+  }
   // https://stackoverflow.com/questions/57841785/how-to-hide-cursor-in-xcb
   if (mCursorVisible) {
-    xcb_xfixes_show_cursor_checked(conn(), mWnd);
+    xcb_xfixes_show_cursor(conn(), mWnd);
   } else {
-    xcb_xfixes_hide_cursor_checked(conn(), mWnd);
+    xcb_xfixes_hide_cursor(conn(), mWnd);
   }
 }
 
@@ -1286,26 +1545,44 @@ bool RealWindow::IsCursorVisible() const
   return mCursorVisible;
 }
 
-void RealWindow::SetCursorLocked(bool locked)
+void RealWindow::SetCursorGrabbed(bool locked, bool internal)
 {
-  if (mCursorLock == locked) {
+  if (mCursorGrab == locked) {
     // nothing to do
     return;
   }
-  mCursorLock = locked;
-  if (mCursorLock) {
-    mLock = mCursorPos;
-    xcb_grab_pointer(conn(), 1, mWnd,
-      XCB_EVENT_MASK_BUTTON_MOTION | XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE,
-      XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, mWnd, XCB_NONE, XCB_CURRENT_TIME);
-  } else {
-    xcb_ungrab_pointer(conn(), XCB_CURRENT_TIME);
+  auto xp = CastX();
+  mCursorGrab = locked;
+  if (mCursorGrab) {
+    mLockPos = mCursorPos;
+  }
+  // only do this if we're running it internally, or if we're safe to do so
+  if (internal || xp->TestMoveCursor()) {
+    if (mCursorGrab) {
+      auto ck = xcb_grab_pointer(
+        conn(),
+        true,
+        mWnd,
+        XCB_EVENT_MASK_BUTTON_MOTION | XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE,
+        XCB_GRAB_MODE_ASYNC,
+        XCB_GRAB_MODE_ASYNC,
+        mWnd,
+        XCB_NONE,
+        XCB_CURRENT_TIME
+      );
+      auto reply = xcb_grab_pointer_reply(conn(), ck, NULL);
+      if (reply && (reply->status == XCB_GRAB_STATUS_SUCCESS)) {
+        free(reply);
+      }
+    } else {
+      xcb_ungrab_pointer(conn(), XCB_CURRENT_TIME);
+    }
   }
 }
 
-bool RealWindow::IsCursorLocked() const
+bool RealWindow::IsCursorGrabbed() const
 {
-  return mCursorLock;
+  return mCursorGrab;
 }
 
 void RealWindow::EnableEmbed(bool on)
@@ -1525,9 +1802,12 @@ void RealWindow::ProcessXEvent(xcb_generic_event_t* evt)
         break;
       }
 
-      // Don't send events for the cursor being at the locked position.
-      // If we do, then any "delta" movement will just go back to where it was.
-      if (mCursorLock && e->event_x == mLock.x && e->event_y == mLock.y) {
+      // Update known cursor position
+      mCursorPos.x = e->event_x;
+      mCursorPos.y = e->event_y;
+
+      // Ingore messages of the cursor returning to the normal position
+      if (mCursorGrab && e->event_x == mLockPos.x && e->event_y == mLockPos.y) {
         break;
       }
 
@@ -1540,16 +1820,11 @@ void RealWindow::ProcessXEvent(xcb_generic_event_t* evt)
       qevent.motion.windowID = mWnd;
       qevent.motion.x = (float)e->event_x;
       qevent.motion.y = (float)e->event_y;
-      qevent.motion.xrel = (float)(e->event_x - mCursorPos.x);
-      qevent.motion.yrel = (float)(e->event_y - mCursorPos.y);
+      qevent.motion.xrel = (float)(e->event_x); //- mCursorPos.x);
+      qevent.motion.yrel = (float)(e->event_y); // - mCursorPos.y);
 
-      if (mCursorLock) {
-        // Reset mouse position back to lock
-        xp->MoveCursor(this, MOUSE_MOVE_WINDOW, mLock.x, mLock.y);
-      } else {
-        // Update known cursor position
-        mCursorPos.x = e->event_x;
-        mCursorPos.y = e->event_y;
+      if (mCursorGrab) {
+        xp->MoveCursor(this, MOUSE_MOVE_WINDOW, mLockPos.x, mLockPos.y);
       }
       break;
     }
@@ -1667,6 +1942,10 @@ void RealWindow::ProcessXEvent(xcb_generic_event_t* evt)
       auto e = (xcb_property_notify_event_t*) evt;
       xcb_atom_t atomXEMBED = xp->catoms[ATOM_XEMBED_INFO];
       if (e->atom == atomXEMBED) {
+        // While we SHOULD check the property value, it's sometimes glitchy?
+        // So for now just always set to true.
+        SetVisible(true);
+        #if 0
         // This indicates we need to change mapping status.
         // Just to be sure, let's get _XEMBED_INFO and check.
         auto prop = GetProperty(xp, mWnd, atomXEMBED, atomXEMBED, 0, 2);
@@ -1675,9 +1954,11 @@ void RealWindow::ProcessXEvent(xcb_generic_event_t* evt)
           SetVisible(true);
           break;
         }
+
         auto embedInfo = (uint32_t*)xcb_get_property_value(prop);
         SetVisible((embedInfo[1] & XEMBED_MAPPED) != 0);
         free(prop);
+        #endif
       }
       break;
     }
@@ -1729,7 +2010,7 @@ PlatformX11* PlatformX11::Create()
 
   XcbPlatform* xp = new XcbPlatform();
   xp->Connect();
-  if (!(xp->mStatus & XcbPlatform::kSuccess)) {
+  if (!(xp->mStatus & XcbPlatform::kLoadSuccess)) {
     delete xp;
     return nullptr;
   }
@@ -1763,7 +2044,7 @@ void PlatformX11::Flush()
 
 void PlatformX11::ProcessEvents()
 {
-  PSELF->ProcessEventQueue();
+  PSELF->ProcessEventQueue(-1);
 }
 
 
@@ -1811,11 +2092,11 @@ void X11Window::SetCursorVisible(bool show)
 bool X11Window::IsCursorVisible() const
 { return PCSELF->IsCursorVisible(); }
 
-void X11Window::SetCursorLocked(bool lock)
-{ PSELF->SetCursorLocked(lock); }
+void X11Window::SetCursorGrabbed(bool lock)
+{ PSELF->SetCursorGrabbed(lock, false); }
 
-bool X11Window::IsCursorLocked() const
-{ return PCSELF->mCursorLock; }
+bool X11Window::IsCursorGrabbed() const
+{ return PCSELF->mCursorGrab; }
 
 void X11Window::MoveMouse(EMouseMoveMode mode, int x, int y)
 {

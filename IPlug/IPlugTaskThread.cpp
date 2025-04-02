@@ -243,6 +243,11 @@ TaskID IPlugTaskThread::Push(const Task& t)
   return mImpl->Push(t);
 }
 
+void IPlugTaskThread::AddOnce(Task::Callback&& cb)
+{
+  mImpl->Push(Task::FromMs(1, 0, cb));
+}
+
 void IPlugTaskThread::Cancel(TaskID id)
 {
   return mImpl->Cancel(id);

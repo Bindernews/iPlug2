@@ -13,10 +13,13 @@
 
 #include "IPlugParameter.h"
 #include "IGraphicsLinux.h"
+#include "IPlugTaskThread.h"
+#include "IControl.h"
 #include "IPlugPaths.h"
 #include <unistd.h>
 #include <sys/wait.h>
 #include <mutex.h>
+#include <thread>
 
 #ifdef OS_LINUX
   #ifdef IGRAPHICS_GL
@@ -198,6 +201,7 @@ void IGraphicsLinux::DrawResize()
 
 void IGraphicsLinux::LoopEvents()
 {
+  bool resetMouse = false;
   SDL_Event event;
   while (mWindow->PollEvent(&event)) {
     switch (event.type) {
@@ -276,10 +280,23 @@ void IGraphicsLinux::LoopEvents()
         mCursorX = info.x;
         mCursorY = info.y;
 
+        // check if we have to move the mouse back to the known position
+        if (mCursorLock && (mMouseLockPos.x != mCursorX || mMouseLockPos.y != mCursorY)) {
+          resetMouse = true;
+        }
+
         OnMouseOver(info.x, info.y, info.ms);
 
-        // std::vector<IMouseInfo> list{ info };
-        // OnMouseDrag(list);
+        if (info.ms.L || info.ms.R) {
+          std::vector<IMouseInfo> list{ info };
+          OnMouseDrag(list);
+        }
+        break;
+      }
+      case SDL_EVENT_MOUSE_WHEEL:
+      {
+        IMouseMod mod;
+        OnMouseWheel(event.wheel.mouse_x, event.wheel.mouse_y, mod, event.wheel.y);
         break;
       }
       case SDL_EVENT_WINDOW_MOUSE_ENTER:
@@ -291,10 +308,9 @@ void IGraphicsLinux::LoopEvents()
       }
     }
   }
-}
-
-void IGraphicsLinux::SetIntegration(void* mainLoop)
-{
+  // if (resetMouse) {
+  //   mWindow->MoveMouse(MOUSE_MOVE_WINDOW, mMouseLockPos.x, mMouseLockPos.y);
+  // }
 }
 
 void* IGraphicsLinux::OpenWindow(void* pParent)
@@ -348,6 +364,12 @@ void* IGraphicsLinux::OpenWindow(void* pParent)
 
   // Reset some state
   mCursorLock = false;
+  mNextDrawTime = 0;
+
+  mTaskId = IPlugTaskThread::instance()->Push(Task::FromMs(0, 10, [this](uint64_t) {
+    this->UpdateUI();
+    return true;
+  }));
 
   return mWindow->GetHandle();
 }
@@ -355,6 +377,10 @@ void* IGraphicsLinux::OpenWindow(void* pParent)
 void IGraphicsLinux::CloseWindow()
 {
   mXLock.Enter();
+  if (mTaskId) {
+    IPlugTaskThread::instance()->Cancel(mTaskId);
+    mTaskId = 0;
+  }
   if (mWindow) {
     OnViewDestroyed();
     SetPlatformContext(nullptr);
@@ -373,9 +399,11 @@ void IGraphicsLinux::GetMouseLocation(float& x, float& y) const
 void IGraphicsLinux::HideMouseCursor(bool hide, bool lock)
 {
   mWindow->SetCursorVisible(!hide);
-  mWindow->SetCursorLocked(lock);
+  mWindow->SetCursorGrabbed(lock);
   mCursorHidden = hide;
   mCursorLock = lock;
+  mMouseLockPos.x = mCursorX;
+  mMouseLockPos.y = mCursorY;
 }
 
 void IGraphicsLinux::MoveMouseCursor(float x, float y)
@@ -688,6 +716,50 @@ bool IGraphicsLinux::PromptForColor(IColor& color, const char* str, IColorPicker
   // TODO call func
 }
 
+IPopupMenu* IGraphicsLinux::CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT bounds, bool& isAsync)
+{
+  // Not implemented yet
+  return nullptr;
+}
+
+void IGraphicsLinux::CreatePlatformTextEntry(int paramIdx, const IText& text, const IRECT& bounds, int length, const char* str)
+{
+  (void)text;
+  (void)bounds;
+  (void)length;
+
+  WDL_String args;
+  uint32_t windowId = (uint32_t)reinterpret_cast<uintptr_t>(mWindow->GetHandle());
+  const char* paramName = GetDelegate()->GetParam(paramIdx)->GetName();
+
+  args.Append("zenity --modal --entry ");
+  args.AppendFormatted(100, "--title='Edit %s' ", paramName);
+  args.AppendFormatted(50, "--attach=%u ", windowId);
+  args.AppendFormatted(30 + strlen(str), "--entry-text='%s' ", str);
+
+  FILE* fd = popen(args.Get(), "r");
+  if (!fd) {
+    return;
+  }
+
+  auto self = this;
+  auto popup = std::thread([fd, paramIdx, self]() {
+    char buf[2048];
+    size_t sz = fread(buf, 1, sizeof(buf), fd);
+    buf[sz] = 0;
+    int code = pclose(fd);
+    if (code == 0) {
+      IPlugTaskThread::instance()->AddOnce([buf, paramIdx, self](uint64_t) {
+        auto param = self->GetDelegate()->GetParam(paramIdx);
+        param->SetString(buf);
+        self->GetControlWithParamIdx(paramIdx)->SetValueFromUserInput(param->GetNormalized());
+        return false;
+      });
+    }
+  });
+  popup.detach();
+}
+
 bool IGraphicsLinux::OpenURL(const char* url, const char* msgWindowTitle, const char* confirmMsg, const char* errMsgOnFailure)
 {
   (void)msgWindowTitle;
@@ -760,7 +832,7 @@ uint32_t IGraphicsLinux::GetUserDblClickTimeout()
   return timeout;
 }
 
-void IGraphicsLinux::Update()
+void IGraphicsLinux::UpdateUI()
 {
   // allow the platform to process things
   gPlatform->ProcessEvents();
@@ -888,6 +960,9 @@ IGraphicsLinux::IGraphicsLinux(IGEditorDelegate& dlg, int w, int h, int fps, flo
     gPlatform = PlatformX11::Create();
   }
   gPlatformLock.Leave();
+
+  mNextDrawTime = 0;
+  mCursorLock = false;
 }
 
 IGraphicsLinux::~IGraphicsLinux()

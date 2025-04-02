@@ -1,31 +1,31 @@
 /*
  ==============================================================================
- 
- This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers. 
- 
+
+ This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers.
+
  See LICENSE.txt for  more info.
- 
+
  ==============================================================================
 */
 
 #pragma once
 
 /**
- 
+
  IPlug plug-in -> Standalone app wrapper, using Cockos' SWELL
- 
+
  Oli Larkin 2014-2018
- 
+
  Notes:
- 
+
  App settings are stored in a .ini (text) file. The location is as follows:
- 
+
  Windows7: C:\Users\USERNAME\AppData\Local\BUNDLE_NAME\settings.ini
  Windows XP/Vista: C:\Documents and Settings\USERNAME\Local Settings\Application Data\BUNDLE_NAME\settings.ini
  macOS: /Users/USERNAME/Library/Application\ Support/BUNDLE_NAME/settings.ini
  OR
  /Users/USERNAME/Library/Containers/BUNDLE_ID/Data/Library/Application Support/BUNDLE_NAME/settings.ini
- 
+
  */
 
 #include <cstdlib>
@@ -77,6 +77,7 @@ const int kDeviceDS = 0; const int kDeviceCoreAudio = 0; const int kDeviceAlsa =
 const int kDeviceASIO = 1; const int kDeviceJack = 1;
 const int kDevicePulse = 2;
 extern UINT gSCROLLMSG;
+#define UPDATE_UI_TIMER_ID (4)
 
 class IPlugAPP;
 
@@ -84,7 +85,7 @@ class IPlugAPP;
 class IPlugAPPHost
 {
 public:
-  
+
   /** Used to manage changes to app i/o */
   struct AppState
   {
@@ -97,12 +98,12 @@ public:
     uint32_t mBufferSize;
     uint32_t mMidiInChan;
     uint32_t mMidiOutChan;
-    
+
     uint32_t mAudioInChanL;
     uint32_t mAudioInChanR;
     uint32_t mAudioOutChanL;
     uint32_t mAudioOutChanR;
-    
+
     AppState()
     : mAudioInDev(DEFAULT_INPUT_DEV)
     , mAudioOutDev(DEFAULT_OUTPUT_DEV)
@@ -113,14 +114,14 @@ public:
     , mAudioSR(44100)
     , mMidiInChan(0)
     , mMidiOutChan(0)
-    
+
     , mAudioInChanL(1)
     , mAudioInChanR(2)
     , mAudioOutChanL(1)
     , mAudioOutChanR(2)
     {
     }
-    
+
     AppState (const AppState& obj)
     : mAudioInDev(obj.mAudioInDev.Get())
     , mAudioOutDev(obj.mAudioOutDev.Get())
@@ -131,14 +132,14 @@ public:
     , mAudioSR(obj.mAudioSR)
     , mMidiInChan(obj.mMidiInChan)
     , mMidiOutChan(obj.mMidiOutChan)
-    
+
     , mAudioInChanL(obj.mAudioInChanL)
     , mAudioInChanR(obj.mAudioInChanR)
     , mAudioOutChanL(obj.mAudioInChanL)
     , mAudioOutChanR(obj.mAudioInChanR)
     {
     }
-    
+
     bool operator==(const AppState& rhs) const {
       return (rhs.mAudioDriverType == mAudioDriverType &&
               rhs.mBufferSize == mBufferSize &&
@@ -159,10 +160,10 @@ public:
     }
     bool operator!=(const AppState& rhs) const { return !operator==(rhs); }
   };
-  
+
   static IPlugAPPHost* Create();
   static std::unique_ptr<IPlugAPPHost> sInstance;
-  
+
   void PopulateSampleRateList(HWND hwndDlg, RtAudio::DeviceInfo* pInputDevInfo, RtAudio::DeviceInfo* pOutputDevInfo);
   void PopulateAudioInputList(HWND hwndDlg, RtAudio::DeviceInfo* pInfo);
   void PopulateAudioOutputList(HWND hwndDlg, RtAudio::DeviceInfo* pInfo);
@@ -170,7 +171,7 @@ public:
   void PopulateAudioDialogs(HWND hwndDlg);
   bool PopulateMidiDialogs(HWND hwndDlg);
   void PopulatePreferencesDialog(HWND hwndDlg);
-  
+
   IPlugAPPHost();
   ~IPlugAPPHost();
 
@@ -181,23 +182,23 @@ public:
   bool Init();
   bool InitState();
   void UpdateINI();
-  
+
   /** Returns the name of the audio device at idx
    * @param idx The index RTAudio has given the audio device
    * @return The device name. Core Audio device names are truncated. */
   std::string GetAudioDeviceName(int idx) const;
   // returns the rtaudio device ID, based on the (truncated) device name
-  
+
   /** Returns the audio device index linked to a particular name
   * @param name The name of the audio device to test
   * @return The integer index RTAudio has given the audio device */
   int GetAudioDeviceIdx(const char* name) const;
-  
+
   /** @param direction Either kInput or kOutput
    * @param name The name of the midi device
    * @return An integer specifying the output port number, where 0 means any */
   int GetMIDIPortNumber(ERoute direction, const char* name) const;
-  
+
   /** find out which devices have input channels & which have output channels, add their ids to the lists */
   void ProbeAudioIO();
   void ProbeMidiIO();
@@ -210,7 +211,7 @@ public:
   bool TryToChangeAudioDriverType();
   bool TryToChangeAudio();
   bool SelectMIDIDevice(ERoute direction, const char* portName);
-  
+
   static int AudioCallback(void* pOutputBuffer, void* pInputBuffer, uint32_t nFrames, double streamTime, RtAudioStreamStatus status, void* pUserData);
   static void MIDICallback(double deltatime, std::vector<uint8_t>* pMsg, void* pUserData);
   static void ErrorCallback(RtAudioError::Type type, const std::string& errorText);
@@ -226,14 +227,14 @@ private:
   std::unique_ptr<RtMidiOut> mMidiOut = nullptr;
   int mMidiOutChannel = -1;
   int mMidiInChannel = -1;
-  
+
   /**  */
   AppState mState;
   /** When the preferences dialog is opened the existing state is cached here, and restored if cancel is pressed */
   AppState mTempState;
   /** When the audio driver is started the current state is copied here so that if OK is pressed after APPLY nothing is changed */
   AppState mActiveState;
-  
+
   double mSampleRate = 44100.;
   uint32_t mSamplesElapsed = 0;
   uint32_t mVecWait = 0;
@@ -247,15 +248,15 @@ private:
   int32_t mDefaultInputDev = -1;
   /** The index of the operating systems default output device, -1 if not detected */
   int32_t mDefaultOutputDev = -1;
-    
+
   WDL_String mINIPath;
-  
+
   std::vector<uint32_t> mAudioInputDevs;
   std::vector<uint32_t> mAudioOutputDevs;
   std::vector<std::string> mAudioIDDevNames;
   std::vector<std::string> mMidiInputDevNames;
   std::vector<std::string> mMidiOutputDevNames;
-  
+
   WDL_PtrList<double> mInputBufPtrs;
   WDL_PtrList<double> mOutputBufPtrs;
 
@@ -264,7 +265,7 @@ private:
   HWND mSite = nullptr;
   void* mSiteWnd = 0; // XID
 #endif
-  
+
   friend class IPlugAPP;
 };
 
