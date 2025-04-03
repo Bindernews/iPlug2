@@ -70,6 +70,9 @@ protected:
   virtual void CreatePlatformTextEntry(int paramIdx, const IText& text, const IRECT& bounds, int length, const char* str) override;
   void RequestFocus();
 
+  /// @brief Add a task to be run in the UI thread
+  void AddUiTask(std::function<void()>&& task);
+
   friend class IGraphics;
 private:
   /// @brief Window pointer
@@ -80,7 +83,10 @@ private:
   bool mShouldPaint = false;
   /// @brief Locked mouse position
   IVec2 mMouseLockPos;
-  WDL_Mutex mXLock;
+  /// @brief List of tasks for the UI thread to run
+  std::vector<std::function<void()>> mUiTasks;
+  /// @brief Lock for \c mUiTasks
+  WDL_Mutex mUiTasksLock;
   /// @brief Id for IPlugTaskThread task that calls UpdateUI
   uint32_t mTaskId = 0;
 

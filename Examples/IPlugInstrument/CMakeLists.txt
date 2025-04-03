@@ -65,7 +65,7 @@ source_group(TREE ${cwd} FILES ${_src})
 source_group(TREE "${cwd}/resources" PREFIX Resources FILES ${_res})
 
 # Add the various output formats we want to use
-iplug_add_format(plugin_base vst2 COPY_AFTER_BUILD)
+# iplug_add_format(plugin_base vst2 COPY_AFTER_BUILD)
 iplug_add_format(plugin_base vst3 COPY_AFTER_BUILD)
 iplug_add_format(plugin_base app)
 iplug_add_format(plugin_base au2 COPY_AFTER_BUILD)

@@ -177,25 +177,21 @@ void IGraphicsLinux::Paint()
   IRECTList rects;
   rects.Add(ir.GetScaled(1.f / GetBackingPixelScale()));
 
-  mXLock.Enter();
   if (mWindow->DrawBegin())
   {
     Draw(rects);
     mWindow->DrawEnd();
   }
-  mXLock.Leave();
 }
 
 void IGraphicsLinux::DrawResize()
 {
-  mXLock.Enter();
   // WARNING: in CAN BE reentrant!!! (f.e. it is called from SetScreenScale during initialization)
   if (mWindow->DrawBegin())
   {
     IGRAPHICS_DRAW_CLASS::DrawResize();
     mWindow->DrawEnd();
   }
-  mXLock.Leave();
   // WARNING: IPlug call it on resize, but at the end. When should we call Paint() ?
   // In Windows version "Update window" is called from PlatformResize, so BEFORE DrawResize...
 }
@@ -340,8 +336,20 @@ void* IGraphicsLinux::OpenWindow(void* pParent)
     return NULL;
   }
 
+#if defined(VST3_API)
+  mWindow->SetVisible(true);
+#elif defined(APP_API) || defined(CLAP_API) || defined(VST2_API) || defined(LV2_API)
+  mWindow->SetVisible(true);
+  mTaskId = IPlugTaskThread::instance()->Push(Task::FromMs(0, 10, [this](uint64_t) {
+    this->UpdateUI();
+    return true;
+  }));
+#else
+  #error "IGraphicsLinux:OpenWindow: unknown api. Map or not to map... that is the question"
+#endif
+
   std::promise<bool> done1;
-  IPlugTaskThread::instance()->AddOnce([this, opts, &done1](uint64_t) {
+  AddUiTask([this, opts, &done1]() {
     // GL context set
     if (mWindow->DrawBegin())
     {
@@ -355,56 +363,34 @@ void* IGraphicsLinux::OpenWindow(void* pParent)
       mWindow->DrawEnd();
     }
     done1.set_value(true);
-    return false;
   });
   done1.get_future().wait();
-  if (!mWindow)
-  {
-    return NULL;
-  }
-
-#if defined(APP_API) || defined(CLAP_API)
-  mWindow->SetVisible(true);
-#elif defined(VST2_API) || defined(VST3_API) || defined(LV2_API)
-  // nothing special to do, embedding is enabled by default
-#else
-  #error "IGraphicsLinux:OpenWindow: unknown api. Map or not to map... that is the question"
-#endif
-  // make sure everything is ready before reporting it is
-  gPlatform->Flush();
 
   // Reset some state
   mCursorLock = false;
   mNextDrawTime = 0;
-
-  mTaskId = IPlugTaskThread::instance()->Push(Task::FromMs(0, 10, [this](uint64_t) {
-    this->UpdateUI();
-    return true;
-  }));
 
   return mWindow->GetHandle();
 }
 
 void IGraphicsLinux::CloseWindow()
 {
-  if (mTaskId) {
-    IPlugTaskThread::instance()->Cancel(mTaskId);
-    mTaskId = 0;
-  }
-
   if (mWindow) {
     std::promise<bool> closeWait;
-    IPlugTaskThread::instance()->AddOnce([this, &closeWait](uint64_t) {
+    AddUiTask([this, &closeWait]() {
       OnViewDestroyed();
       SetPlatformContext(nullptr);
       mWindow->Close();
       mWindow = nullptr;
       closeWait.set_value(true);
-      return false;
     });
     closeWait.get_future().wait();
   }
 
+  if (mTaskId) {
+    IPlugTaskThread::instance()->Cancel(mTaskId);
+    mTaskId = 0;
+  }
 }
 
 void IGraphicsLinux::GetMouseLocation(float& x, float& y) const
@@ -849,10 +835,35 @@ uint32_t IGraphicsLinux::GetUserDblClickTimeout()
   return timeout;
 }
 
+void IGraphicsLinux::AddUiTask(std::function<void()>&& task)
+{
+  char threadName[128];
+  pthread_getname_np(pthread_self(), threadName, sizeof(threadName));
+  if (strcmp(threadName, "iPlug2Loop") == 0) {
+    task();
+  } else {
+    mUiTasksLock.Enter();
+    mUiTasks.push_back(std::move(task));
+    mUiTasksLock.Leave();
+  }
+}
+
 void IGraphicsLinux::UpdateUI()
 {
   // allow the platform to process things
   gPlatform->ProcessEvents();
+
+  // create a new task list and swap it with our pending list
+  // so we can safely work on the pending list without holding the lock.
+  std::vector<std::function<void()>> taskList;
+  mUiTasksLock.Enter();
+  std::swap(taskList, mUiTasks);
+  mUiTasksLock.Leave();
+
+  // run all pending tasks, they will get deleted when taskList goes out of scope
+  for (size_t i = 0; i < taskList.size(); i++) {
+    taskList[i]();
+  }
 
   if (WindowIsOpen())
   {

@@ -260,7 +260,7 @@ function(iplug_add_post_build_copy target src_dir dest_dir)
   cmake_parse_arguments(arg "FORCE" "" "" ${ARGN})
   get_target_property(r ${target} IPLUG_COPY_AFTER_BUILD)
   if (r OR arg_FORCE)
-    message("Adding copy after build for ${target} to ${dest_dir}")
+    # message("Adding copy after build for ${target} to ${dest_dir}")
     add_custom_command(TARGET ${target} POST_BUILD
       COMMAND ${CMAKE_COMMAND} ARGS "-E" "remove_directory" "${dest_dir}"
       COMMAND ${CMAKE_COMMAND} ARGS "-E" "copy_directory" "${src_dir}" "${dest_dir}"

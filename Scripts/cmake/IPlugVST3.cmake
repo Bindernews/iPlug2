@@ -98,6 +98,7 @@ function(iplug_configure_vst3 base_plugin target)
   add_library(${target} MODULE)
   # Link to iPlug library and GUI libraries
   target_link_libraries(${target} PUBLIC iPlug2_VST3 ${base_plugin} ${gui_libraries})
+  iplug_copy_properties(${target} ${base_plugin} IPLUG_COPY_AFTER_BUILD IPLUG_RESOURCES)
 
   set(install_dir "${VST3_INSTALL_PATH}/${plugin_name}.vst3")
   set(res_dir "${CMAKE_BINARY_DIR}/${target}.vst3/Contents/Resources")

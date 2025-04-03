@@ -64,6 +64,7 @@ function(iplug_configure_vst2 base_plugin target)
   # Create module and link it to dependencies
   add_library(${target} MODULE)
   iplug_target_add(${target} PUBLIC LINK iPlug2_VST2 ${base_plugin} ${gui_libraries})
+  iplug_copy_properties(${target} ${base_plugin} IPLUG_COPY_AFTER_BUILD IPLUG_RESOURCES)
 
   set(res_dir "${output_dir}/resources")
 
