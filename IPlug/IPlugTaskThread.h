@@ -48,7 +48,7 @@ public:
   ~IPlugTaskThread();
 
   /** Push a new task. */
-  TaskID Push(const Task& t);
+  TaskID Push(Task&& t);
 
   /** Add a one-shot task. */
   void AddOnce(Task::Callback&& callback);

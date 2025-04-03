@@ -85,7 +85,7 @@ public:
     }
   }
 
-  TaskID Push(const Task& t)
+  TaskID Push(Task&& t)
   {
     TaskImpl t2;
     t2.time = sTimeEpoch + microseconds(t.time);
@@ -238,9 +238,9 @@ IPlugTaskThread::~IPlugTaskThread()
   }
 }
 
-TaskID IPlugTaskThread::Push(const Task& t)
+TaskID IPlugTaskThread::Push(Task&& t)
 {
-  return mImpl->Push(t);
+  return mImpl->Push(std::move(t));
 }
 
 void IPlugTaskThread::AddOnce(Task::Callback&& cb)

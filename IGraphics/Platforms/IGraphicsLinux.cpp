@@ -20,6 +20,7 @@
 #include <sys/wait.h>
 #include <mutex.h>
 #include <thread>
+#include <future>
 
 #ifdef OS_LINUX
   #ifdef IGRAPHICS_GL
@@ -339,22 +340,32 @@ void* IGraphicsLinux::OpenWindow(void* pParent)
     return NULL;
   }
 
-  // GL context set
-  if (mWindow->DrawBegin())
+  std::promise<bool> done1;
+  IPlugTaskThread::instance()->AddOnce([this, opts, &done1](uint64_t) {
+    // GL context set
+    if (mWindow->DrawBegin())
+    {
+      OnViewInitialized(nullptr);
+      SetScreenScale(1); // resizes draw context, calls DrawResize
+
+      GetDelegate()->LayoutUI(this);
+      SetAllControlsDirty();
+      GetDelegate()->OnUIOpen();
+
+      mWindow->DrawEnd();
+    }
+    done1.set_value(true);
+    return false;
+  });
+  done1.get_future().wait();
+  if (!mWindow)
   {
-    OnViewInitialized(nullptr);
-    SetScreenScale(1); // resizes draw context, calls DrawResize
-
-    GetDelegate()->LayoutUI(this);
-    SetAllControlsDirty();
-    GetDelegate()->OnUIOpen();
-
-    mWindow->DrawEnd();
+    return NULL;
   }
 
-#ifdef APP_API
+#if defined(APP_API) || defined(CLAP_API)
   mWindow->SetVisible(true);
-#elif defined(VST2_API) || defined(VST3_API) || defined(LV2_API) || defined(CLAP_API)
+#elif defined(VST2_API) || defined(VST3_API) || defined(LV2_API)
   // nothing special to do, embedding is enabled by default
 #else
   #error "IGraphicsLinux:OpenWindow: unknown api. Map or not to map... that is the question"
@@ -376,18 +387,24 @@ void* IGraphicsLinux::OpenWindow(void* pParent)
 
 void IGraphicsLinux::CloseWindow()
 {
-  mXLock.Enter();
   if (mTaskId) {
     IPlugTaskThread::instance()->Cancel(mTaskId);
     mTaskId = 0;
   }
+
   if (mWindow) {
-    OnViewDestroyed();
-    SetPlatformContext(nullptr);
-    mWindow->Close();
-    mWindow = nullptr;
+    std::promise<bool> closeWait;
+    IPlugTaskThread::instance()->AddOnce([this, &closeWait](uint64_t) {
+      OnViewDestroyed();
+      SetPlatformContext(nullptr);
+      mWindow->Close();
+      mWindow = nullptr;
+      closeWait.set_value(true);
+      return false;
+    });
+    closeWait.get_future().wait();
   }
-  mXLock.Leave();
+
 }
 
 void IGraphicsLinux::GetMouseLocation(float& x, float& y) const

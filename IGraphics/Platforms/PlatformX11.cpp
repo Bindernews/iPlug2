@@ -15,6 +15,7 @@
 #include <X11/Xlib.h>
 #include <X11/Xlib-xcb.h>
 #include <xcb/xcb.h>
+#include <xcb/xproto.h>
 #include <xcb/xcb_event.h>
 #include <xcb/xcb_icccm.h>
 #include <xcb/xfixes.h>
@@ -32,6 +33,7 @@
 #include <memory>
 #include <algorithm>
 #include <list>
+#include <mutex.h>
 
 #define XK_3270  // for XK_3270_BackTab
 #include <X11/XF86keysym.h>
@@ -167,6 +169,9 @@ struct XcbPlatform
   /// @brief Do we have GLX support?
   ELoadStatus mGlxLoaded = kNotAttempted;
 
+  /// @brief Load status of glad
+  ELoadStatus mGladGLLoaded = kNotAttempted;
+
   /// @brief List of available screens
   std::vector<xcb_screen_t*> mScreens;
 
@@ -175,6 +180,9 @@ struct XcbPlatform
 
   /// @brief Common atoms
   xcb_atom_t catoms[kAtomIdsCount];
+
+  /// @brief Lock for all X operations, for thread-safety
+  WDL_Mutex mXLock;
 
   //---------------------------//
   // Clipboard and other state //
@@ -195,7 +203,7 @@ struct XcbPlatform
   /// @brief Double-click timeout in milliseconds
   /// @remark Default windows double-click timeout is 500ms,
   /// source: https://learn.microsoft.com/en-us/windows/win32/controls/ttm-setdelaytime?redirectedfrom=MSDN
-  uint32_t mDblClickTimeout = 500;
+  uint32_t mDblClickTimeout = 400;
 
   //-----------//
   // Functions //
@@ -233,7 +241,7 @@ struct XcbPlatform
   /// @return -1 in case of errors, the <window> is not found or its screen is not known
   int WindowToScreen(xcb_window_t wnd);
 
-  bool CheckScreenIsTrueColor(int screen) const;
+  bool CheckScreenIsTrueColor(int screen);
 
   /// @brief Test if we can control the cursor.
   /// @return true if the cursor can be controlled, false if not
@@ -445,50 +453,6 @@ static uint64_t get_time_ms()
   return (t.tv_sec * 1000) + (t.tv_nsec / 1000000);
 }
 
-static uint32_t xevent_get_window_id(xcb_generic_event_t* evt)
-{
-  switch(evt->response_type & ~0x80) {
-    // These are all window events with the same general layout,
-    // so we can grab the window ID the same way from all of them.
-    case XCB_EXPOSE:
-    case XCB_MAP_NOTIFY:
-    case XCB_UNMAP_NOTIFY:
-    case XCB_CONFIGURE_NOTIFY:
-    case XCB_REPARENT_NOTIFY:
-    case XCB_CLIENT_MESSAGE:
-    case XCB_PROPERTY_NOTIFY:
-    {
-      auto e = (xcb_configure_notify_event_t*)evt;
-      return e->window;
-    }
-    // These all have the window as the "event" field.
-    case XCB_MOTION_NOTIFY:
-    case XCB_ENTER_NOTIFY:
-    case XCB_LEAVE_NOTIFY:
-    case XCB_KEY_PRESS:
-    case XCB_KEY_RELEASE:
-    case XCB_BUTTON_PRESS:
-    case XCB_BUTTON_RELEASE:
-    {
-      auto e = (xcb_enter_notify_event_t*)evt;
-      return e->event;
-    }
-    case XCB_SELECTION_CLEAR:
-    case XCB_SELECTION_REQUEST:
-    {
-      auto e = (xcb_selection_clear_event_t*) evt;
-      return e->owner;
-    }
-    case XCB_SELECTION_NOTIFY:
-    {
-      auto e = (xcb_selection_notify_event_t*) evt;
-      return e->target;
-    }
-    default:
-      return 0;
-  }
-}
-
 #pragma endregion static helpers
 
 
@@ -496,6 +460,9 @@ static uint32_t xevent_get_window_id(xcb_generic_event_t* evt)
 // XcbPlatform implementation //
 //------------------------//
 #pragma region XcbImpl
+
+/// Macro that returns an auto-releasing mutex lock
+#define LockX() WDL_MutexLock(&mXLock)
 
 /*
  * Log XLib errors for now
@@ -510,6 +477,7 @@ static int XlibErrorHandler(Display *dpy, XErrorEvent *ev ){
 XcbPlatform::XcbPlatform()
 : mClipboardData{1024}
 {
+  XInitThreads();
   mStatus = kNotAttempted;
   mClipboardOwner = 0;
 }
@@ -535,21 +503,24 @@ XcbPlatform::~XcbPlatform()
 void XcbPlatform::Connect()
 {
 #define LOG_PREFIX "PX11:Connect"
+  // no need to LockX since we're only initializing it.
+
+  // error pointer
+  xcb_generic_error_t* err = nullptr;
+
   // if we already have a connection, nothing else to do
   if (mStatus != kNotAttempted) {
     return;
   }
-
   // track if we got glx
   mGlxLoaded = kLoadFailed;
   // default to failing to load
   mStatus = kLoadFailed;
 
-
   this->dpy = XOpenDisplay(nullptr);
   if (!this->dpy) {
-      TRACE("Could not open X display\n");
-      return;
+    TRACE(LOG_PREFIX ": Could not open X display\n");
+    return;
   }
 
   // Warning: this is global
@@ -559,18 +530,21 @@ void XcbPlatform::Connect()
   // Grab our xcb connection
   this->mConn = XGetXCBConnection(this->dpy);
   if (!this->mConn) {
-      TRACE("Could not get XCB connection for X display\n");
-      return;
+    TRACE(LOG_PREFIX ": Could not get XCB connection for X display\n");
+    return;
   }
 
-  xcb_generic_error_t* err;
+  XSetEventQueueOwner(this->dpy, XCBOwnsEventQueue);
 
   mWmhConn = (xcb_ewmh_connection_t*)malloc(sizeof(xcb_ewmh_connection_t));
   if (!mWmhConn) {
+    // malloc failed, abort
+    std::abort();
     return;
   }
   auto wmhCookie = xcb_ewmh_init_atoms(conn(), mWmhConn);
   if (!wmhCookie) {
+    TRACE(LOG_PREFIX ":ERR: unable to initialize ewmh\n");
     return;
   }
   if (!xcb_ewmh_init_atoms_replies(mWmhConn, wmhCookie, &err)) {
@@ -582,7 +556,7 @@ void XcbPlatform::Connect()
 
   // Try to load GLX, but don't exit if this fails.
   if (!gladLoadGLX(this->dpy, this->mDefaultScreen)) {
-    TRACE("Could not load GLX\n");
+    TRACE(LOG_PREFIX ": Could not load GLX\n");
     mGlxLoaded = kLoadFailed;
   } else {
     mGlxLoaded = kLoadSuccess;
@@ -628,6 +602,8 @@ RealWindow* XcbPlatform::CreateWindow(const WindowOptions& options)
     return nullptr;
   }
   if (options.glMajor > 0) {
+    WindowOptions opts = options;
+    // opts.flags |= NO_COLORMAP;
     return CreateGlxWindow(options);
   } else {
     return CreateBasicWindow(options);
@@ -638,6 +614,7 @@ RealWindow* XcbPlatform::CreateWindow(const WindowOptions& options)
 RealWindow* XcbPlatform::CreateBasicWindow(const WindowOptions& options)
 {
 #define LOG_PREFIX "PX11:Platform:CreateBasicWindow"
+  auto lock = LockX();
   RealWindow* w = new RealWindow(this);
   int visual_id;
 
@@ -681,6 +658,8 @@ RealWindow* XcbPlatform::CreateGlxWindow(const WindowOptions& options)
     //GLX_SAMPLES         , 4,
     None
   };
+
+  auto lock = LockX();
 
   int attr[] = {
     GLX_CONTEXT_MAJOR_VERSION_ARB, options.glMajor,
@@ -748,19 +727,27 @@ RealWindow* XcbPlatform::CreateGlxWindow(const WindowOptions& options)
     return nullptr;
   }
 
+  if (xcb_flush(conn()) < 0) {
+    TRACE(LOG_PREFIX ":ERR: xcb_flush failed\n");
+  }
+
   // Register the window with GLX
-  w->mGlWindow = glXCreateWindow(this->dpy, fbcs.get()[0], w->mWnd, nullptr);
+  w->mGlWindow = glXCreateWindow(this->dpy, fbcs.get()[0], (long)w->mWnd, nullptr);
   if (!w->mGlWindow) {
     TRACE(LOG_PREFIX " Could not create GL window\n");
     return nullptr;
   }
 
-  glXMakeContextCurrent(dpy, w->mGlWindow, w->mGlWindow, w->mGlContext);
-  if (!gladLoadGL()) {
-    TRACE(LOG_PREFIX " gladLoadGL failed\n");
-    return nullptr;
+  if (mGladGLLoaded == kNotAttempted) {
+    mGladGLLoaded = kLoadFailed;
+    glXMakeContextCurrent(dpy, w->mGlWindow, w->mGlWindow, w->mGlContext);
+    if (!gladLoadGL()) {
+      TRACE(LOG_PREFIX " gladLoadGL failed\n");
+      return nullptr;
+    }
+    glXMakeContextCurrent(dpy, XCB_NONE, XCB_NONE, nullptr);
+    mGladGLLoaded = kLoadSuccess;
   }
-  glXMakeContextCurrent(dpy, XCB_NONE, XCB_NONE, nullptr);
 
   // return the window, taking it from unique_ptr so it doesn't get free'd
   return w.release();
@@ -798,6 +785,7 @@ void XcbPlatform::LoadAtoms()
 
 int XcbPlatform::WindowToScreen(xcb_window_t wnd)
 {
+  auto lock = LockX();
   xcb_query_tree_reply_t *reply = xcb_query_tree_reply(mConn, xcb_query_tree(mConn, wnd), NULL);
   if(reply){
     xcb_window_t root = reply->root;
@@ -815,29 +803,32 @@ int XcbPlatform::WindowToScreen(xcb_window_t wnd)
   return -1;
 }
 
-bool XcbPlatform::CheckScreenIsTrueColor(int screen) const
+bool XcbPlatform::CheckScreenIsTrueColor(int screen)
 {
-    int vid = mScreens[screen]->root_visual;
+  auto lock = LockX();
+  int vid = mScreens[screen]->root_visual;
 
-    xcb_visualtype_t* vt = nullptr;
-    xcb_depth_iterator_t dit = xcb_screen_allowed_depths_iterator(mScreens[screen]);
-    for (; dit.rem && !vt; xcb_depth_next(&dit)) {
-        xcb_visualtype_iterator_t vit = xcb_depth_visuals_iterator(dit.data);
-        for(; vit.rem; xcb_visualtype_next(&vit)) {
-            if(vid == vit.data->visual_id){
-                vt = vit.data;
-                break;
-            }
-        }
-    }
-    // we couldn't find the visualtype, so assume false
-    return vt && (vt->_class == XCB_VISUAL_CLASS_TRUE_COLOR)
-        && (vt->red_mask == 0xff0000) && (vt->green_mask == 0xff00) && (vt->blue_mask == 0xff);
+  xcb_visualtype_t* vt = nullptr;
+  xcb_depth_iterator_t dit = xcb_screen_allowed_depths_iterator(mScreens[screen]);
+  for (; dit.rem && !vt; xcb_depth_next(&dit)) {
+      xcb_visualtype_iterator_t vit = xcb_depth_visuals_iterator(dit.data);
+      for(; vit.rem; xcb_visualtype_next(&vit)) {
+          if(vid == vit.data->visual_id){
+              vt = vit.data;
+              break;
+          }
+      }
+  }
+  // we couldn't find the visualtype, so assume false
+  return vt && (vt->_class == XCB_VISUAL_CLASS_TRUE_COLOR)
+      && (vt->red_mask == 0xff0000) && (vt->green_mask == 0xff00) && (vt->blue_mask == 0xff);
 }
 
 bool XcbPlatform::TestMoveCursor()
 {
 #define LOG_PREFIX "PX11:TestMoveCursor"
+  // assume locked by caller
+
   // If we've already tested, just return the results of the test
   if (mCanMoveCursor != 0) {
     return mCanMoveCursor == kLoadSuccess;
@@ -937,6 +928,7 @@ bool XcbPlatform::TestMoveCursor()
 
 bool XcbPlatform::MoveCursor(RealWindow* wnd, EMouseMoveMode mode, int cx, int cy)
 {
+  auto lock = LockX();
   if (!TestMoveCursor()) {
     return false;
   }
@@ -976,6 +968,7 @@ bool XcbPlatform::MoveCursor(RealWindow* wnd, EMouseMoveMode mode, int cx, int c
 
 bool XcbPlatform::GetCursorPosition(int* pX, int* pY)
 {
+  auto lock = LockX();
   const xcb_setup_t *setup = xcb_get_setup(mConn);
   xcb_screen_iterator_t screen_iter = xcb_setup_roots_iterator(setup);
   xcb_screen_t *screen = screen_iter.data;
@@ -1120,6 +1113,7 @@ bool XcbPlatform::GetClipboard(EClipboardFormat *pFormat, WDL_TypedBuf<uint8_t>*
 void XcbPlatform::ProcessXEvent(xcb_generic_event_t* evt)
 {
 #define LOG_PREFIX "PX11:Platform:ProcessXEvent"
+  // assume locked by caller
   if (!evt) {
     return;
   }
@@ -1134,19 +1128,56 @@ void XcbPlatform::ProcessXEvent(xcb_generic_event_t* evt)
       // type 0 means error
       auto err = (xcb_value_error_t*) evt;
       auto msg = xcb_event_get_error_label(err->error_code);
-      TRACE(LOG_PREFIX ":XCB ERROR: code %d, sequence %d, value %d, opcode %d:%d\n  message: %s\n",
-        err->error_code, err->sequence, err->bad_value, err->minor_opcode, err->major_opcode, msg);
+      // ignore errors for certain opcodes
+      if (err->major_opcode != XCB_BUTTON_PRESS) {
+        TRACE(LOG_PREFIX ":XCB ERROR: code %d, sequence %d, value %d, opcode %d:%d\n  message: %s\n",
+          err->error_code, err->sequence, err->bad_value, err->minor_opcode, err->major_opcode, msg);
+      }
+
       break;
     }
+
+    // These all have the window as the "event" field.
+    case XCB_KEY_PRESS:
+    case XCB_KEY_RELEASE:
+    case XCB_BUTTON_PRESS:
+    case XCB_BUTTON_RELEASE:
+    case XCB_MOTION_NOTIFY:
+    case XCB_ENTER_NOTIFY:
+    case XCB_LEAVE_NOTIFY:
+    {
+      auto e = (xcb_enter_notify_event_t*)evt;
+      destWnd = e->event;
+      break;
+    }
+
+    // the window is still in the "event" field, but it's at a different offset
+    case XCB_FOCUS_IN:
+    case XCB_FOCUS_OUT:
+    {
+      auto e = (xcb_focus_in_event_t*) evt;
+      destWnd = e->event;
+      break;
+    }
+
+    // not sure what to do with this, no window so just ignore it for now
+    case XCB_KEYMAP_NOTIFY:
+      break;
 
     // These are all window events with the same general layout,
     // so we can grab the window ID the same way from all of them.
     case XCB_EXPOSE:
-    case XCB_MAP_NOTIFY:
+    case XCB_DESTROY_NOTIFY:
     case XCB_UNMAP_NOTIFY:
-    case XCB_CONFIGURE_NOTIFY:
+    case XCB_MAP_NOTIFY:
+    case XCB_MAP_REQUEST:
     case XCB_REPARENT_NOTIFY:
-    case XCB_CLIENT_MESSAGE: {
+    case XCB_CONFIGURE_NOTIFY:
+    case XCB_GRAVITY_NOTIFY:
+    case XCB_CIRCULATE_NOTIFY:
+    case XCB_CIRCULATE_REQUEST:
+    case XCB_CLIENT_MESSAGE:
+    {
       auto e = (xcb_configure_notify_event_t*)evt;
       // double-check that it's actually for the correct window
       if (e->event == e->window) {
@@ -1154,20 +1185,9 @@ void XcbPlatform::ProcessXEvent(xcb_generic_event_t* evt)
       }
       break;
     }
-    // These all have the window as the "event" field.
-    case XCB_MOTION_NOTIFY:
-    case XCB_ENTER_NOTIFY:
-    case XCB_LEAVE_NOTIFY:
-    case XCB_KEY_PRESS:
-    case XCB_KEY_RELEASE:
-    case XCB_BUTTON_PRESS:
-    case XCB_BUTTON_RELEASE: {
-      auto e = (xcb_enter_notify_event_t*)evt;
-      destWnd = e->event;
-      break;
-    }
 
-    case XCB_PROPERTY_NOTIFY: {
+    case XCB_PROPERTY_NOTIFY:
+    {
       auto e = (xcb_property_notify_event_t*) evt;
       destWnd = e->window;
       // This is another way in which we can receive clipboard data.
@@ -1236,7 +1256,8 @@ void XcbPlatform::ProcessXEvent(xcb_generic_event_t* evt)
       xcb_flush(mConn);
       break;
     }
-    case XCB_SELECTION_NOTIFY: {
+    case XCB_SELECTION_NOTIFY:
+    {
       // We requested clipoard data and it has arrived.
       // For now we assume the data is in the format requested, but potentially it's not?
       // Not sure what to do with that yet.
@@ -1289,6 +1310,7 @@ void XcbPlatform::ProcessEventQueue(int timeout)
     // Wait for events from the xcb file descriptor
     poll(&pfd, 1, timeout);
   }
+  auto lock = LockX();
   while((evt = xcb_poll_for_event(mConn))) {
     ProcessXEvent(evt);
     free(evt);
@@ -1319,12 +1341,14 @@ bool XcbPlatform::CheckCookie(xcb_void_cookie_t ck, const char* prefix) const
 #endif
 }
 
+#undef LockX
 #pragma endregion XcbImpl
 
 //---------------------------//
 // RealWindow Implementation //
 //---------------------------//
 #pragma region RealWindow
+#define LockX() WDL_MutexLock(&CastX()->mXLock)
 
 RealWindow::RealWindow(XcbPlatform* xp)
 : mWnd(0)
@@ -1345,6 +1369,7 @@ RealWindow::~RealWindow()
 
 bool RealWindow::CreateXWindow(const WindowOptions& options, int visual_id)
 {
+#define LOG_PREFIX "PX11:Window:CreateXWindow"
   uint32_t eventmask =
     XCB_EVENT_MASK_EXPOSURE | // we want to know when we need to redraw
     XCB_EVENT_MASK_STRUCTURE_NOTIFY | // get varius notification messages like configure, reparent, etc.
@@ -1361,18 +1386,24 @@ bool RealWindow::CreateXWindow(const WindowOptions& options, int visual_id)
   bool hasCmap = !(options.flags & XcbPlatform::NO_COLORMAP);
   xcb_generic_error_t* err = nullptr;
 
+
   mWnd = xcb_generate_id(conn());
-  // create a colormap only if parent is not 0
-  mCmap = hasCmap ? xcb_generate_id(conn()) : 0;
-  // unknown what this means
-  uint32_t wa[] = { eventmask, mCmap, 0 };
+  uint32_t cmap = hasCmap ? xcb_generate_id(conn()) : xp->mScreens[0]->default_colormap;
+  if (hasCmap) {
+    mCmap = cmap;
+  }
+  // window attributes
+  uint32_t wa[] = { eventmask, cmap, 0 };
   // window's value mask.
-  uint32_t value_mask = XCB_CW_EVENT_MASK | (hasCmap ? XCB_CW_COLORMAP : 0);
+  uint32_t value_mask = XCB_CW_EVENT_MASK | XCB_CW_COLORMAP;
   // parent XID
   uint32_t parent = voidp_to_xid(options.parent);
 
   if (hasCmap) {
-    xcb_create_colormap(conn(), XCB_COLORMAP_ALLOC_NONE, mCmap, parent, visual_id);
+    auto ck = xcb_create_colormap_checked(conn(), XCB_COLORMAP_ALLOC_NONE, mCmap, parent, visual_id);
+    if (xp->CheckCookie(ck, LOG_PREFIX)) {
+      return false;
+    }
   }
   xcb_rectangle_t bb = make_xrect(options.bounds);
   xcb_void_cookie_t create_ok = xcb_create_window_checked(
@@ -1383,7 +1414,7 @@ bool RealWindow::CreateXWindow(const WindowOptions& options, int visual_id)
   if (err)
   {
     XGetErrorText(xp->dpy, err->error_code, errbuf, sizeof(errbuf));
-    TRACE("PX11:CreateWindow: xcb_create_window failed: %s\n", errbuf);
+    TRACE(LOG_PREFIX ": xcb_create_window failed: %s\n", errbuf);
     return false;
   }
 
@@ -1405,10 +1436,12 @@ bool RealWindow::CreateXWindow(const WindowOptions& options, int visual_id)
   xp->mWindows.push_back(this);
 
   return true;
+#undef LOG_PREFIX
 }
 
 void RealWindow::Destroy()
 {
+  auto lock = LockX();
   auto xp = CastX();
   if (mGlContext) {
     if (glXGetCurrentContext() == mGlContext) {
@@ -1435,13 +1468,18 @@ void RealWindow::Destroy()
     mGc = 0;
   }
   // Remove self from list of known windows
-  auto self = this;
-  std::remove_if(xp->mWindows.begin(), xp->mWindows.end(), [&](auto w) { return w == self; });
+  for (auto it = xp->mWindows.begin(); it != xp->mWindows.end(); ++it) {
+    if (*it == this) {
+      xp->mWindows.erase(it);
+      break;
+    }
+  }
 }
 
 bool RealWindow::DrawBegin()
 {
 #define LOG_PREFIX "PX11:Window:DrawBegin"
+  auto lock = LockX();
   auto xp = CastX();
   mInDraw++;
   if (mInDraw == 1 && mGlContext) {
@@ -1464,6 +1502,7 @@ bool RealWindow::DrawBegin()
 void RealWindow::DrawEnd()
 {
 #define LOG_PREFIX "PX11:Window:DrawEnd"
+  auto lock = LockX();
   if (mInDraw > 0) {
     mInDraw--;
     if (mInDraw == 0 && mGlContext) {
@@ -1481,27 +1520,31 @@ void RealWindow::DrawEnd()
 
 void RealWindow::SetTitle(const char* title)
 {
-    size_t title_len = strlen(title);
-    CastX()->ReplaceProperty(mWnd, XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8, title_len, title);
-    CastX()->ReplaceProperty(mWnd, XCB_ATOM_WM_ICON_NAME, XCB_ATOM_STRING, 8, title_len, title);
+  auto lock = LockX();
+  size_t title_len = strlen(title);
+  CastX()->ReplaceProperty(mWnd, XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8, title_len, title);
+  CastX()->ReplaceProperty(mWnd, XCB_ATOM_WM_ICON_NAME, XCB_ATOM_STRING, 8, title_len, title);
 }
 
 void RealWindow::SetVisible(bool show)
 {
-    // if there's nothing to do, skip
-    if (show == this->mVisible) {
-      return;
-    }
-    if (show) {
-      xcb_map_window(conn(), mWnd);
-    } else {
-      xcb_unmap_window(conn(), mWnd);
-    }
-    // this->mVisible = show;
+  auto lock = LockX();
+  // if there's nothing to do, skip
+  if (show == this->mVisible) {
+    return;
+  }
+  if (show) {
+    xcb_map_window(conn(), mWnd);
+  } else {
+    xcb_unmap_window(conn(), mWnd);
+  }
+  // Do NOT update mVisible, we'll do that when we receive the notification
+  // from the X server directly.
 }
 
 void RealWindow::Resize(uint32_t w, uint32_t h)
 {
+  auto lock = LockX();
   uint32_t values[] = { w, h };
   xcb_configure_window(conn(), mWnd, XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT, values);
   xcb_flush(conn());
@@ -1512,12 +1555,14 @@ void RealWindow::Move(int32_t x, int32_t y)
   if (x < 0) x = 0;
   if (y < 0) y = 0;
   uint32_t values[] = { (uint32_t)x, (uint32_t)y };
+  auto lock = LockX();
   xcb_configure_window(conn(), mWnd, XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, values);
   xcb_flush(conn());
 }
 
 void RealWindow::RequestFocus()
 {
+  auto lock = LockX();
   xcb_set_input_focus(conn(), XCB_INPUT_FOCUS_POINTER_ROOT, mWnd, XCB_CURRENT_TIME);
   // xcb_set_input_focus_checked(xcbt_conn(mX), XCB_INPUT_FOCUS_POINTER_ROOT, mPlugWnd->wnd, XCB_CURRENT_TIME);
 }
@@ -1529,6 +1574,7 @@ void RealWindow::SetCursorVisible(bool show)
     return;
   }
   mCursorVisible = show;
+  auto lock = LockX();
   if (!CastX()->TestMoveCursor()) {
     return;
   }
@@ -1551,6 +1597,7 @@ void RealWindow::SetCursorGrabbed(bool locked, bool internal)
     // nothing to do
     return;
   }
+  auto lock = LockX();
   auto xp = CastX();
   mCursorGrab = locked;
   if (mCursorGrab) {
@@ -1587,6 +1634,7 @@ bool RealWindow::IsCursorGrabbed() const
 
 void RealWindow::EnableEmbed(bool on)
 {
+  // assume locked by caller
   auto xp = CastX();
   if (on) {
     // fields: version, flags
@@ -1642,6 +1690,8 @@ bool RealWindow::DrawImage(const WRect& area, int format, const uint8_t* data)
 bool RealWindow::PutPixels(const xcb_rectangle_t& bounds, unsigned depth, unsigned data_length, const uint8_t* data)
 {
 #define LOG_PREFIX "PX11:Window:DrawImage"
+  auto lock = LockX();
+
   // no reason we can't, but better to not allow bugs to creep in.
   if (!mInDraw) {
     TRACE(LOG_PREFIX ":BUG: call to PutPixels outside of DrawBegin()/DrawEnd()\n");
@@ -1682,6 +1732,7 @@ bool RealWindow::PutPixels(const xcb_rectangle_t& bounds, unsigned depth, unsign
 void RealWindow::ProcessXEvent(xcb_generic_event_t* evt)
 {
 #define LOG_PREFIX "PX11:Window:ProcessXEvent"
+  // assume locked by caller
   if (!evt) {
     return;
   }
@@ -1868,19 +1919,14 @@ void RealWindow::ProcessXEvent(xcb_generic_event_t* evt)
       break;
     }
 
-    case XCB_MAP_NOTIFY:
+    case XCB_DESTROY_NOTIFY:
     {
-      xcb_map_notify_event_t *mn = (xcb_map_notify_event_t *)evt;
-      if(mn->event != mn->window) {
-        break;
-      }
-      if (!mVisible) {
-        mVisible = true;
-        qevent.type = SDL_EVENT_WINDOW_SHOWN;
-        qevent.window.windowID = mWnd;
-      }
+      auto e = (xcb_destroy_notify_event_t*) evt;
+      qevent.type = SDL_EVENT_WINDOW_DESTROYED;
+      qevent.window.windowID = mWnd;
       break;
     }
+
     case XCB_UNMAP_NOTIFY:
     {
       xcb_unmap_notify_event_t *mn = (xcb_unmap_notify_event_t *)evt;
@@ -1890,6 +1936,20 @@ void RealWindow::ProcessXEvent(xcb_generic_event_t* evt)
       if (mVisible) {
         mVisible = false;
         qevent.type = SDL_EVENT_WINDOW_HIDDEN;
+        qevent.window.windowID = mWnd;
+      }
+      break;
+    }
+
+    case XCB_MAP_NOTIFY:
+    {
+      xcb_map_notify_event_t *mn = (xcb_map_notify_event_t *)evt;
+      if(mn->event != mn->window) {
+        break;
+      }
+      if (!mVisible) {
+        mVisible = true;
+        qevent.type = SDL_EVENT_WINDOW_SHOWN;
         qevent.window.windowID = mWnd;
       }
       break;
@@ -1984,6 +2044,7 @@ void RealWindow::ProcessXEvent(xcb_generic_event_t* evt)
 
 bool RealWindow::PollEvent(SDL_Event* event)
 {
+  auto lock = LockX();
   if (mEvents.empty()) {
     return false;
   }

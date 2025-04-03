@@ -76,9 +76,9 @@ struct WindowOptions
   /// @brief Any OpenGL / GLES context creation flags
   uint32_t glFlags = 0;
   /// @brief The desired bounds of the window
-  WRect bounds;
+  WRect bounds = WRect{0, 0, 0, 0};
   /// @brief Other flags
-  uint32_t flags;
+  uint32_t flags = 0;
 };
 
 class X11Window
@@ -140,7 +140,7 @@ class PlatformX11
 private:
   // implementation fields hidden to simplify public API.
   // This struct MUST NOT be copied, it's a pointer-only object.
-  char hidden[sizeof(void*) * 21];
+  char hidden[sizeof(void*) * 26];
 
   PlatformX11();
   PlatformX11(const PlatformX11&) = delete;
