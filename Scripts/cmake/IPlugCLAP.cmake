@@ -8,6 +8,15 @@ set(extern_install_dir ${CMAKE_BINARY_DIR}/IPlug)
 add_subdirectory(${deps_dir}/CLAP_SDK ${extern_install_dir}/clap)
 add_subdirectory(${deps_dir}/CLAP_HELPERS ${extern_install_dir}/clap_helpers)
 
+# Make sure our targets loaded successfully
+if (NOT TARGET clap OR NOT TARGET clap-helpers)
+  set(IPlugCLAP_FOUND FALSE)
+  return()
+endif()
+
+# Put the 'clap-tests' in a folder to keep the top level clean.
+set_target_properties(clap-tests PROPERTIES FOLDER "Libraries")
+
 # Find the install path for clap plugins based on OS.
 # Generally we prefer user-writable values in index 0 for faster iteration.
 # Source: https://github.com/free-audio/clap/blob/main/include/clap/entry.h
