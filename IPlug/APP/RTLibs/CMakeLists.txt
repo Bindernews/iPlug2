@@ -7,16 +7,21 @@ if (CMAKE_SYSTEM_NAME MATCHES "Linux")
 endif()
 
 set(IPLUG_DEPS ${IPLUG2_SDK_PATH}/Dependencies/IPlug)
+set(RTA_DIR ${IPLUG_DEPS}/RTAudio)
+set(RTM_DIR ${IPLUG_DEPS}/RTMidi)
 
 # Statically build RTAudio and RTMidi, configured here
 # because their CMakeLists.txt files are funky.
 
-add_library(iPlug2_RTLibs STATIC)
+add_library(iPlug2_RTAudioMidi STATIC)
 set(_def)
 set(_lib)
 set(_src
-  ${IPLUG_DEPS}/RTAudio/RtAudio.cpp
-  ${IPLUG_DEPS}/RTMidi/RtMidi.cpp
+  ${IPLUG_DEPS}
+  ${RTA_DIR}/RtAudio.h
+  ${RTA_DIR}/RtAudio.cpp
+  ${RTM_DIR}/RTMidi.h
+  ${RTM_DIR}/RtMidi.cpp
 )
 set(_inc
   ${IPLUG_DEPS}/RTAudio
@@ -31,15 +36,27 @@ if (CMAKE_SYSTEM_NAME MATCHES "Windows")
     "__WINDOWS_ASIO__"
   )
   list(APPEND _src
-    ${IPLUG_DEPS}/RTAudio/include/asio.cpp
-    ${IPLUG_DEPS}/RTAudio/include/asiodrivers.cpp
-    ${IPLUG_DEPS}/RTAudio/include/asiolist.cpp
-    ${IPLUG_DEPS}/RTAudio/include/iasiothiscallresolver.cpp
-    ${IPLUG_DEPS}/RTMidi/rtmidi_c.cpp
+    ${RTA_DIR}/include/asio.h
+    ${RTA_DIR}/include/asio.cpp
+    ${RTA_DIR}/include/asiodrivers.h
+    ${RTA_DIR}/include/asiodrivers.cpp
+    ${RTA_DIR}/include/asiosys.h
+    ${RTA_DIR}/include/asiodrvr.h
+    ${RTA_DIR}/include/dsound.h
+    ${RTA_DIR}/include/iasiodrv.h
+    ${RTA_DIR}/include/ginclude.h
+    ${RTA_DIR}/include/soundcard.h
+    ${RTA_DIR}/include/asiolist.h
+    ${RTA_DIR}/include/asiolist.cpp
+    ${RTA_DIR}/include/iasiothiscallresolver.h
+    ${RTA_DIR}/include/iasiothiscallresolver.cpp
   )
   list(APPEND _lib
     dsound.lib
     winmm.lib
+  )
+  list(APPEND _inc
+    ${IPLUG_DEPS}/RTAudio/include
   )
 elseif (CMAKE_SYSTEM_NAME MATCHES "Darwin")
   # For MacOS
@@ -72,9 +89,13 @@ elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
   endif()
 endif()
 
+
 # Set properties on iPlug2_RTLibs target
-set(tgt iPlug2_RTLibs)
+set(tgt iPlug2_RTAudioMidi)
 target_sources(${tgt} PRIVATE ${_src})
 target_include_directories(${tgt} PUBLIC ${_inc})
 target_link_libraries(${tgt} PRIVATE ${_lib})
 target_compile_definitions(${tgt} PUBLIC ${_def})
+target_compile_options(${tgt} PUBLIC ${IPLUG_MSVC_FLAGS})
+# For IDEs, put this in a "libraies" folder
+set_target_properties(${tgt} PROPERTIES FOLDER "Libraries")

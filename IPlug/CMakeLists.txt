@@ -36,7 +36,7 @@ endif()
 # Force-set it as a cache variable
 set(IPLUG_OS ${IPLUG_OS} CACHE STRING "OS name" FORCE)
 
-# These functions MUST be run in global scope
+# These functions MUST be run in a global scope
 CHECK_CXX_COMPILER_FLAG("-march=native" COMPILER_OPT_ARCH_NATIVE_SUPPORTED)
 CHECK_CXX_COMPILER_FLAG("/arch:AVX" COMPILER_OPT_ARCH_AVX_SUPPORTED)
 
@@ -63,7 +63,7 @@ set(cwd ${CMAKE_CURRENT_LIST_DIR})
 set(_def
   # Required for SWELL and MSVC builds
   NOMINMAX
-  $<$<CONFIG:Debug>:DEBUG>
+  $<$<CONFIG:Debug>:_DEBUG>
 )
 set(_opt "")
 set(_lib "")
@@ -105,6 +105,9 @@ if (IPLUG_OS MATCHES "Windows")
     "Shlwapi.lib"
     "comctl32.lib"
     "wininet.lib")
+  list(APPEND _inc
+    ${CMAKE_SOURCE_DIR}/resources/fonts
+  )
 
   # postbuild-win.bat is used by VST2/VST3/AAX on Windows, so we just always configure it on Windows
   # Note: For visual studio, we COULD use $(TargetPath) for the target, but for all other generators, no.
@@ -127,6 +130,8 @@ elseif (IPLUG_OS MATCHES "Darwin")
     ${IPLUG_SRC}/IPlugPaths.mm)
   list(APPEND _inc
     ${WDL_DIR}/swell)
+  # Macos frameworks for all formats.
+  # This excludes Cocoa, Carbon, and QuartzCore since those are included in IGraphics linking
   list(APPEND _lib
     "-framework CoreFoundation"
     "-framework CoreData"
@@ -139,7 +144,12 @@ endif()
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
   list(APPEND _def "_CRT_SECURE_NO_WARNINGS" "_CRT_SECURE_NO_DEPRECATE" "_CRT_NONSTDC_NO_DEPRECATE" "NOMINMAX" "_MBCS")
-  list(APPEND _opt "/wd4996" "/wd4250" "/wd4018" "/wd4267" "/wd4068" "/MT$<$<CONFIG:Debug>:d>")
+  list(APPEND _opt
+    # Warning options
+    "/wd4996" "/wd4250" "/wd4018" "/wd4267" "/wd4068"
+    # Make sure MSVC uses static linking for compatibility with Skia libraries and easier distribution.
+    ${IPLUG_MSVC_FLAGS}
+  )
 endif()
 
 # Set certain compiler flags, specifically errors if there are undefined symbols
@@ -154,7 +164,7 @@ elseif(COMPILER_OPT_ARCH_AVX_SUPPORTED)
   list(APPEND _opt "/arch:AVX")
 endif()
 
-source_group(TREE ${IPLUG2_SDK_PATH} PREFIX "IPlug" FILES ${_src})
+# Add all the things we've setup
 iplug_target_add(iPlug2_Core INTERFACE
   DEFINE ${_def}
   INCLUDE ${_inc}
@@ -163,6 +173,27 @@ iplug_target_add(iPlug2_Core INTERFACE
   LINK ${_lib}
   FEATURE cxx_std_17
 )
+
+
+#------------------------------------------------
+
+# This is specific to plugins, as opposed to APP, WAM, etc.
+add_library(iPlug2_Plugin INTERFACE)
+if (CMAKE_SYSTEM_NAME MATCHES "Windows")
+  iplug_target_add(iPlug2_Plugin INTERFACE
+    DEFINE
+      _CRT_SECURE_NO_WARNINGS
+      _CRT_SECURE_NO_DEPRECATE
+      _CRT_NONSTDC_NO_DEPRECATE
+  )
+elseif (CMAKE_SYSTEM_NAME MATCHES "Darwin")
+  # macro for all plug-in builds
+  iplug_target_add(iPlug2_Plugin INTERFACE
+    DEFINE
+      SWELL_CLEANUP_ON_UNLOAD
+  )
+endif()
+
 
 # Load extras libraries
 add_subdirectory(Extras)

@@ -103,12 +103,18 @@ macro(iplug_ternary VAR val_true val_false)
   endif()
 endmacro()
 
-macro(iplug_source_tree target)
+function(iplug_source_tree target)
+  cmake_parse_arguments(arg "" "PREFIX" "" ${ARGN})
   get_target_property(_tmp ${target} INTERFACE_SOURCES)
-  if (NOT "${_tmp}" STREQUAL "_tmp-NOTFOUND")
+  if ("${_tmp}" STREQUAL "_tmp-NOTFOUND")
+    return()
+  endif()
+  if (arg_PREFIX)
+    source_group(${arg_PREFIX} FILES ${_tmp})
+  else()
     source_group(TREE ${IPLUG2_SDK_PATH} PREFIX "IPlug" FILES ${_tmp})
   endif()
-endmacro()
+endfunction()
 
 #! iplug_find_path : An alternative to find_file and find_path that allows a default value.
 #
@@ -129,12 +135,13 @@ function(iplug_find_path VAR)
 
   set(out 0)
   foreach (pt ${arg_PATHS})
-    if (EXISTS ${pt})
-      iplug_ternary(is_dir 1 0 IS_DIRECTORY ${pt})
+    cmake_path(NORMAL_PATH pt OUTPUT_VARIABLE pt2)
+    if (EXISTS ${pt2})
+      iplug_ternary(is_dir 1 0 IS_DIRECTORY ${pt2})
       #message("Found path ${pt} and is_dir=${is_dir}")
 
       if ( (arg_FILE AND NOT ${is_dir}) OR (arg_DIR AND ${is_dir}) )
-        set(out ${pt})
+        set(out ${pt2})
         break()
       endif()
     endif()
@@ -213,7 +220,7 @@ function(iplug_target_bundle_resources target res_dir)
         endif()
       endif()
 
-      target_sources(${target} PUBLIC "${dst}")
+      # target_sources(${target} PUBLIC "${dst}")
 
       if (copy)
         add_custom_command(OUTPUT "${dst}"
@@ -260,11 +267,11 @@ function(iplug_add_post_build_copy target src_dir dest_dir)
   cmake_parse_arguments(arg "FORCE" "" "" ${ARGN})
   get_target_property(r ${target} IPLUG_COPY_AFTER_BUILD)
   if (r OR arg_FORCE)
-    message("Adding copy after build for ${target} to ${dest_dir}")
+    message(VERBOSE "Adding copy after build for ${target} to ${dest_dir}")
     add_custom_command(TARGET ${target} POST_BUILD
       COMMAND ${CMAKE_COMMAND} ARGS "-E" "remove_directory" "${dest_dir}"
       COMMAND ${CMAKE_COMMAND} ARGS "-E" "copy_directory" "${src_dir}" "${dest_dir}"
-      COMMAND ${CMAKE_COMMAND} ARGS -E echo "Copied ${src_dir} to ${dest_dir}"
+      COMMENT "Copied ${src_dir} to ${dest_dir}"
     )
   endif()
 endfunction(iplug_add_post_build_copy)
@@ -411,9 +418,21 @@ function(iplug_setup_plugin target)
     set(gui_libs iPlug2_${gui0} iPlug2_${gui_api})
   endif()
 
-  message(STATUS "GUI libraries for ${target} are ${gui_libs}")
+  message(VERBOSE "GUI libraries for ${target} are ${gui_libs}")
 
   ## End parse graphics options ##
+
+  # On Windows, we automatically include main.rc and resource.h
+  if (WIN32)
+    # Get the source dir for the target
+    get_target_property(plugin_src_dir ${target} SOURCE_DIR)
+    set(_src
+      ${plugin_src_dir}/resources/main.rc
+      ${plugin_src_dir}/resources/resource.h
+    )
+    target_sources(${target} INTERFACE ${_src})
+    source_group(Resources FILES ${_src})
+  endif()
 
   set_target_properties(
     ${target}
@@ -459,7 +478,7 @@ configurations based on the plugin format.
 .. _`Emscripten CMake SDK`: https://github.com/emscripten-core/emscripten/blob/main/cmake/Modules/Platform/Emscripten.cmake
 #]===]
 function(iplug_add_format base_target format)
-  cmake_parse_arguments(arg "COPY_AFTER_BUILD" "TARGET" "" ${ARGN})
+  cmake_parse_arguments(arg "COPY_AFTER_BUILD;OPTIONAL" "TARGET" "" ${ARGN})
 
   # List of all valid plugin formats
   set(VALID_FORMATS "aax;app;au2;au3;lv2;vst2;vst3;wam;clap")
@@ -477,6 +496,11 @@ function(iplug_add_format base_target format)
   if (NOT IPLUG_OS MATCHES "Darwin")
     list(REMOVE_ITEM ok_formats "au2" "au3")
   endif()
+  # AAX is windows and mac only
+  if (NOT IPLUG_OS MATCHES "(Darwin)|(Windows)")
+    list(REMOVE_ITEM ok_formats "aax")
+  endif()
+  # Currently only support LV2 on Linux, through it's technically cross-platform
   if (NOT IPLUG_OS MATCHES "Linux")
     list(REMOVE_ITEM ok_formats "lv2")
   endif()
@@ -514,10 +538,13 @@ function(iplug_add_format base_target format)
     # Get format index and convert it to format subdir
     list(FIND VALID_FORMATS ${format} format_index)
     list(GET FORMAT_DIRS ${format_index} format_subdir)
+
     include(IPlug${format_subdir} OPTIONAL RESULT_VARIABLE format_loaded)
     if (NOT format_loaded)
-      # Load subdirectory with explicit binary directory because it's outside normal path.
-      add_subdirectory(${IPLUG2_SDK_PATH}/IPlug/${format_subdir} ${CMAKE_BINARY_DIR}/IPlug/${format_subdir})
+      # If arg_OPTIONAL is set, then warn but don't fail the full build
+      iplug_ternary(msg_status WARNING FATAL_ERROR arg_OPTIONAL)
+      message(${msg_status} "Failed to load IPlug format ${format}")
+      return()
     endif()
   endif()
 
@@ -542,6 +569,12 @@ function(iplug_add_format base_target format)
     # Nothing special here!
 
   endif()
+
+  iplug_source_tree(iPlug2_Core PREFIX "IPlug")
+  iplug_source_tree(iPlug2_IGraphicsCore PREFIX "IPlug/IGraphics")
+  iplug_source_tree(iPlug2_Synth PREFIX "IPlug/Extras/Synth")
+  iplug_source_tree(iPlug2_GL2 PREFIX "IPlug/IGraphics")
+  iplug_source_tree(iPlug2_GL3 PREFIX "IPlug/IGraphics")
 
 endfunction()
 

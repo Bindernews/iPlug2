@@ -26,8 +26,13 @@ set(_src
 add_library(WDL_LICE STATIC)
 target_include_directories(WDL_LICE PUBLIC ${cwd})
 target_sources(WDL_LICE PRIVATE ${_src})
-target_compile_options(
-  WDL_LICE PRIVATE
-  -Wno-multichar
-  -Wno-deprecated-declarations
-)
+
+if (CMAKE_COMPILER_IS_GNUCC)
+  target_compile_options(
+    WDL_LICE PRIVATE
+    -Wno-multichar
+    -Wno-deprecated-declarations
+  )
+endif()
+# For IDEs, put this in a "libraies" folder
+set_target_properties(WDL_LICE PROPERTIES FOLDER "Libraries")

@@ -1,14 +1,17 @@
 cmake_minimum_required(VERSION 3.20)
 
+if (CMAKE_SYSTEM_NAME MATCHES "Windows")
+  # SWELL not required on Windows
+  return()
+endif()
+
 add_library(WDL_SWELL STATIC)
 set(_src)
 set(_inc)
 set(_lib)
 set(_def)
-if (CMAKE_SYSTEM_NAME MATCHES "Windows")
-  # SWELL not required on Windows
 
-elseif (CMAKE_SYSTEM_NAME MATCHES "Darwin")
+if (CMAKE_SYSTEM_NAME MATCHES "Darwin")
   list(APPEND _def
     "SWELL_COMPILED"
   )

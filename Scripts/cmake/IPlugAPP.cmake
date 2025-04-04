@@ -13,16 +13,17 @@ add_subdirectory(${WDL_DIR}/swell ${CMAKE_BINARY_DIR}/WDL/swell)
 
 add_library(iPlug2_APP INTERFACE)
 set(_src
-  ${cwd}/IPlugAPP.h
-  ${cwd}/IPlugAPP.cpp
   ${cwd}/IPlugAPP_dialog.cpp
   ${cwd}/IPlugAPP_host.cpp
+  ${cwd}/IPlugAPP_host.h
   ${cwd}/IPlugAPP_main.cpp
+  ${cwd}/IPlugAPP.cpp
+  ${cwd}/IPlugAPP.h
 )
 set(_lib
   iPlug2_Core
   iPlug2_IGraphicsCore
-  iPlug2_RTLibs
+  iPlug2_RTAudioMidi
 )
 set(_inc
   ${cwd}
@@ -31,7 +32,13 @@ set(_def
   APP_API
   IPLUG_EDITOR=1
   IPLUG_DSP=1
+  BUILT_WITH_CMAKE
 )
+
+if (MSVC)
+  # Not set charset for MSVC
+  list(APPEND _def _SBCS)
+endif()
 
 # Link Windows sound libraies if on Windows
 if (IPLUG_OS MATCHES "Windows")
@@ -39,8 +46,13 @@ if (IPLUG_OS MATCHES "Windows")
 elseif (IPLUG_OS MATCHES "Darwin")
   # Some source files here combine C++ and Objective-C, so we tell clang how to compile them
   set_property(SOURCE ${_src} PROPERTY LANGUAGE "OBJCXX")
-  # Link to swell
-  list(APPEND _lib WDL_SWELL)
+  # Link to swell, and additional platform-specific frameworks
+  list(APPEND _lib
+    WDL_SWELL
+    "-framework AppKit"
+    "-framework CoreMIDI"
+    "-framework CoreAudio"
+  )
 elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
   # Link to swell
   list(APPEND _lib WDL_SWELL)
@@ -54,7 +66,9 @@ iplug_target_add(iPlug2_APP INTERFACE
   DEFINE ${_def}
   LINK ${_lib}
 )
-# iplug_source_tree(iPlug2_APP)
+
+# Add a source group for all sources
+source_group(IPlug/APP FILES ${_src})
 
 function(iplug_configure_app base_plugin target)
   iplug_get_common_plugin_variables(app)
@@ -62,6 +76,7 @@ function(iplug_configure_app base_plugin target)
   # Create target
   add_executable(${target} WIN32 MACOSX_BUNDLE)
   iplug_target_add(${target} PUBLIC LINK iPlug2_APP ${base_plugin} ${gui_libraries})
+  iplug_copy_properties(${target} ${base_plugin} IPLUG_COPY_AFTER_BUILD IPLUG_RESOURCES)
 
   # Default resources directory
   set(res_dir "${output_dir}/resources")
@@ -91,7 +106,5 @@ function(iplug_configure_app base_plugin target)
 
   endif()
 
-  if (res_dir)
-    iplug_target_bundle_resources(${base_plugin} "${res_dir}")
-  endif()
+  iplug_target_bundle_resources(${target} "${res_dir}")
 endfunction()

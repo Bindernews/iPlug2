@@ -56,19 +56,22 @@ iplug_target_add(plugin_base INTERFACE
     ${cwd}
     ${cwd}/resources
 )
+
+# Make things pretty in IDEs.
+# source_group(TREE ${cwd} FILES ${_src})
+source_group(TREE "${cwd}/resources" PREFIX Resources FILES ${_res})
+
 # Configure the plugin with the default name and version
 # from the project, using NanoVG with OpenGL 3 as the backend.
 iplug_setup_plugin(plugin_base GRAPHICS NanoVG GL3 COPY_AFTER_BUILD)
 
-# Make things pretty in IDEs.
-source_group(TREE ${cwd} FILES ${_src})
-source_group(TREE "${cwd}/resources" PREFIX Resources FILES ${_res})
-
 # Add the various output formats we want to use
-iplug_add_format(plugin_base vst2 COPY_AFTER_BUILD)
-iplug_add_format(plugin_base vst3 COPY_AFTER_BUILD)
+iplug_add_format(plugin_base vst2)
+iplug_add_format(plugin_base vst3)
 iplug_add_format(plugin_base app)
-iplug_add_format(plugin_base au2 COPY_AFTER_BUILD)
-# iplug_add_format(plugin_base lv2 COPY_AFTER_BUILD)
-# iplug_add_format(plugin_base wam)
+iplug_add_format(plugin_base au2)
+iplug_add_format(plugin_base au3)
+iplug_add_format(plugin_base aax OPTIONAL)
+iplug_add_format(plugin_base lv2)
+iplug_add_format(plugin_base wam)
 iplug_add_format(plugin_base clap)

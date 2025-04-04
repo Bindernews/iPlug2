@@ -59,6 +59,11 @@ function(_iplug_load_module_clap)
     PATHS ${install_paths}
   )
 
+  set(_src
+    ${cwd}/IPlugCLAP.h
+    ${cwd}/IPlugCLAP.cpp
+  )
+
   # Core LV2 interface library.
   add_library(iPlug2_CLAP INTERFACE)
   iplug_target_add(iPlug2_CLAP INTERFACE
@@ -67,17 +72,17 @@ function(_iplug_load_module_clap)
     "BUILT_WITH_CMAKE"
     # "SAMPLE_TYPE_FLOAT=1"
 
-    SOURCE
-    ${cwd}/IPlugCLAP.h
-    ${cwd}/IPlugCLAP.cpp
+    SOURCE ${_src}
 
-    INCLUDE
-    ${cwd}
+    INCLUDE ${cwd}
 
     LINK
     clap
     clap-helpers
   )
+
+  source_group(IPlug/CLAP FILES ${_src})
+
 endfunction(_iplug_load_module_clap)
 _iplug_load_module_clap()
 

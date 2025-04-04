@@ -4,6 +4,12 @@ function(_iplug_load_module_vst2)
   # Set the cache value. Does nothing if cache value is already set or given on CLI.
   set(VST2_SDK "${IPLUG2_SDK_PATH}/Dependencies/IPlug/VST2_SDK" CACHE PATH "VST2 SDK directory.")
 
+  # Check to make sure we have at least one of the files we need.
+  if (NOT EXISTS "${VST2_SDK}/aeffectx.h")
+    set(IPlugVST2_FOUND NOTFOUND CACHE PATH "" FORCE)
+    return()
+  endif()
+
   # Determine VST2 and VST3 directories
   if (IPLUG_OS MATCHES "Windows")
     set(fn "VstPlugins")
@@ -56,6 +62,9 @@ function(_iplug_load_module_vst2)
     LINK
     iPlug2_Core
   )
+
+  source_group(IPlug/VST2 FILES ${cwd}/IPlugVST2.h ${cwd}/IPlugVST2.cpp)
+
 endfunction(_iplug_load_module_vst2)
 
 function(iplug_configure_vst2 base_plugin target)
@@ -64,6 +73,7 @@ function(iplug_configure_vst2 base_plugin target)
   # Create module and link it to dependencies
   add_library(${target} MODULE)
   iplug_target_add(${target} PUBLIC LINK iPlug2_VST2 ${base_plugin} ${gui_libraries})
+  iplug_copy_properties(${target} ${base_plugin} IPLUG_COPY_AFTER_BUILD IPLUG_RESOURCES)
 
   set(res_dir "${output_dir}/resources")
 

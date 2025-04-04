@@ -24,6 +24,8 @@ using namespace iplug;
 
 #pragma mark - WINDOWS
 #if defined OS_WIN
+#undef UNICODE
+#undef _UNICODE
 #include <windows.h>
 #include <commctrl.h>
 
@@ -38,13 +40,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdPa
   try
   {
 #ifndef APP_ALLOW_MULTIPLE_INSTANCES
-    HANDLE hMutex = OpenMutex(MUTEX_ALL_ACCESS, 0, BUNDLE_NAME); // BUNDLE_NAME used because it won't have spaces in it
+    HANDLE hMutex = OpenMutexA(MUTEX_ALL_ACCESS, 0, BUNDLE_NAME); // BUNDLE_NAME used because it won't have spaces in it
 
     if (!hMutex)
-      hMutex = CreateMutex(0, 0, BUNDLE_NAME);
+      hMutex = CreateMutexA(0, 0, BUNDLE_NAME);
     else
     {
-      HWND hWnd = FindWindow(0, BUNDLE_NAME);
+      HWND hWnd = FindWindowA(0, BUNDLE_NAME);
       SetForegroundWindow(hWnd);
       return 0;
     }
@@ -52,7 +54,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdPa
     gHINSTANCE = hInstance;
 
     InitCommonControls();
-    gScrollMessage = RegisterWindowMessage("MSWHEEL_ROLLMSG");
+    gScrollMessage = RegisterWindowMessageW(L"MSWHEEL_ROLLMSG");
 
     IPlugAPPHost* pAppHost = IPlugAPPHost::Create();
     pAppHost->Init();
@@ -64,7 +66,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdPa
 
     if (!__SetProcessDpiAwarenessContext)
     {
-      HINSTANCE h = LoadLibrary("user32.dll");
+      HINSTANCE h = LoadLibraryW(L"user32.dll");
       if (h) *(void **)&__SetProcessDpiAwarenessContext = GetProcAddress(h, "SetProcessDpiAwarenessContext");
       if (!__SetProcessDpiAwarenessContext)
         *(void **)&__SetProcessDpiAwarenessContext = (void*)(INT_PTR)1;

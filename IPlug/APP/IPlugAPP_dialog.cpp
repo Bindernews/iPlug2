@@ -652,7 +652,7 @@ WDL_DLGRET IPlugAPPHost::MainDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPA
           {
             WDL_String info;
             info.Append(PLUG_COPYRIGHT_STR"\nBuilt on " __DATE__);
-            MessageBox(hwndDlg, info.Get(), PLUG_NAME, MB_OK);
+            MessageBoxA(hwndDlg, info.Get(), PLUG_NAME, MB_OK);
           }
 
           return 0;
@@ -665,7 +665,7 @@ WDL_DLGRET IPlugAPPHost::MainDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPA
 
           if (pluginOpensHelp == false)
           {
-            MessageBox(hwndDlg, "See the manual", PLUG_NAME, MB_OK);
+            MessageBoxA(hwndDlg, "See the manual", PLUG_NAME, MB_OK);
           }
           return 0;
         }

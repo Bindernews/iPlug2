@@ -29,10 +29,15 @@ iplug_target_add(iPlug2_OSC INTERFACE
 iplug_source_tree(iPlug2_OSC)
 
 add_library(iPlug2_Synth INTERFACE)
+set(cwd ${sdk}/Synth)
 iplug_target_add(iPlug2_Synth INTERFACE
-  INCLUDE ${sdk}/Synth
+  INCLUDE ${cwd}
   SOURCE
-    "${sdk}/Synth/MidiSynth.cpp"
-    "${sdk}/Synth/VoiceAllocator.cpp"
+    "${cwd}/ControlRamp.h"
+    "${cwd}/MidiSynth.cpp"
+    "${cwd}/MidiSynth.h"
+    "${cwd}/SynthVoice.h"
+    "${cwd}/VoiceAllocator.cpp"
+    "${cwd}/VoiceAllocator.h"
 )
 iplug_source_tree(iPlug2_Synth)
