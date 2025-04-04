@@ -184,3 +184,5 @@ function(iplug_configure_wam base_plugin target)
   endforeach()
 
 endfunction()
+
+set(IPlugWEB_FOUND TRUE)

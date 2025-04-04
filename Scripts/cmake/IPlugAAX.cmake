@@ -1,17 +1,11 @@
 cmake_minimum_required(VERSION 3.20)
 
-set(AAX_SDK "${IPLUG2_SDK_PATH}/Dependencies/IPlug/AAX_SDK" CACHE PATH "Path to the AAX sdk")
-set(IPLUG2_AAX_ICON "${AAX_SDK}/Utilities/PlugIn.ico" CACHE FILEPATH "Path to AAX plugin icon")
+set(AAX_SDK_PATH "${IPLUG2_SDK_PATH}/Dependencies/IPlug/AAX_SDK" CACHE PATH "Path to the AAX sdk")
+set(IPLUG2_AAX_ICON "${AAX_SDK_PATH}/Utilities/PlugIn.ico" CACHE FILEPATH "Path to AAX plugin icon")
 
-# TODO determine a real file that we can check to make sure the SDK is valid
-if (NOT EXISTS ${AAX_SDK}/CMakeLists.txt)
-  set(IPlugAAX_FOUND NOTFOUND CACHE PATH "" FORCE)
-
-  # Fow now, dummy function so we don't crash
-  function(iplug_configure_aax base_plugin target)
-    add_library(${target} INTERFACE)
-  endfunction()
-
+if (NOT EXISTS "${AAX_SDK_PATH}/Interfaces/AAX.h")
+  set(IPlugAAX_FOUND OFF)
+  set(IPlugAAX_ERROR "AAX sdk does not contain required files, likely incorrect.")
   return()
 endif()
 
@@ -34,12 +28,14 @@ else()
 endif()
 set(AAX_INSTALL_PATH ${aax32_path} CACHE PATH "Path to install AAX plugins")
 
-set(cwd ${IPLUG2_SDK_PATH}/IPlug/AAX)
+#--------------------------------------------------------------------
+# Create the interface target for this format.
 add_library(iPlug2_AAX INTERFACE)
+set(cwd ${IPLUG2_SDK_PATH}/IPlug/AAX)
 set(_inc
   ${cwd}
-  ${AAX_SDK}/Interfaces
-  ${AAX_SDK}/Interfaces/ACF
+  ${AAX_SDK_PATH}/Interfaces
+  ${AAX_SDK_PATH}/Interfaces/ACF
 )
 set(_src
   ${cwd}/IPlugAAX_Describe.cpp
@@ -86,7 +82,7 @@ if (IPLUG_OS STREQUAL "Windows")
     uuid.lib
     comctl32.lib
   )
-  target_link_directories(iPlug2_AAX INTERFACE ${AAX_SDK}/Libs/$<CONFIG>)
+  target_link_directories(iPlug2_AAX INTERFACE ${AAX_SDK_PATH}/Libs/$<CONFIG>)
 endif()
 
 iplug_target_add(iPlug2_AAX INTERFACE
@@ -98,6 +94,7 @@ iplug_target_add(iPlug2_AAX INTERFACE
 iplug_source_tree(iPlug2_AAX PREFIX "IPlug/AAX")
 
 #--------------------------------------------------------------------
+# configure function
 function(iplug_configure_aax base_plugin target)
   message(WARNING "AAX not yet fully implemented, expect bugs")
 
@@ -138,3 +135,5 @@ function(iplug_configure_aax base_plugin target)
 
   iplug_target_bundle_resources(${target} "${res_dir}")
 endfunction()
+
+set(IPlugAAX_FOUND ON)

@@ -1,72 +1,72 @@
 cmake_minimum_required(VERSION 3.20)
 
-function(_iplug_load_module_vst2)
-  # Set the cache value. Does nothing if cache value is already set or given on CLI.
-  set(VST2_SDK "${IPLUG2_SDK_PATH}/Dependencies/IPlug/VST2_SDK" CACHE PATH "VST2 SDK directory.")
+# Set the cache value. Does nothing if cache value is already set or given on CLI.
+set(VST2_SDK "${IPLUG2_SDK_PATH}/Dependencies/IPlug/VST2_SDK" CACHE PATH "VST2 SDK directory.")
 
-  # Check to make sure we have at least one of the files we need.
-  if (NOT EXISTS "${VST2_SDK}/aeffectx.h")
-    set(IPlugVST2_FOUND NOTFOUND CACHE PATH "" FORCE)
-    return()
+# Check to make sure we have at least one of the files we need.
+if (NOT EXISTS "${VST2_SDK}/aeffectx.h")
+  set(IPlugVST2_FOUND FALSE)
+  message(WARNING "VST2 SDK not found or missing files.")
+  return()
+endif()
+
+# Determine VST2 and VST3 directories
+if (IPLUG_OS MATCHES "Windows")
+  set(fn "VstPlugins")
+  if (PROCESSOR_ARCH STREQUAL "Win32")
+    set(_paths "$ENV{ProgramFiles\(x86\)}/${fn}" "$ENV{ProgramFiles\(x86\)}/Steinberg/${fn}")
   endif()
+  # Append this for x86, x64, and ARM I guess
+  list(APPEND _paths "'$ENV{ProgramFiles}/${fn}'" "'$ENV{ProgramFiles}/Steinberg/${fn}'")
+elseif (IPLUG_OS MATCHES "Darwin")
+  set(fn "VST")
+  set(_paths "$ENV{HOME}/Library/Audio/Plug-Ins/${fn}" "/Library/Audio/Plug-Ins/${fn}")
+elseif (IPLUG_OS MATCHES "Linux")
+  set(_paths "$ENV{HOME}/.vst" "/usr/local/lib/vst" "/usr/local/vst")
+endif()
 
-  # Determine VST2 and VST3 directories
-  if (IPLUG_OS MATCHES "Windows")
-    set(fn "VstPlugins")
-    if (PROCESSOR_ARCH STREQUAL "Win32")
-      set(_paths "$ENV{ProgramFiles\(x86\)}/${fn}" "$ENV{ProgramFiles\(x86\)}/Steinberg/${fn}")
-    endif()
-    # Append this for x86, x64, and ARM I guess
-    list(APPEND _paths "'$ENV{ProgramFiles}/${fn}'" "'$ENV{ProgramFiles}/Steinberg/${fn}'")
-  elseif (IPLUG_OS MATCHES "Darwin")
-    set(fn "VST")
-    set(_paths "$ENV{HOME}/Library/Audio/Plug-Ins/${fn}" "/Library/Audio/Plug-Ins/${fn}")
-  elseif (IPLUG_OS MATCHES "Linux")
-    set(_paths "$ENV{HOME}/.vst" "/usr/local/lib/vst" "/usr/local/vst")
-  endif()
+iplug_find_path(
+  VST2_INSTALL_PATH REQUIRED DIR
+  DEFAULT_IDX 0
+  DOC "Path to install VST2 plugins"
+  PATHS ${_paths}
+)
 
-  iplug_find_path(
-    VST2_INSTALL_PATH REQUIRED DIR
-    DEFAULT_IDX 0
-    DOC "Path to install VST2 plugins"
-    PATHS ${_paths}
-  )
+# Check if we're compiling with GCC
+iplug_ternary(is_gcc 1 0 ${CMAKE_CXX_COMPILER_ID} MATCHES "GNU")
 
-  # Check if we're compiling with GCC
-  iplug_ternary(is_gcc 1 0 ${CMAKE_CXX_COMPILER_ID} MATCHES "GNU")
+set(cwd ${IPLUG2_SDK_PATH}/IPlug/VST2)
 
-  set(cwd ${IPLUG2_SDK_PATH}/IPlug/VST2)
+add_library(iPlug2_VST2 INTERFACE)
+iplug_target_add(iPlug2_VST2 INTERFACE
+  SOURCE
+  ${cwd}/IPlugVST2.h
+  ${cwd}/IPlugVST2.cpp
 
-  add_library(iPlug2_VST2 INTERFACE)
-  iplug_target_add(iPlug2_VST2 INTERFACE
-    SOURCE
-    ${cwd}/IPlugVST2.h
-    ${cwd}/IPlugVST2.cpp
+  INCLUDE
+  ${cwd}
+  ${VST2_SDK}
 
-    INCLUDE
-    ${cwd}
-    ${VST2_SDK}
+  DEFINE
+  "VST2_API"
+  "VST_FORCE_DEPRECATED"
+  "IPLUG_DSP=1"
 
-    DEFINE
-    "VST2_API"
-    "VST_FORCE_DEPRECATED"
-    "IPLUG_DSP=1"
+  # Linux needs this define
+  $<$<STREQUAL:${IPLUG_OS},"Linux">:"SMTG_OS_LINUX">
 
-    # Linux needs this define
-    $<$<STREQUAL:${IPLUG_OS},"Linux">:"SMTG_OS_LINUX">
+  # GCC doesn't like __cdecl, so instead of having people modify their
+  # aeffect.h file, just redefine __cdecl.
+  $<$<BOOL:${is_gcc}>: "__cdecl=__attribute__(())" >
 
-    # GCC doesn't like __cdecl, so instead of having people modify their
-    # aeffect.h file, just redefine __cdecl.
-    $<$<BOOL:${is_gcc}>: "__cdecl=__attribute__(())" >
+  LINK
+  iPlug2_Core
+)
 
-    LINK
-    iPlug2_Core
-  )
+source_group(IPlug/VST2 FILES ${cwd}/IPlugVST2.h ${cwd}/IPlugVST2.cpp)
 
-  source_group(IPlug/VST2 FILES ${cwd}/IPlugVST2.h ${cwd}/IPlugVST2.cpp)
-
-endfunction(_iplug_load_module_vst2)
-
+#--------------------------------------------------------------------
+# configure function
 function(iplug_configure_vst2 base_plugin target)
   iplug_get_common_plugin_variables(vst2)
 
@@ -118,4 +118,4 @@ function(iplug_configure_vst2 base_plugin target)
   iplug_add_post_build_copy(${target} "${output_dir}" "${install_dir}")
 endfunction()
 
-_iplug_load_module_vst2()
+set(IPlugVST2_FOUND TRUE)

@@ -70,6 +70,8 @@ iplug_target_add(iPlug2_APP INTERFACE
 # Add a source group for all sources
 source_group(IPlug/APP FILES ${_src})
 
+#--------------------------------------------------------------------
+# configure function
 function(iplug_configure_app base_plugin target)
   iplug_get_common_plugin_variables(app)
 
@@ -108,3 +110,5 @@ function(iplug_configure_app base_plugin target)
 
   iplug_target_bundle_resources(${target} "${res_dir}")
 endfunction()
+
+set(IPlugAPP_FOUND TRUE)

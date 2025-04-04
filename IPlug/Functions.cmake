@@ -315,6 +315,68 @@ function(iplug_get_common_plugin_variables format)
 endfunction(iplug_get_common_plugin_variables)
 
 
+# Clear the cache of loaded modules
+set(_iplug_load_module_seen "" CACHE INTERNAL "" FORCE)
+
+#[===[.rst
+
+Attempt to load a module, allowing the module to check if it can load successfully.
+This is similar to ``find_package()`` but it doesn't assume that ``${module_name}_FOUND``
+being set in the cache means there's no work to do. Modules may create new functions,
+targets, etc. It's safe to call the function multiple times, as it will only attempt
+to load a module once.
+
+#]===]
+function(iplug_load_module module_name)
+  cmake_parse_arguments(arg2 "" "OPTIONAL;ERROR_MESSAGE" "" ${ARGN})
+
+  set(known_modules $CACHE{_iplug_load_module_seen})
+
+  # Check if we've tried to load the module already. We specifically check
+  # our module list instead of a cache variable, since the cache variables persist
+  # through each re-build but the module list is explicity cleared.
+  if ("${module_name}" IN_LIST known_modules)
+    return()
+  endif()
+  # Update the module list so we know we've seen this module.
+  list(APPEND known_modules "${module_name}")
+  set(_iplug_load_module_seen ${known_modules} CACHE INTERNAL "" FORCE)
+
+  # Default error message
+  if (NOT arg2_ERROR_MESSAGE)
+    set(arg2_ERROR_MESSAGE "Failed to load module ${module_name}")
+  endif()
+  # Default OPTIONAL to false
+  if (NOT DEFINED arg2_OPTIONAL)
+    set(arg2_OPTIONAL FALSE)
+  endif()
+
+  set(extra_error "")
+
+  # Try to include the module
+  include(${module_name} OPTIONAL RESULT_VARIABLE mod_found)
+  # If we succeeded, but ${module_name}_FOUND is not set, then we still failed
+  if (mod_found AND NOT ${module_name}_FOUND)
+    set(mod_found FALSE)
+    # Allow modules to add an extra error message
+    if (DEFINED ${module_name}_ERROR)
+      set(extra_error ": ${${module_name}_ERROR}")
+    endif()
+  endif()
+
+  # Set the result in the cache, force-overriding exisitng values
+  set(${module_name}_FOUND ${mod_found} CACHE BOOL "" FORCE)
+
+  # Now this will trigger if we failed for any reason
+  if (NOT mod_found)
+    # If arg_OPTIONAL is set, then warn but don't fail the full build
+    iplug_ternary(msg_status NOTICE SEND_ERROR arg2_OPTIONAL)
+    message(${msg_status} "${arg2_ERROR_MESSAGE}${extra_error}")
+    return()
+  endif()
+endfunction(iplug_load_module)
+
+
 #[===[.rst:
 
 Setup the base INTERFACE target for an iPlug2 plugin with required options.
@@ -531,19 +593,20 @@ function(iplug_add_format base_target format)
     set(target ${arg_TARGET})
   endif()
 
-  # Dynamically load the configure command
+  # Take the plugin format name, and get the subdirectory / module name.
+  list(FIND VALID_FORMATS ${format} format_index)
+  list(GET FORMAT_DIRS ${format_index} format_subdir)
+  set(module_name IPlug${format_subdir})
+
+  # Dynamically load the plugin format, and the associated configure command
   set(configure_command "iplug_configure_${format}")
-
   if (NOT COMMAND ${configure_command})
-    # Get format index and convert it to format subdir
-    list(FIND VALID_FORMATS ${format} format_index)
-    list(GET FORMAT_DIRS ${format_index} format_subdir)
-
-    include(IPlug${format_subdir} OPTIONAL RESULT_VARIABLE format_loaded)
-    if (NOT format_loaded)
-      # If arg_OPTIONAL is set, then warn but don't fail the full build
-      iplug_ternary(msg_status WARNING FATAL_ERROR arg_OPTIONAL)
-      message(${msg_status} "Failed to load IPlug format ${format}")
+    iplug_load_module(
+      ${module_name}
+      OPTIONAL ${arg_OPTIONAL}
+      ERROR_MESSAGE "Failed to load plugin format ${module_name}"
+    )
+    if (NOT ${module_name}_FOUND)
       return()
     endif()
   endif()

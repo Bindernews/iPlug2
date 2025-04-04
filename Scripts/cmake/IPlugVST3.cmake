@@ -1,10 +1,13 @@
 cmake_minimum_required(VERSION 3.20)
+include(FindPackageHandleStandardArgs)
 
 set(VST3_SDK "${IPLUG2_SDK_PATH}/Dependencies/IPlug/VST3_SDK" CACHE PATH "VST3 SDK directory.")
 set(vst3_target_arch "")
 
 if (NOT EXISTS ${VST3_SDK}/CMakeLists.txt)
-  message(FATAL_ERROR "VST3_SDK not found or invalid")
+  set(IPlugVST3_FOUND FALSE)
+  message(WARNING "VST3_SDK not found or invalid")
+  return()
 endif()
 
 # Disable VST3 extras that we're not using
@@ -118,6 +121,7 @@ function(iplug_configure_vst3 base_plugin target)
   # Copy properties
   iplug_copy_properties(${target} ${base_plugin} IPLUG_COPY_AFTER_BUILD IPLUG_RESOURCES)
   # Add the entry point
+  set(public_sdk_SOURCE_DIR ${smtg_public_sdk_SOURCE_DIR})
   smtg_target_add_library_main(${target})
 
   set(install_dir "${VST3_INSTALL_PATH}/${plugin_name}.vst3")
@@ -164,3 +168,6 @@ function(iplug_configure_vst3 base_plugin target)
 
   iplug_add_post_build_copy(${target} "${output_dir}" "${install_dir}")
 endfunction()
+
+set(IPlugVST3_FOUND TRUE)
+

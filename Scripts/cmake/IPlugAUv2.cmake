@@ -66,3 +66,5 @@ function(iplug_configure_au2 base_plugin target)
   endif()
   iplug_add_post_build_copy(${target} "${output_dir}" "${install_dir}")
 endfunction(iplug_configure_au2)
+
+set(IPlugAUv2_FOUND TRUE)
