@@ -148,6 +148,16 @@ TTLObject::TTLObject(TTLSubject *sub)
     mSubjVal = std::unique_ptr<TTLSubject>(sub);
 }
 
+TTLObject::TTLObject(const TTLObject& rhs)
+{
+  mType = rhs.mType;
+  if (mType == 1) {
+    mStrVal.reset(new TTLString(*rhs.mStrVal));
+  } else if (mType == 2) {
+    mSubjVal.reset(new TTLSubject(*rhs.mSubjVal));
+  }
+}
+
 void TTLObject::write(ITTLWriter &f)
 {
     if (mType == 1) {
@@ -206,7 +216,10 @@ TTLSubject::VerbVal& TTLSubject::ensureVerb(const TTLString &verb)
 {
     auto it = mVerbMap.find(verb);
     if (it == mVerbMap.end()) {
-        mVerbList.push_back(VerbVal { name: verb, multilineThreshold: 6 });
+        VerbVal vv;
+        vv.name = verb;
+        vv.multilineThreshold = 2;
+        mVerbList.push_back(vv);
         mVerbMap[verb] = mVerbList.size() - 1;
     }
     return mVerbList[mVerbMap[verb]];
@@ -215,7 +228,8 @@ TTLSubject::VerbVal& TTLSubject::ensureVerb(const TTLString &verb)
 void TTLSubject::write(ITTLWriter &f, bool endTriplet)
 {
     f.indent(1);
-    for (auto &it : mVerbList) {
+    for (size_t i = 0; i < mVerbList.size(); i++) {
+        auto& it = mVerbList[i];
         // Skip any keys without values
         if (it.values.size() == 0) {
             continue;
@@ -251,17 +265,16 @@ void TTLSubject::write(ITTLWriter &f, bool endTriplet)
             it2.write(f);
         }
 
-        f.write(" ;");
+        if (endTriplet && i == mVerbList.size() - 1) {
+          f.write(" .");
+        } else {
+          f.write(" ;");
+        }
 
         if (multiline) {
             f.indent(-1);
         }
 
-        f.newline();
-    }
-    if (endTriplet) {
-        f.writeIndent();
-        f.write(".");
         f.newline();
     }
     f.indent(-1);

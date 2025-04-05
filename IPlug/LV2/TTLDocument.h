@@ -71,6 +71,7 @@ public:
     TTLObject();
     TTLObject(const TTLString &literal);
     TTLObject(TTLSubject *subj);
+    TTLObject(const TTLObject&);
     TTLObject(TTLObject&&) = default;
 
     void write(ITTLWriter &f);
