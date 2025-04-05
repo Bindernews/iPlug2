@@ -12,10 +12,10 @@
  */
 #include "config.h"
 #include "IPlugLV2.h"
+#include "IPlugPlatform.h"
 
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>
 #include <limits.h>
 #include <ctype.h>
 
@@ -32,13 +32,15 @@
 #include "TTLDocument.h"
 #endif
 
-#if defined(OS_WINDOWS)
+#if defined(OS_WIN)
+#define PATH_MAX (4096)
 #define UI_TYPE "ui:WindowsUI"
 #define DLL_EXT "dll"
 #elif defined(OS_MAC)
 #define UI_TYPE "ui:CocoaUI"
 #define DLL_EXT "dylib"
 #elif defined(OS_LINUX)
+#include <unistd.h>
 #define UI_TYPE "ui:X11UI"
 #define DLL_EXT "so"
 #else

@@ -25,6 +25,23 @@ void* _dlsym(libref_t module, const char* func_name)
 {
   return (void*)GetProcAddress(module, func_name);
 }
+const char* _dlerror()
+{
+  static char msgbuf[1024];
+  DWORD error_code = GetLastError();
+  DWORD msg_size = FormatMessageA(
+    FORMAT_MESSAGE_FROM_SYSTEM|FORMAT_MESSAGE_IGNORE_INSERTS,
+    NULL,
+    error_code,
+    MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+    (LPSTR)msgbuf,
+    sizeof(msgbuf),
+    NULL
+  );
+  // ensure we have a null pointer
+  msgbuf[msg_size] = 0;
+  return msgbuf;
+}
 #else
 #include <dlfcn.h>
 typedef void* libref_t;
@@ -35,6 +52,10 @@ libref_t _dlopen(const char* path)
 void* _dlsym(libref_t module, const char* func_name)
 {
   return dlsym(module, func_name);
+}
+const char* _dlerror()
+{
+  return dlerror();
 }
 #endif
 
@@ -50,7 +71,7 @@ int main(int argc, char **argv)
     print_help();
     return 0;
   }
-  
+
   // Find last ,
   char *path = argv[1];
   int idx = (int)strlen(path) - 1;
@@ -74,7 +95,7 @@ int main(int argc, char **argv)
   if (hnd == NULL)
   {
     fprintf(stderr, "ERROR: Unable to load library \"%s\"\n", path);
-    fprintf(stderr, "ERROR: %s\n", dlerror());
+    fprintf(stderr, "ERROR: %s\n", _dlerror());
     return ERR_RET + 2;
   }
 
@@ -87,14 +108,14 @@ int main(int argc, char **argv)
     return ERR_RET + 3;
   }
 
-  // Call the main entry function. arg0 should be the path of the 
-  // executable and argv+1 will point to "path", so that all works out. 
+  // Call the main entry function. arg0 should be the path of the
+  // executable and argv+1 will point to "path", so that all works out.
   return ((fn_main_t)fnptr)(argc - 1, argv + 1);
 }
 
 void print_help()
 {
-  fprintf(stdout, 
+  fprintf(stdout,
     PROG_NAME " <shared_library>,<main_function> <args>...\n\n"
     "The first argument must be a path to the .so (or .dylib, or .dll) you want to run\n"
     "then a comma (,) and then the name of the function to run as \"main\"\n"

@@ -593,8 +593,8 @@ function(iplug_add_format base_target format)
   if (NOT IPLUG_OS MATCHES "(Darwin)|(Windows)")
     list(REMOVE_ITEM ok_formats "aax")
   endif()
-  # Currently only support LV2 on Linux, through it's technically cross-platform
-  if (NOT IPLUG_OS MATCHES "Linux")
+  # Currently only support LV2 on Linux and Windows, through it's technically cross-platform
+  if (NOT IPLUG_OS MATCHES "(Linux)|(Windows)")
     list(REMOVE_ITEM ok_formats "lv2")
   endif()
   if (CMAKE_SYSTEM_NAME MATCHES "Emscripten")

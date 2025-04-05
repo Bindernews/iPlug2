@@ -1,10 +1,10 @@
 /*
  ==============================================================================
- 
- This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers. 
- 
+
+ This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers.
+
  See LICENSE.txt for  more info.
- 
+
  ==============================================================================
 */
 
@@ -222,7 +222,7 @@ public:
   void  deactivate();
 
   static const LV2_Descriptor* descriptor(uint32_t index, LV2_InstantiateFn instantiate);
-  
+
   int GetFirstControlPort() const;
   int write_manifest(const char* dest_dir);
   int write_also(const char* dest_dir);
@@ -245,7 +245,6 @@ private:
 #endif
 
 #if IPLUG_EDITOR
-#include "xcbt.h"
 
 /** Used to pass various instance info to the API class */
 struct InstanceInfo
@@ -275,7 +274,7 @@ public:
   void InformHostOfProgramChange() override;
   bool EditorResizeFromDelegate(int viewWidth, int viewHeight) override;
   */
-  
+
   LV2UI_Widget CreateUI(); // post constructor to create window
 
   //LV2 UI methods
@@ -285,7 +284,7 @@ public:
 
   //IEditorDelegate
   bool EditorResizeFromUI(int viewWidth, int viewHeight, bool needsPlatformResize) override;
-  
+
 private:
   int mParameterPortOffset;
 
@@ -295,10 +294,6 @@ private:
   LV2UI_Resize * mHostResize;
   URIDMap mURIs;
   bool mHostSupportIdle;
-  
-#ifdef OS_LINUX
-  xcbt_embed * mEmbed;
-#endif
 };
 
 #endif

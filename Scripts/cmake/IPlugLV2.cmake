@@ -1,6 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
 
-
 set(cwd ${IPLUG2_SDK_PATH}/IPlug/LV2)
 set(deps_dir ${IPLUG2_SDK_PATH}/Dependencies/IPlug)
 
@@ -77,13 +76,16 @@ iplug_target_add(iPlug2_LV2_UI INTERFACE
   iPlug2_LV2
 )
 
-function(iplug_configure_lv2 base_plugin target)
-  # We don't copy properties to the DSP target
-  iplug_configure_helper(GET_VARS lv2)
-  set(install_dir "${LV2_INSTALL_PATH}/${plugin_name}.lv2")
+iplug_source_tree(iPlug2_LV2 PREFIX "IPlug/LV2")
+iplug_source_tree(iPlug2_LV2_DSP PREFIX "IPlug/LV2")
+iplug_source_tree(iPlug2_LV2_UI PREFIX "IPlug/LV2")
 
+
+function(iplug_configure_lv2 base_plugin target)
   # DSP target first
   add_library(${target} MODULE)
+  iplug_configure_helper(GET_VARS lv2 COPY_PROPERTIES ${target})
+  set(install_dir "${LV2_INSTALL_PATH}/${plugin_name}.lv2")
   iplug_target_add(${target} PUBLIC LINK iPlug2_LV2_DSP iPlug2_NoGraphics ${base_plugin})
 
   if (IPLUG_OS MATCHES "Windows")
@@ -99,6 +101,8 @@ function(iplug_configure_lv2 base_plugin target)
     ${target} PROPERTIES
     OUTPUT_NAME "${plugin_name}"
     LIBRARY_OUTPUT_DIRECTORY "${output_dir}"
+    LIBRARY_OUTPUT_DIRECTORY_DEBUG "${output_dir}"
+    LIBRARY_OUTPUT_DIRECTORY_RELEASE "${output_dir}"
     PREFIX ""
     SUFFIX ${suffix}
   )
@@ -115,10 +119,13 @@ function(iplug_configure_lv2 base_plugin target)
   if (NOT gui_libraries STREQUAL iPlug2_NoGraphics)
     set(target_ui ${target}_ui)
     add_library(${target_ui} MODULE)
+    iplug_configure_helper(COPY_PROPERTIES ${target_ui})
     target_link_libraries(${target_ui} PUBLIC iPlug2_LV2_UI ${base_plugin} ${gui_libraries})
     set_target_properties(${target_ui} PROPERTIES
       OUTPUT_NAME "${plugin_name}_ui"
       LIBRARY_OUTPUT_DIRECTORY "${output_dir}"
+      LIBRARY_OUTPUT_DIRECTORY_DEBUG "${output_dir}"
+      LIBRARY_OUTPUT_DIRECTORY_RELEASE "${output_dir}"
       PREFIX ""
       SUFFIX ${suffix}
     )
