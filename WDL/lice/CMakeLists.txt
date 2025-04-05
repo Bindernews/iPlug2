@@ -27,11 +27,12 @@ add_library(WDL_LICE STATIC)
 target_include_directories(WDL_LICE PUBLIC ${cwd})
 target_sources(WDL_LICE PRIVATE ${_src})
 
-if (CMAKE_COMPILER_IS_GNUCC)
+if (CMAKE_COMPILER_IS_GNUCXX)
   target_compile_options(
     WDL_LICE PRIVATE
     -Wno-multichar
     -Wno-deprecated-declarations
+    -Wno-suggest-override
   )
 endif()
 # For IDEs, put this in a "libraies" folder

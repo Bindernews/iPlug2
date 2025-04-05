@@ -60,6 +60,10 @@ else()
   message(FATAL_ERROR "APP not supported on platform ${CMAKE_SYSTEM_NAME}")
 endif()
 
+if (CMAKE_COMPILER_IS_GNUCXX)
+  target_compile_options(iPlug2_APP INTERFACE $<$<COMPILE_LANGUAGE:CXX>:-Wno-suggest-override>)
+endif()
+
 iplug_target_add(iPlug2_APP INTERFACE
   SOURCE ${_src}
   INCLUDE ${_inc}
