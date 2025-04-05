@@ -112,14 +112,13 @@ iplug_target_add(iPlug2_VST3 INTERFACE
 source_group(IPlug/VST3 FILES ${_src})
 
 function(iplug_configure_vst3 base_plugin target)
-  iplug_get_common_plugin_variables(vst3)
-
   # Create target
   add_library(${target} MODULE)
+  # Grab some variables and copy props
+  iplug_configure_helper(GET_VARS vst3 COPY_PROPERTIES ${target})
   # Link to iPlug library and GUI libraries
   target_link_libraries(${target} PUBLIC iPlug2_VST3 ${base_plugin} ${gui_libraries})
-  # Copy properties
-  iplug_copy_properties(${target} ${base_plugin} IPLUG_COPY_AFTER_BUILD IPLUG_RESOURCES)
+
   # Add the entry point
   set(public_sdk_SOURCE_DIR ${smtg_public_sdk_SOURCE_DIR})
   smtg_target_add_library_main(${target})

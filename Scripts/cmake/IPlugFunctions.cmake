@@ -300,19 +300,50 @@ function(iplug_list_to_js_list dst_var)
   set(${dst_var} "['${tmp}']" PARENT_SCOPE)
 endfunction(iplug_list_to_js_list)
 
-# Sets `plugin_name`, `gui_libraries`, and `output_dir` in
-# the parent scope. These are common variables used by most/all output formats.
-function(iplug_get_common_plugin_variables format)
+#[===[.rst:
+
+.. code-block:: cmake
+  iplug_configure_helper(
+    `GET_VARS`_ <format>
+    `COPY_PROPERTIES`_ <target>
+  )
+
+Combines several pieces of helper code for the ``iplug_configure_*`` functions
+into one place. This function makes certain assumptions about what variables
+exist, and what are safe to set.
+
+`GET_VARS`
+  Sets `plugin_name`, `gui_libraries`, `output_dir`, and ``resource_dir`` in
+  the parent scope. These are common variables used by most/all output formats.
+  The ``<format>`` argument is the lowercased format name.
+
+`COPY_PROPERTIES`
+  Copies ``IPLUG_RESOURCES`` and ``IPLUG_COPY_AFTER_BUILD`` from the base plugin
+  target to ``<target>``.
+
+#]===]
+function(iplug_configure_helper)
   if (NOT TARGET ${base_plugin})
-    message(FATAL_ERROR "iplug_get_common_plugin_variables called but 'base_plugin' not defined.\n
-    This is an error in the output format function.")
+    message(FATAL_ERROR "iplug_configure_util called but 'base_plugin' not defined.\n
+    This is an error in the format's configure function.")
   endif()
-  get_target_property(plugin_name ${base_plugin} IPLUG_PLUGIN_NAME)
-  get_target_property(gui_libraries ${base_plugin} IPLUG_PLUGIN_GRAPHICS)
-  set(output_dir "${CMAKE_BINARY_DIR}/${plugin_name}/${format}" PARENT_SCOPE)
-  set(plugin_name ${plugin_name} PARENT_SCOPE)
-  set(gui_libraries ${gui_libraries} PARENT_SCOPE)
-endfunction(iplug_get_common_plugin_variables)
+  cmake_parse_arguments(arg "" "GET_VARS;COPY_PROPERTIES" "" ${ARGN})
+
+  if (arg_GET_VARS)
+    set(format ${arg_GET_VARS})
+    get_target_property(plugin_name ${base_plugin} IPLUG_PLUGIN_NAME)
+    get_target_property(gui_libraries ${base_plugin} IPLUG_PLUGIN_GRAPHICS)
+    set(output_dir "${CMAKE_BINARY_DIR}/${plugin_name}/${format}" PARENT_SCOPE)
+    set(resource_dir "${output_dir}/resources" PARENT_SCOPE)
+    set(plugin_name ${plugin_name} PARENT_SCOPE)
+    set(gui_libraries ${gui_libraries} PARENT_SCOPE)
+  endif()
+
+  if (arg_COPY_PROPERTIES)
+    set(target ${arg_COPY_PROPERTIES})
+    iplug_copy_properties(${target} ${base_plugin} IPLUG_COPY_AFTER_BUILD IPLUG_RESOURCES)
+  endif()
+endfunction(iplug_configure_helper)
 
 
 # Clear the cache of loaded modules
@@ -633,6 +664,8 @@ function(iplug_add_format base_target format)
 
   endif()
 
+  # For CMake, files have to be organized on a per-directory or per-target basis,
+  # it's not 100% clear. Either way, if we repeat the organization steps it works consistently.
   iplug_source_tree(iPlug2_Core PREFIX "IPlug")
   iplug_source_tree(iPlug2_IGraphicsCore PREFIX "IPlug/IGraphics")
   iplug_source_tree(iPlug2_Synth PREFIX "IPlug/Extras/Synth")

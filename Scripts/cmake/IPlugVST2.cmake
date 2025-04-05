@@ -10,7 +10,7 @@ if (NOT EXISTS "${VST2_SDK}/aeffectx.h")
   return()
 endif()
 
-# Determine VST2 and VST3 directories
+# Determine VST2 directories
 if (IPLUG_OS MATCHES "Windows")
   set(fn "VstPlugins")
   if (PROCESSOR_ARCH STREQUAL "Win32")
@@ -68,7 +68,7 @@ source_group(IPlug/VST2 FILES ${cwd}/IPlugVST2.h ${cwd}/IPlugVST2.cpp)
 #--------------------------------------------------------------------
 # configure function
 function(iplug_configure_vst2 base_plugin target)
-  iplug_get_common_plugin_variables(vst2)
+  iplug_configure_helper(vst2)
 
   # Create module and link it to dependencies
   add_library(${target} MODULE)

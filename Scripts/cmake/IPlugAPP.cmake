@@ -73,15 +73,12 @@ source_group(IPlug/APP FILES ${_src})
 #--------------------------------------------------------------------
 # configure function
 function(iplug_configure_app base_plugin target)
-  iplug_get_common_plugin_variables(app)
-
   # Create target
   add_executable(${target} WIN32 MACOSX_BUNDLE)
+  # setup
+  iplug_configure_helper(GET_VARS app COPY_PROPERTIES ${target})
+  # Link
   iplug_target_add(${target} PUBLIC LINK iPlug2_APP ${base_plugin} ${gui_libraries})
-  iplug_copy_properties(${target} ${base_plugin} IPLUG_COPY_AFTER_BUILD IPLUG_RESOURCES)
-
-  # Default resources directory
-  set(res_dir "${output_dir}/resources")
 
   if (WIN32)
     set_target_properties(${target} PROPERTIES
@@ -89,7 +86,7 @@ function(iplug_configure_app base_plugin target)
       RUNTIME_OUTPUT_DIRECTORY "${output_dir}")
 
   elseif (CMAKE_SYSTEM_NAME MATCHES "Darwin")
-    set(res_dir "${CMAKE_BINARY_DIR}/${target}/${plugin_name}.app/Contents/Resources")
+    set(resource_dir "${CMAKE_BINARY_DIR}/${target}/${plugin_name}.app/Contents/Resources")
     # Set the Info.plist file and add required resources
     set(_res
       "${CMAKE_SOURCE_DIR}/resources/${plugin_name}.icns"
@@ -99,7 +96,7 @@ function(iplug_configure_app base_plugin target)
     set_target_properties(${target} PROPERTIES
       MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/resources/${plugin_name}-macOS-Info.plist")
     # Disable resource processing
-    set(res_dir "")
+    set(resource_dir "")
 
   elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
     set_target_properties(${target} PROPERTIES
@@ -108,7 +105,7 @@ function(iplug_configure_app base_plugin target)
 
   endif()
 
-  iplug_target_bundle_resources(${target} "${res_dir}")
+  iplug_target_bundle_resources(${target} "${resource_dir}")
 endfunction()
 
 set(IPlugAPP_FOUND TRUE)

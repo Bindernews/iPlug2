@@ -78,13 +78,14 @@ iplug_target_add(iPlug2_LV2_UI INTERFACE
 )
 
 function(iplug_configure_lv2 base_plugin target)
-  iplug_get_common_plugin_variables(lv2)
+  # We don't copy properties to the DSP target
+  iplug_configure_helper(GET_VARS lv2)
   set(install_dir "${LV2_INSTALL_PATH}/${plugin_name}.lv2")
 
+  # DSP target first
   add_library(${target} MODULE)
   iplug_target_add(${target} PUBLIC LINK iPlug2_LV2_DSP iPlug2_NoGraphics ${base_plugin})
 
-  set(res_dir "${output_dir}/resources")
   if (IPLUG_OS MATCHES "Windows")
     set(suffix ".dll")
   elseif (IPLUG_OS MATCHES "Darwin")
@@ -110,9 +111,6 @@ function(iplug_configure_lv2 base_plugin target)
   )
   # add_dependencies(${target} rundyn)
 
-  # Handle resources
-  iplug_target_bundle_resources(${target} "${res_dir}")
-
   # Add ui library
   if (NOT gui_libraries STREQUAL iPlug2_NoGraphics)
     set(target_ui ${target}_ui)
@@ -127,6 +125,9 @@ function(iplug_configure_lv2 base_plugin target)
 
     # Ensure that building the main LV2 target will also build the UI
     add_dependencies(${target} ${target_ui})
+
+    # Handle resources
+    iplug_target_bundle_resources(${target_ui} "${resource_dir}")
   endif()
 
   # After building copy to the correct directory

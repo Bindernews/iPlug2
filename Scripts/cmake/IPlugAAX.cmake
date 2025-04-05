@@ -98,13 +98,12 @@ iplug_source_tree(iPlug2_AAX PREFIX "IPlug/AAX")
 function(iplug_configure_aax base_plugin target)
   message(WARNING "AAX not yet fully implemented, expect bugs")
 
-  # Common variables
-  iplug_get_common_plugin_variables(app)
   # Create target
   add_library(${target} MODULE)
+  # Common variables
+  iplug_configure_helper(GET_VARS aax COPY_PROPERTIES ${target})
   # Link to interfaces and copy properties
   iplug_target_add(${target} PUBLIC LINK iPlug2_AAX ${base_plugin} ${gui_libraries})
-  iplug_copy_properties(${target} ${base_plugin} IPLUG_COPY_AFTER_BUILD IPLUG_RESOURCES)
 
   # Default resources directory
   set(res_dir "${output_dir}/resources")

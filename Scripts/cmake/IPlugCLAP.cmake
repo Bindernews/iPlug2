@@ -75,13 +75,10 @@ source_group(IPlug/CLAP FILES ${_src})
 #--------------------------------------------------------------------
 # configure function
 function(iplug_configure_clap base_plugin target)
-  iplug_get_common_plugin_variables(clap)
-  set(install_dir "${CLAP_INSTALL_PATH}/${plugin_name}")
-  set(res_dir "${output_dir}/resources")
-
   add_library(${target} MODULE)
+  iplug_configure_helper(GET_VARS clap COPY_PROPERTIES ${target})
   iplug_target_add(${target} PUBLIC LINK iPlug2_CLAP ${base_plugin} ${gui_libraries})
-  iplug_copy_properties(${target} ${base_plugin} IPLUG_COPY_AFTER_BUILD IPLUG_RESOURCES)
+  set(install_dir "${CLAP_INSTALL_PATH}/${plugin_name}")
 
   if (IPLUG_OS MATCHES "Windows")
     set(suffix ".dll")
@@ -100,7 +97,7 @@ function(iplug_configure_clap base_plugin target)
   )
 
   # Handle resources
-  iplug_target_bundle_resources(${base_plugin} "${res_dir}")
+  iplug_target_bundle_resources(${base_plugin} "${resource_dir}")
   # After building copy to the correct directory
   iplug_add_post_build_copy(${target} "${output_dir}" "${install_dir}")
 endfunction()

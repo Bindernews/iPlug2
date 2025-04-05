@@ -35,12 +35,12 @@ iplug_target_add(iPlug2_AUv2 INTERFACE
 )
 
 function(iplug_configure_au2 base_plugin target)
-  iplug_get_common_plugin_variables(vst3)
   # Create target
   add_library(${target} MODULE)
-  # Link to iPlug library and GUI libraries, and copy properties
+  # Setup
+  iplug_configure_helper(GET_VARS au2 COPY_PROPERTIES ${target})
+  # Link to iPlug library and GUI libraries
   target_link_libraries(${target} PUBLIC iPlug2_AUv2 ${base_plugin} ${gui_libraries})
-  iplug_copy_properties(${target} ${base_plugin} IPLUG_COPY_AFTER_BUILD IPLUG_RESOURCES)
 
   # Xcode vs Make/Ninja
   if (CMAKE_GENERATOR STREQUAL "Xcode")

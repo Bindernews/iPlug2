@@ -6,7 +6,7 @@ cmake_policy(SET CMP0054 NEW)
 include(CheckCXXCompilerFlag)
 
 # Load helper functions
-include(${CMAKE_CURRENT_LIST_DIR}/Functions.cmake)
+include(IPlugFunctions)
 
 if (CMAKE_SYSTEM_NAME MATCHES "Windows")
   # Need to determine processor arch for postbuild-win.bat
