@@ -143,7 +143,7 @@ target_link_options(iPlug2_WAM INTERFACE
 
 
 function(iplug_configure_wam base_plugin target)
-  iplug_get_common_plugin_variables(wam)
+  iplug_configure_helper(GET_VARS wam)
 
   # Do the DSP portion first
   add_executable(${target})
@@ -156,6 +156,7 @@ function(iplug_configure_wam base_plugin target)
   # Now the UI portion
   set(target_ui ${target}_ui)
   add_executable(${target_ui})
+  iplug_configure_helper(COPY_PROPERTIES ${target_ui})
   target_link_libraries(${target_ui} PUBLIC ${base_plugin} iPlug2_WEB)
   set_target_properties(
     ${target_ui} PROPERTIES
@@ -184,3 +185,5 @@ function(iplug_configure_wam base_plugin target)
   endforeach()
 
 endfunction()
+
+set(IPlugWEB_FOUND TRUE)

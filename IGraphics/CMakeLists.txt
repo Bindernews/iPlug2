@@ -11,7 +11,10 @@ endif()
 
 set(cwd ${CMAKE_CURRENT_LIST_DIR})
 set(deps_dir ${IPLUG2_SDK_PATH}/Dependencies/IGraphics)
-set(_def "IPLUG_EDITOR=1")
+set(_def
+  "IPLUG_EDITOR=1"
+  BUILT_WITH_CMAKE
+)
 set(_lib iPlug2_Core)
 set(_inc
   # IGraphics
@@ -120,7 +123,6 @@ elseif (IPLUG_OS MATCHES "Darwin")
   list(APPEND _opt "-Wno-deprecated-declarations")
 endif()
 
-source_group(TREE ${IPLUG2_SDK_PATH} PREFIX "IPlug" FILES ${_src})
 add_library(iPlug2_IGraphicsCore INTERFACE)
 iplug_target_add(iPlug2_IGraphicsCore INTERFACE
   DEFINE ${_def}
@@ -129,6 +131,7 @@ iplug_target_add(iPlug2_IGraphicsCore INTERFACE
   LINK ${_lib}
   OPTION ${_opt}
 )
+source_group(IPlug FILES ${_src})
 
 ################
 # Misc Options #

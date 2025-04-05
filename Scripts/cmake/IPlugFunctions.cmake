@@ -103,12 +103,18 @@ macro(iplug_ternary VAR val_true val_false)
   endif()
 endmacro()
 
-macro(iplug_source_tree target)
+function(iplug_source_tree target)
+  cmake_parse_arguments(arg "" "PREFIX" "" ${ARGN})
   get_target_property(_tmp ${target} INTERFACE_SOURCES)
-  if (NOT "${_tmp}" STREQUAL "_tmp-NOTFOUND")
+  if ("${_tmp}" STREQUAL "_tmp-NOTFOUND")
+    return()
+  endif()
+  if (arg_PREFIX)
+    source_group(${arg_PREFIX} FILES ${_tmp})
+  else()
     source_group(TREE ${IPLUG2_SDK_PATH} PREFIX "IPlug" FILES ${_tmp})
   endif()
-endmacro()
+endfunction()
 
 #! iplug_find_path : An alternative to find_file and find_path that allows a default value.
 #
@@ -129,12 +135,13 @@ function(iplug_find_path VAR)
 
   set(out 0)
   foreach (pt ${arg_PATHS})
-    if (EXISTS ${pt})
-      iplug_ternary(is_dir 1 0 IS_DIRECTORY ${pt})
+    cmake_path(NORMAL_PATH pt OUTPUT_VARIABLE pt2)
+    if (EXISTS ${pt2})
+      iplug_ternary(is_dir 1 0 IS_DIRECTORY ${pt2})
       #message("Found path ${pt} and is_dir=${is_dir}")
 
       if ( (arg_FILE AND NOT ${is_dir}) OR (arg_DIR AND ${is_dir}) )
-        set(out ${pt})
+        set(out ${pt2})
         break()
       endif()
     endif()
@@ -213,14 +220,20 @@ function(iplug_target_bundle_resources target res_dir)
         endif()
       endif()
 
-      target_sources(${target} PUBLIC "${dst}")
-
       if (copy)
-        add_custom_command(OUTPUT "${dst}"
+        add_custom_command(
+          OUTPUT "${dst}"
           COMMAND ${CMAKE_COMMAND} ARGS "-E" "copy" "${res}" "${dst}"
           COMMENT "Copying resource to ${dst}"
-          MAIN_DEPENDENCY "${res}")
+          MAIN_DEPENDENCY "${res}"
+        )
       endif()
+
+      # Make the target depend on the resource output so it gets copied.
+      target_sources(${target} PRIVATE "${dst}")
+      source_group("Resources" FILES ${dst})
+
+
     endforeach()
   endif()
 endfunction()
@@ -260,11 +273,10 @@ function(iplug_add_post_build_copy target src_dir dest_dir)
   cmake_parse_arguments(arg "FORCE" "" "" ${ARGN})
   get_target_property(r ${target} IPLUG_COPY_AFTER_BUILD)
   if (r OR arg_FORCE)
-    # message("Adding copy after build for ${target} to ${dest_dir}")
     add_custom_command(TARGET ${target} POST_BUILD
       COMMAND ${CMAKE_COMMAND} ARGS "-E" "remove_directory" "${dest_dir}"
       COMMAND ${CMAKE_COMMAND} ARGS "-E" "copy_directory" "${src_dir}" "${dest_dir}"
-      COMMAND ${CMAKE_COMMAND} ARGS -E echo "Copied ${src_dir} to ${dest_dir}"
+      COMMENT "Copied ${src_dir} to ${dest_dir}"
     )
   endif()
 endfunction(iplug_add_post_build_copy)
@@ -293,19 +305,116 @@ function(iplug_list_to_js_list dst_var)
   set(${dst_var} "['${tmp}']" PARENT_SCOPE)
 endfunction(iplug_list_to_js_list)
 
-# Sets `plugin_name`, `gui_libraries`, and `output_dir` in
-# the parent scope. These are common variables used by most/all output formats.
-function(iplug_get_common_plugin_variables format)
+#[===[.rst:
+
+.. code-block:: cmake
+  iplug_configure_helper(
+    `GET_VARS`_ <format>
+    `COPY_PROPERTIES`_ <target>
+  )
+
+Combines several pieces of helper code for the ``iplug_configure_*`` functions
+into one place. This function makes certain assumptions about what variables
+exist, and what are safe to set.
+
+`GET_VARS`
+  Sets `plugin_name`, `gui_libraries`, `output_dir`, and ``resource_dir`` in
+  the parent scope. These are common variables used by most/all output formats.
+  The ``<format>`` argument is the lowercased format name.
+
+`COPY_PROPERTIES`
+  Copies ``IPLUG_RESOURCES`` and ``IPLUG_COPY_AFTER_BUILD`` from the base plugin
+  target to ``<target>``.
+
+#]===]
+function(iplug_configure_helper)
   if (NOT TARGET ${base_plugin})
-    message(FATAL_ERROR "iplug_get_common_plugin_variables called but 'base_plugin' not defined.\n
-    This is an error in the output format function.")
+    message(FATAL_ERROR "iplug_configure_util called but 'base_plugin' not defined.\n
+    This is an error in the format's configure function.")
   endif()
-  get_target_property(plugin_name ${base_plugin} IPLUG_PLUGIN_NAME)
-  get_target_property(gui_libraries ${base_plugin} IPLUG_PLUGIN_GRAPHICS)
-  set(output_dir "${CMAKE_BINARY_DIR}/${plugin_name}/${format}" PARENT_SCOPE)
-  set(plugin_name ${plugin_name} PARENT_SCOPE)
-  set(gui_libraries ${gui_libraries} PARENT_SCOPE)
-endfunction(iplug_get_common_plugin_variables)
+  cmake_parse_arguments(arg "" "GET_VARS;COPY_PROPERTIES" "" ${ARGN})
+
+  if (arg_GET_VARS)
+    set(format ${arg_GET_VARS})
+    get_target_property(plugin_name ${base_plugin} IPLUG_PLUGIN_NAME)
+    get_target_property(gui_libraries ${base_plugin} IPLUG_PLUGIN_GRAPHICS)
+    set(output_dir "${CMAKE_BINARY_DIR}/${plugin_name}/${format}")
+    set(resource_dir "${output_dir}/resources")
+
+    # Set these in the parent scope
+    set(output_dir "${output_dir}" PARENT_SCOPE)
+    set(resource_dir "${resource_dir}" PARENT_SCOPE)
+    set(plugin_name ${plugin_name} PARENT_SCOPE)
+    set(gui_libraries ${gui_libraries} PARENT_SCOPE)
+  endif()
+
+  if (arg_COPY_PROPERTIES)
+    set(target ${arg_COPY_PROPERTIES})
+    iplug_copy_properties(${target} ${base_plugin} "IPLUG_COPY_AFTER_BUILD;IPLUG_RESOURCES")
+  endif()
+endfunction(iplug_configure_helper)
+
+
+# Clear the cache of loaded modules
+set(_iplug_load_module_seen "" CACHE INTERNAL "" FORCE)
+
+#[===[.rst
+
+Attempt to load a module, allowing the module to check if it can load successfully.
+This is similar to ``find_package()`` but it doesn't assume that ``${module_name}_FOUND``
+being set in the cache means there's no work to do. Modules may create new functions,
+targets, etc. It's safe to call the function multiple times, as it will only attempt
+to load a module once.
+
+#]===]
+function(iplug_load_module module_name)
+  cmake_parse_arguments(arg2 "" "OPTIONAL;ERROR_MESSAGE" "" ${ARGN})
+
+  set(known_modules $CACHE{_iplug_load_module_seen})
+
+  # Check if we've tried to load the module already. We specifically check
+  # our module list instead of a cache variable, since the cache variables persist
+  # through each re-build but the module list is explicity cleared.
+  if ("${module_name}" IN_LIST known_modules)
+    return()
+  endif()
+  # Update the module list so we know we've seen this module.
+  list(APPEND known_modules "${module_name}")
+  set(_iplug_load_module_seen ${known_modules} CACHE INTERNAL "" FORCE)
+
+  # Default error message
+  if (NOT arg2_ERROR_MESSAGE)
+    set(arg2_ERROR_MESSAGE "Failed to load module ${module_name}")
+  endif()
+  # Default OPTIONAL to false
+  if (NOT DEFINED arg2_OPTIONAL)
+    set(arg2_OPTIONAL FALSE)
+  endif()
+
+  set(extra_error "")
+
+  # Try to include the module
+  include(${module_name} OPTIONAL RESULT_VARIABLE mod_found)
+  # If we succeeded, but ${module_name}_FOUND is not set, then we still failed
+  if (mod_found AND NOT ${module_name}_FOUND)
+    set(mod_found FALSE)
+    # Allow modules to add an extra error message
+    if (DEFINED ${module_name}_ERROR)
+      set(extra_error ": ${${module_name}_ERROR}")
+    endif()
+  endif()
+
+  # Set the result in the cache, force-overriding exisitng values
+  set(${module_name}_FOUND ${mod_found} CACHE BOOL "" FORCE)
+
+  # Now this will trigger if we failed for any reason
+  if (NOT mod_found)
+    # If arg_OPTIONAL is set, then warn but don't fail the full build
+    iplug_ternary(msg_status NOTICE SEND_ERROR arg2_OPTIONAL)
+    message(${msg_status} "${arg2_ERROR_MESSAGE}${extra_error}")
+    return()
+  endif()
+endfunction(iplug_load_module)
 
 
 #[===[.rst:
@@ -411,9 +520,21 @@ function(iplug_setup_plugin target)
     set(gui_libs iPlug2_${gui0} iPlug2_${gui_api})
   endif()
 
-  message(STATUS "GUI libraries for ${target} are ${gui_libs}")
+  message(VERBOSE "GUI libraries for ${target} are ${gui_libs}")
 
   ## End parse graphics options ##
+
+  # On Windows, we automatically include main.rc and resource.h
+  if (WIN32)
+    # Get the source dir for the target
+    get_target_property(plugin_src_dir ${target} SOURCE_DIR)
+    set(_src
+      ${plugin_src_dir}/resources/main.rc
+      ${plugin_src_dir}/resources/resource.h
+    )
+    target_sources(${target} INTERFACE ${_src})
+    source_group(Resources FILES ${_src})
+  endif()
 
   set_target_properties(
     ${target}
@@ -459,7 +580,7 @@ configurations based on the plugin format.
 .. _`Emscripten CMake SDK`: https://github.com/emscripten-core/emscripten/blob/main/cmake/Modules/Platform/Emscripten.cmake
 #]===]
 function(iplug_add_format base_target format)
-  cmake_parse_arguments(arg "COPY_AFTER_BUILD" "TARGET" "" ${ARGN})
+  cmake_parse_arguments(arg "COPY_AFTER_BUILD;OPTIONAL" "TARGET" "" ${ARGN})
 
   # List of all valid plugin formats
   set(VALID_FORMATS "aax;app;au2;au3;lv2;vst2;vst3;wam;clap")
@@ -477,7 +598,12 @@ function(iplug_add_format base_target format)
   if (NOT IPLUG_OS MATCHES "Darwin")
     list(REMOVE_ITEM ok_formats "au2" "au3")
   endif()
-  if (NOT IPLUG_OS MATCHES "Linux")
+  # AAX is windows and mac only
+  if (NOT IPLUG_OS MATCHES "(Darwin)|(Windows)")
+    list(REMOVE_ITEM ok_formats "aax")
+  endif()
+  # Currently only support LV2 on Linux and Windows, through it's technically cross-platform
+  if (NOT IPLUG_OS MATCHES "(Linux)|(Windows)")
     list(REMOVE_ITEM ok_formats "lv2")
   endif()
   if (CMAKE_SYSTEM_NAME MATCHES "Emscripten")
@@ -507,17 +633,21 @@ function(iplug_add_format base_target format)
     set(target ${arg_TARGET})
   endif()
 
-  # Dynamically load the configure command
-  set(configure_command "iplug_configure_${format}")
+  # Take the plugin format name, and get the subdirectory / module name.
+  list(FIND VALID_FORMATS ${format} format_index)
+  list(GET FORMAT_DIRS ${format_index} format_subdir)
+  set(module_name IPlug${format_subdir})
 
+  # Dynamically load the plugin format, and the associated configure command
+  set(configure_command "iplug_configure_${format}")
   if (NOT COMMAND ${configure_command})
-    # Get format index and convert it to format subdir
-    list(FIND VALID_FORMATS ${format} format_index)
-    list(GET FORMAT_DIRS ${format_index} format_subdir)
-    include(IPlug${format_subdir} OPTIONAL RESULT_VARIABLE format_loaded)
-    if (NOT format_loaded)
-      # Load subdirectory with explicit binary directory because it's outside normal path.
-      add_subdirectory(${IPLUG2_SDK_PATH}/IPlug/${format_subdir} ${CMAKE_BINARY_DIR}/IPlug/${format_subdir})
+    iplug_load_module(
+      ${module_name}
+      OPTIONAL ${arg_OPTIONAL}
+      ERROR_MESSAGE "Failed to load plugin format ${module_name}"
+    )
+    if (NOT ${module_name}_FOUND)
+      return()
     endif()
   endif()
 
@@ -542,6 +672,14 @@ function(iplug_add_format base_target format)
     # Nothing special here!
 
   endif()
+
+  # For CMake, files have to be organized on a per-directory or per-target basis,
+  # it's not 100% clear. Either way, if we repeat the organization steps it works consistently.
+  iplug_source_tree(iPlug2_Core PREFIX "IPlug")
+  iplug_source_tree(iPlug2_IGraphicsCore PREFIX "IPlug/IGraphics")
+  iplug_source_tree(iPlug2_Synth PREFIX "IPlug/Extras/Synth")
+  iplug_source_tree(iPlug2_GL2 PREFIX "IPlug/IGraphics")
+  iplug_source_tree(iPlug2_GL3 PREFIX "IPlug/IGraphics")
 
 endfunction()
 

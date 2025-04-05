@@ -24,7 +24,7 @@
 
 #if defined OS_WIN && !defined VST3C_API
   HINSTANCE gHINSTANCE = 0;
-  #if defined(VST2_API) || defined(AAX_API) || defined(CLAP_API)
+  #if defined(VST2_API) || defined(AAX_API) || defined(CLAP_API) || defined(LV2C_API)
   #ifdef __MINGW32__
   extern "C"
   #endif

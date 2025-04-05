@@ -85,7 +85,7 @@ void IPlugAPPHost::CloseWindow()
 bool IPlugAPPHost::InitState()
 {
 #if defined OS_WIN
-  TCHAR strPath[MAX_PATH_LEN];
+  CHAR strPath[MAX_PATH_LEN];
   SHGetFolderPathA( NULL, CSIDL_LOCAL_APPDATA, NULL, 0, strPath );
   mINIPath.SetFormatted(MAX_PATH_LEN, "%s\\%s\\", strPath, BUNDLE_NAME);
 #elif defined OS_MAC
@@ -108,27 +108,27 @@ bool IPlugAPPHost::InitState()
     {
       DBGMSG("Reading ini file from %s\n", mINIPath.Get());
 
-      mState.mAudioDriverType = GetPrivateProfileInt("audio", "driver", 0, mINIPath.Get());
+      mState.mAudioDriverType = GetPrivateProfileIntA("audio", "driver", 0, mINIPath.Get());
 
-      GetPrivateProfileString("audio", "indev", "Built-in Input", buf, STRBUFSZ, mINIPath.Get()); mState.mAudioInDev.Set(buf);
-      GetPrivateProfileString("audio", "outdev", "Built-in Output", buf, STRBUFSZ, mINIPath.Get()); mState.mAudioOutDev.Set(buf);
+      GetPrivateProfileStringA("audio", "indev", "Built-in Input", buf, STRBUFSZ, mINIPath.Get()); mState.mAudioInDev.Set(buf);
+      GetPrivateProfileStringA("audio", "outdev", "Built-in Output", buf, STRBUFSZ, mINIPath.Get()); mState.mAudioOutDev.Set(buf);
 
       //audio
-      mState.mAudioInChanL = GetPrivateProfileInt("audio", "in1", 1, mINIPath.Get()); // 1 is first audio input
-      mState.mAudioInChanR = GetPrivateProfileInt("audio", "in2", 2, mINIPath.Get());
-      mState.mAudioOutChanL = GetPrivateProfileInt("audio", "out1", 1, mINIPath.Get()); // 1 is first audio output
-      mState.mAudioOutChanR = GetPrivateProfileInt("audio", "out2", 2, mINIPath.Get());
+      mState.mAudioInChanL = GetPrivateProfileIntA("audio", "in1", 1, mINIPath.Get()); // 1 is first audio input
+      mState.mAudioInChanR = GetPrivateProfileIntA("audio", "in2", 2, mINIPath.Get());
+      mState.mAudioOutChanL = GetPrivateProfileIntA("audio", "out1", 1, mINIPath.Get()); // 1 is first audio output
+      mState.mAudioOutChanR = GetPrivateProfileIntA("audio", "out2", 2, mINIPath.Get());
       //mState.mAudioInIsMono = GetPrivateProfileInt("audio", "monoinput", 0, mINIPath.Get());
 
-      mState.mBufferSize = GetPrivateProfileInt("audio", "buffer", 512, mINIPath.Get());
-      mState.mAudioSR = GetPrivateProfileInt("audio", "sr", 44100, mINIPath.Get());
+      mState.mBufferSize = GetPrivateProfileIntA("audio", "buffer", 512, mINIPath.Get());
+      mState.mAudioSR = GetPrivateProfileIntA("audio", "sr", 44100, mINIPath.Get());
 
       //midi
-      GetPrivateProfileString("midi", "indev", "no input", buf, STRBUFSZ, mINIPath.Get()); mState.mMidiInDev.Set(buf);
-      GetPrivateProfileString("midi", "outdev", "no output", buf, STRBUFSZ, mINIPath.Get()); mState.mMidiOutDev.Set(buf);
+      GetPrivateProfileStringA("midi", "indev", "no input", buf, STRBUFSZ, mINIPath.Get()); mState.mMidiInDev.Set(buf);
+      GetPrivateProfileStringA("midi", "outdev", "no output", buf, STRBUFSZ, mINIPath.Get()); mState.mMidiOutDev.Set(buf);
 
-      mState.mMidiInChan = GetPrivateProfileInt("midi", "inchan", 0, mINIPath.Get()); // 0 is any
-      mState.mMidiOutChan = GetPrivateProfileInt("midi", "outchan", 0, mINIPath.Get()); // 1 is first chan
+      mState.mMidiInChan = GetPrivateProfileIntA("midi", "inchan", 0, mINIPath.Get()); // 0 is any
+      mState.mMidiOutChan = GetPrivateProfileIntA("midi", "outchan", 0, mINIPath.Get()); // 1 is first chan
     }
 
     // if settings file doesn't exist, populate with default values, otherwise overrwrite
@@ -138,7 +138,7 @@ bool IPlugAPPHost::InitState()
   {
 #if defined OS_WIN
     // folder doesn't exist - make folder and make file
-    CreateDirectory(mINIPath.Get(), NULL);
+    CreateDirectoryA(mINIPath.Get(), NULL);
     mINIPath.Append("settings.ini");
     UpdateINI(); // will write file if doesn't exist
 #elif defined OS_MAC || defined OS_LINUX
@@ -168,37 +168,27 @@ void IPlugAPPHost::UpdateINI()
   char buf[STRBUFSZ]; // temp buffer for writing integers to profile strings
   const char* ini = mINIPath.Get();
 
-  sprintf(buf, "%u", mState.mAudioDriverType);
-  WritePrivateProfileString("audio", "driver", buf, ini);
+  auto writeUint = [&](const char* section, const char* key, uint32_t value) {
+    char buf[STRBUFSZ];
+    sprintf(buf, "%u", value);
+    WritePrivateProfileStringA(section, key, buf, ini);
+  };
 
-  WritePrivateProfileString("audio", "indev", mState.mAudioInDev.Get(), ini);
-  WritePrivateProfileString("audio", "outdev", mState.mAudioOutDev.Get(), ini);
+  writeUint("audio", "driver", mState.mAudioDriverType);
+  WritePrivateProfileStringA("audio", "indev", mState.mAudioInDev.Get(), ini);
+  WritePrivateProfileStringA("audio", "outdev", mState.mAudioOutDev.Get(), ini);
 
-  sprintf(buf, "%u", mState.mAudioInChanL);
-  WritePrivateProfileString("audio", "in1", buf, ini);
-  sprintf(buf, "%u", mState.mAudioInChanR);
-  WritePrivateProfileString("audio", "in2", buf, ini);
-  sprintf(buf, "%u", mState.mAudioOutChanL);
-  WritePrivateProfileString("audio", "out1", buf, ini);
-  sprintf(buf, "%u", mState.mAudioOutChanR);
-  WritePrivateProfileString("audio", "out2", buf, ini);
-  //sprintf(buf, "%u", mState.mAudioInIsMono);
-  //WritePrivateProfileString("audio", "monoinput", buf, ini);
+  writeUint("audio", "in1", mState.mAudioInChanL);
+  writeUint("audio", "in2", mState.mAudioInChanR);
+  writeUint("audio", "out1", mState.mAudioOutChanL);
+  writeUint("audio", "out2", mState.mAudioOutChanR);
+  writeUint("audio", "buffer", mState.mBufferSize);
+  writeUint("audio", "sr", mState.mAudioSR);
 
-  WDL_String str;
-  str.SetFormatted(32, "%i", mState.mBufferSize);
-  WritePrivateProfileString("audio", "buffer", str.Get(), ini);
-
-  str.SetFormatted(32, "%i", mState.mAudioSR);
-  WritePrivateProfileString("audio", "sr", str.Get(), ini);
-
-  WritePrivateProfileString("midi", "indev", mState.mMidiInDev.Get(), ini);
-  WritePrivateProfileString("midi", "outdev", mState.mMidiOutDev.Get(), ini);
-
-  sprintf(buf, "%u", mState.mMidiInChan);
-  WritePrivateProfileString("midi", "inchan", buf, ini);
-  sprintf(buf, "%u", mState.mMidiOutChan);
-  WritePrivateProfileString("midi", "outchan", buf, ini);
+  WritePrivateProfileStringA("midi", "indev", mState.mMidiInDev.Get(), ini);
+  WritePrivateProfileStringA("midi", "outdev", mState.mMidiOutDev.Get(), ini);
+  writeUint("midi", "inchan", mState.mMidiInChan);
+  writeUint("midi", "outchan", mState.mMidiOutChan);
 }
 
 std::string IPlugAPPHost::GetAudioDeviceName(int idx) const
@@ -459,7 +449,7 @@ bool IPlugAPPHost::TryToChangeAudio()
   }
 
   if (failedToFindDevice)
-    MessageBox(gHWND, "Please check your soundcard settings in Preferences", "Error", MB_OK);
+    MessageBoxA(gHWND, "Please check your soundcard settings in Preferences", "Error", MB_OK);
 
   if (inputID != -1 && outputID != -1)
   {

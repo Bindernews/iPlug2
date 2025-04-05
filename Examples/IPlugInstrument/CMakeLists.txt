@@ -1,15 +1,15 @@
 cmake_minimum_required(VERSION 3.16 FATAL_ERROR)
 
 #########
-# This is a build file for iPlug2 on Linux.
+# This is a build file for iPlug2.
 # It may work on Windows and MacOS, but that isn't the initial goal.
 #
 # To setup the build (change CMAKE_BUILD_TYPE as desired):
 #   cmake -S . -B build-linux -DCMAKE_BUILD_TYPE=Debug
 # To build the VST2 version:
-#   cmake --build build-linux --target IPlugInstrument_VST2
+#   cmake --build build-linux --target IPlugInstrument_vst2
 # To build the VST3 version:
-#   cmake --build build-linux --target IPlugInstrument_VST3
+#   cmake --build build-linux --target IPlugInstrument_vst2
 
 project(IPlugInstrument VERSION 1.0.0 LANGUAGES C CXX)
 
@@ -41,34 +41,39 @@ set(_src
 set(_res
   resources/fonts/Roboto-Regular.ttf
 )
-# List of libraries to link with
-set(_lib
-  # This is an instrument, so we link to Synth to help generate output
-  iPlug2_Synth
-)
 
 iplug_target_add(plugin_base INTERFACE
-  SOURCE ${_src}
-  RESOURCE ${_res}
-  LINK ${_lib}
-  FEATURE cxx_std_17
+  SOURCE
+    ${_src}
+  RESOURCE
+    ${_res}
+  LINK
+    # This is an instrument, so we link to Synth to help generate output
+    iPlug2_Synth
+  FEATURE
+    # Using C++ 17
+    cxx_std_17
   INCLUDE
     ${cwd}
     ${cwd}/resources
 )
+
+# Make things pretty in IDEs.
+# source_group(TREE ${cwd} FILES ${_src})
+source_group(TREE "${cwd}/resources" PREFIX Resources FILES ${_res})
+
 # Configure the plugin with the default name and version
 # from the project, using NanoVG with OpenGL 3 as the backend.
 iplug_setup_plugin(plugin_base GRAPHICS NanoVG GL3 COPY_AFTER_BUILD)
 
-# Make things pretty in IDEs.
-source_group(TREE ${cwd} FILES ${_src})
-source_group(TREE "${cwd}/resources" PREFIX Resources FILES ${_res})
-
-# Add the various output formats we want to use
-# iplug_add_format(plugin_base vst2 COPY_AFTER_BUILD)
-iplug_add_format(plugin_base vst3 COPY_AFTER_BUILD)
+# Add the various output formats we want to use.
+# Any that are not supported on this platform will be ignored.
+iplug_add_format(plugin_base vst2)
+iplug_add_format(plugin_base vst3)
 iplug_add_format(plugin_base app)
-iplug_add_format(plugin_base au2 COPY_AFTER_BUILD)
-iplug_add_format(plugin_base lv2 COPY_AFTER_BUILD)
-# iplug_add_format(plugin_base wam)
+iplug_add_format(plugin_base au2)
+iplug_add_format(plugin_base au3)
+iplug_add_format(plugin_base aax OPTIONAL)
+iplug_add_format(plugin_base lv2)
+iplug_add_format(plugin_base wam)
 iplug_add_format(plugin_base clap)

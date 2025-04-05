@@ -2328,7 +2328,9 @@ void IGraphicsWin::VBlankNotify()
   #pragma comment(lib, "freetype.lib")
 #endif
   #include "nanovg.c"
+  #ifndef BUILT_WITH_CMAKE
   #include "glad.c"
+  #endif
 #else
   #error
 #endif

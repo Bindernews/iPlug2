@@ -1,18 +1,32 @@
 {
-  "version": 2,
+  "version": 3,
   "cmakeMinimumRequired": {
     "major": 3,
-    "minor": 20,
+    "minor": 21,
     "patch": 0
   },
   "configurePresets": [
     {
-      "name": "default",
-      "displayName": "Default Configuration",
+      "name": "default-linux",
+      "displayName": "Default Configuration (Linux)",
       "generator": "Ninja",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
       "binaryDir": "${sourceDir}/build-default/",
       "cacheVariables": {
         "IPLUG_APP_JACK": "OFF",
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "default-windows",
+      "displayName": "Default Configuration (Windows)",
+      "generator": "Visual Studio 17 2022",
+      "binaryDir": "${sourceDir}/build-default/",
+      "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug"
       }
     },
