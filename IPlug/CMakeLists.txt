@@ -4,6 +4,7 @@ cmake_policy(SET CMP0076 NEW)
 cmake_policy(SET CMP0054 NEW)
 # So we can check for optimization flags
 include(CheckCXXCompilerFlag)
+include(CheckLinkerFlag)
 
 # Load helper functions
 include(IPlugFunctions)
@@ -30,6 +31,10 @@ elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
 elseif (CMAKE_SYSTEM_NAME MATCHES "Emscripten")
   set(IPLUG_OS "Emscripten")
 
+elseif (CMAKE_SYSTEM_NAME MATCHES "iOS")
+  set(IPLUG_OS "iOS")
+  message(WARNING "Building iPlug2 for iOS with CMake is currently *very* experimental.")
+
 else()
   message(FATAL_ERROR "Unsupported platform ${CMAKE_SYSTEM_NAME}")
 endif()
@@ -39,6 +44,7 @@ set(IPLUG_OS ${IPLUG_OS} CACHE STRING "OS name" FORCE)
 # These functions MUST be run in a global scope
 CHECK_CXX_COMPILER_FLAG("-march=native" COMPILER_OPT_ARCH_NATIVE_SUPPORTED)
 CHECK_CXX_COMPILER_FLAG("/arch:AVX" COMPILER_OPT_ARCH_AVX_SUPPORTED)
+check_linker_flag(C "--error-unresolved-symbols" IPLUG_LINKER_FLAG_ERROR_UNRESOLVED_SYMBOLS)
 
 # Add .gitignore to the build root
 write_file(${CMAKE_BINARY_DIR}/.gitignore "*\n")
@@ -193,7 +199,10 @@ elseif (CMAKE_SYSTEM_NAME MATCHES "Darwin")
       SWELL_CLEANUP_ON_UNLOAD
   )
 endif()
-
+if (IPLUG_LINKER_FLAG_ERROR_UNRESOLVED_SYMBOLS)
+  # This way we get errors on GCC/clang for missing symbols
+  target_link_options(iPlug2_Plugin INTERFACE "--error-unresolved-symbols")
+endif()
 
 # Load extras libraries
 add_subdirectory(Extras)
