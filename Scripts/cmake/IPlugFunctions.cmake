@@ -220,14 +220,20 @@ function(iplug_target_bundle_resources target res_dir)
         endif()
       endif()
 
-      # target_sources(${target} PUBLIC "${dst}")
-
       if (copy)
-        add_custom_command(OUTPUT "${dst}"
+        add_custom_command(
+          OUTPUT "${dst}"
           COMMAND ${CMAKE_COMMAND} ARGS "-E" "copy" "${res}" "${dst}"
           COMMENT "Copying resource to ${dst}"
-          MAIN_DEPENDENCY "${res}")
+          MAIN_DEPENDENCY "${res}"
+        )
       endif()
+
+      # Make the target depend on the resource output so it gets copied.
+      target_sources(${target} PRIVATE "${dst}")
+      source_group("Resources" FILES ${dst})
+
+
     endforeach()
   endif()
 endfunction()
@@ -267,7 +273,6 @@ function(iplug_add_post_build_copy target src_dir dest_dir)
   cmake_parse_arguments(arg "FORCE" "" "" ${ARGN})
   get_target_property(r ${target} IPLUG_COPY_AFTER_BUILD)
   if (r OR arg_FORCE)
-    message(VERBOSE "Adding copy after build for ${target} to ${dest_dir}")
     add_custom_command(TARGET ${target} POST_BUILD
       COMMAND ${CMAKE_COMMAND} ARGS "-E" "remove_directory" "${dest_dir}"
       COMMAND ${CMAKE_COMMAND} ARGS "-E" "copy_directory" "${src_dir}" "${dest_dir}"
@@ -333,15 +338,19 @@ function(iplug_configure_helper)
     set(format ${arg_GET_VARS})
     get_target_property(plugin_name ${base_plugin} IPLUG_PLUGIN_NAME)
     get_target_property(gui_libraries ${base_plugin} IPLUG_PLUGIN_GRAPHICS)
-    set(output_dir "${CMAKE_BINARY_DIR}/${plugin_name}/${format}" PARENT_SCOPE)
-    set(resource_dir "${output_dir}/resources" PARENT_SCOPE)
+    set(output_dir "${CMAKE_BINARY_DIR}/${plugin_name}/${format}")
+    set(resource_dir "${output_dir}/resources")
+
+    # Set these in the parent scope
+    set(output_dir "${output_dir}" PARENT_SCOPE)
+    set(resource_dir "${resource_dir}" PARENT_SCOPE)
     set(plugin_name ${plugin_name} PARENT_SCOPE)
     set(gui_libraries ${gui_libraries} PARENT_SCOPE)
   endif()
 
   if (arg_COPY_PROPERTIES)
     set(target ${arg_COPY_PROPERTIES})
-    iplug_copy_properties(${target} ${base_plugin} IPLUG_COPY_AFTER_BUILD IPLUG_RESOURCES)
+    iplug_copy_properties(${target} ${base_plugin} "IPLUG_COPY_AFTER_BUILD;IPLUG_RESOURCES")
   endif()
 endfunction(iplug_configure_helper)
 

@@ -68,12 +68,10 @@ source_group(IPlug/VST2 FILES ${cwd}/IPlugVST2.h ${cwd}/IPlugVST2.cpp)
 #--------------------------------------------------------------------
 # configure function
 function(iplug_configure_vst2 base_plugin target)
-  iplug_configure_helper(vst2)
-
   # Create module and link it to dependencies
   add_library(${target} MODULE)
+  iplug_configure_helper(GET_VARS vst2 COPY_PROPERTIES ${target})
   iplug_target_add(${target} PUBLIC LINK iPlug2_VST2 ${base_plugin} ${gui_libraries})
-  iplug_copy_properties(${target} ${base_plugin} IPLUG_COPY_AFTER_BUILD IPLUG_RESOURCES)
 
   set(res_dir "${output_dir}/resources")
 
@@ -112,7 +110,7 @@ function(iplug_configure_vst2 base_plugin target)
 
   # Handle resources
   if (res_dir)
-    iplug_target_bundle_resources(${base_plugin} "${res_dir}")
+    iplug_target_bundle_resources(${target} "${res_dir}")
   endif()
 
   iplug_add_post_build_copy(${target} "${output_dir}" "${install_dir}")

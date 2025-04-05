@@ -243,19 +243,19 @@ int IPlugLV2DSP::write_also(const char* dest_dir)
 
   auto doc = new TTLDocument();
   (*doc)
-    .addPrefix("atom", "<http://lv2plug.in/ns/ext/atom#>")
-    .addPrefix("doap",  "<http://usefulinc.com/ns/doap#>")
-    .addPrefix("foaf",  "<http://xmlns.com/foaf/0.1/>")
-    .addPrefix("lv2",   "<http://lv2plug.in/ns/lv2core#>")
-    .addPrefix("midi",  "<http://lv2plug.in/ns/ext/midi#>")
     .addPrefix("rdf",   "<http://www.w3.org/1999/02/22-rdf-syntax-ns#>")
     .addPrefix("rdfs",  "<http://www.w3.org/2000/01/rdf-schema#>")
+    .addPrefix("xsd",   "<http://www.w3.org/2001/XMLSchema#>")
+    .addPrefix("owl",   "<http://www.w3.org/2002/07/owl#>")
+    .addPrefix("doap",  "<http://usefulinc.com/ns/doap#>")
+    // .addPrefix("foaf",  "<http://xmlns.com/foaf/0.1/>")
+    .addPrefix("lv2",   "<http://lv2plug.in/ns/lv2core#>")
+    .addPrefix("atom", "<http://lv2plug.in/ns/ext/atom#>")
+    .addPrefix("midi",  "<http://lv2plug.in/ns/ext/midi#>")
     .addPrefix("rsz",   "<http://lv2plug.in/ns/ext/resize-port#>")
     .addPrefix("patch", "<http://lv2plug.in/ns/ext/patch#>")
     .addPrefix("units", "<http://lv2plug.in/ns/extensions/units#>")
-#ifdef PLUG_HAS_UI
     .addPrefix("ui",    "<http://lv2plug.in/ns/extensions/ui#>")
-#endif
     .addPrefix("urid",  "<http://lv2plug.in/ns/ext/urid#>")
     .addPrefix("iplug2", "<https://iplug2.github.io/lv2#>")
     .addPrefix(PROP_PREFIX, "<" PLUG_URI "#>");
@@ -312,12 +312,18 @@ int IPlugLV2DSP::write_also(const char* dest_dir)
 
   int minOutputSize = 1024 * 16; // arbitrary size but 16KB should be enough for most things
 
+  // List of input ports, since we have to copy them for each io config
+  std::vector<TTLSubject> inPorts;
+  // List of output ports, since we have to copy them for each io config
+  std::vector<TTLSubject> outPorts;
+
   auto port = doc->subject(PROP_PREFIX ":port_control_in");
   build_atom_port(*port, "lv2:InputPort", "atom:Object", portIndex++, "\"control_in\"", "\"Control Input\"", minOutputSize);
   port->addMany("atom:supports", "patch:Message", "iplug2:UIMessage");
   #if PLUG_DOES_MIDI_IN
     port->add("atom:supports", "midi:MidiEvent");
   #endif
+  inPorts.push_back(TTLSubject(*port));
 
   port = doc->subject(PROP_PREFIX ":port_control_out");
   build_atom_port(*port, "lv2:OutputPort", "atom:Object", portIndex++, "\"control_out\"", "\"Control Output\"", minOutputSize);
@@ -325,6 +331,7 @@ int IPlugLV2DSP::write_also(const char* dest_dir)
   #if PLUG_DOES_MIDI_OUT
     port->add("atom:supports", "midi:MidiEvent");
   #endif
+  outPorts.push_back(TTLSubject(*port));
 
 /*
   port = doc->subject(PROP_PREFIX ":port_ui_in");
@@ -357,10 +364,12 @@ int IPlugLV2DSP::write_also(const char* dest_dir)
       .add("lv2:index", fmtStr(msg, "%d", portIndex++))
       .add("lv2:symbol", fmtStr(msg, "\"%s\"", symbol.Get()))
       .add("lv2:name", fmtStr(msg, "\"%s\"", name.Get()));
+
+    inPorts.push_back(TTLSubject(*port));
   }
 
   // Write audio output ports
-  int nOutputs = MaxNChannels(ERoute::kInput);
+  int nOutputs = MaxNChannels(ERoute::kOutput);
   for (int n = 0; n < nOutputs; ++n)
   {
     WDL_String name(GetChannelLabel(ERoute::kOutput, n));
@@ -377,6 +386,7 @@ int IPlugLV2DSP::write_also(const char* dest_dir)
       .add("lv2:index", fmtStr(msg, "%d", portIndex++))
       .add("lv2:symbol", fmtStr(msg, "\"%s\"", symbol.Get()))
       .add("lv2:name", fmtStr(msg, "\"%s\"", name.Get()));
+    outPorts.push_back(TTLSubject(*port));
   }
 
   // Write parameters
@@ -447,14 +457,14 @@ int IPlugLV2DSP::write_also(const char* dest_dir)
     configure_param(port, range.Get(), pDefault.Get(), pMin.Get(), pMax.Get(), unitLine.Get());
 
     #ifdef LV2_CONTROL_PORTS
-      port = doc->subject(fmtStr(msg, FMT_PORT_PARAM_NAME, PROP_PREFIX, n));
-      (*port)
-        .add("a", "lv2:InputPort")
-        .add("a", "lv2:ControlPort")
-        .add("lv2:index", fmtStr(msg, "%d", portIndex++))
-        .add("lv2:symbol", quoteStr(msg, symbol.Get()))
-        .add("lv2:name", quoteStr(msg, p->GetName()));
-      configure_param(port, range.Get(), pDefault.Get(), pMin.Get(), pMax.Get(), unitLine.Get());
+    port = doc->subject(fmtStr(msg, FMT_PORT_PARAM_NAME, PROP_PREFIX, n));
+    (*port)
+      .add("a", "lv2:InputPort")
+      .add("a", "lv2:ControlPort")
+      .add("lv2:index", fmtStr(msg, "%d", portIndex++))
+      .add("lv2:symbol", quoteStr(msg, symbol.Get()))
+      .add("lv2:name", quoteStr(msg, p->GetName()));
+    configure_param(port, range.Get(), pDefault.Get(), pMin.Get(), pMax.Get(), unitLine.Get());
     #endif
   }
 
@@ -485,38 +495,58 @@ int IPlugLV2DSP::write_also(const char* dest_dir)
     for (int paramIndex = 0; paramIndex < nParams; paramIndex++)
     {
       fmtStr(msg, FMT_PATCH_NAME, PROP_PREFIX, paramIndex);
-      config->add("patch:writeable", msg.Get());
+      config->add("patch:writable", msg.Get());
       config->add("patch:readable", msg.Get());
     }
 
-    // Write ports
-    config->addMany("lv2:port",
-          PROP_PREFIX ":port_control_in",
-          PROP_PREFIX ":port_control_out");
-          //PROP_PREFIX ":port_ui_in",
-          //PROP_PREFIX ":port_ui_out");
+    // Write ports. REAPER is buggy so we actually have to copy
+    // port data for each port on every config.
+
+    #ifdef IPLUG_LV2_HOST_READS_RDF_CORRECTLY
+    config->add("lv2:port", PROP_PREFIX ":port_control_in");
+    config->add("lv2:port", PROP_PREFIX ":port_control_out");
     // Add IO ports for this config
     int nInputs = io->GetTotalNChannels(ERoute::kInput);
     for (int n = 0; n < nInputs; ++n)
     {
-      config->add("lv2:port", fmtStr(msg, FMT_PORT_IN_NAME, PROP_PREFIX, n));
+      ports->add("lv2:port", fmtStr(msg, FMT_PORT_IN_NAME, PROP_PREFIX, n));
     }
     // Write audio output ports
     int nOutputs = io->GetTotalNChannels(ERoute::kOutput);
     for (int n = 0; n < nOutputs; ++n)
     {
-      config->add("lv2:port", fmtStr(msg, FMT_PORT_OUT_NAME, PROP_PREFIX, n));
+      ports->add("lv2:port", fmtStr(msg, FMT_PORT_OUT_NAME, PROP_PREFIX, n));
     }
     // Write control ports
     #ifdef LV2_CONTROL_PORTS
-      for (int n = 0; n < nParams; n++)
-      {
-        config->add("lv2:port", fmtStr(msg, FMT_PORT_PARAM_NAME, PROP_PREFIX, n));
-      }
+    for (int n = 0; n < nParams; n++)
+    {
+      ports->add("lv2:port", fmtStr(msg, FMT_PORT_PARAM_NAME, PROP_PREFIX, n));
+    }
+    #endif
+    #else
+    config->add("lv2:port", new TTLSubject(inPorts[0]));
+    config->add("lv2:port", new TTLSubject(outPorts[0]));
+    // Add IO ports for this config
+    int nInputs = io->GetTotalNChannels(ERoute::kInput);
+    for (int n = 0; n < nInputs; ++n)
+    {
+      config->add("lv2:port", new TTLSubject(inPorts[n + 1]));
+    }
+    // Write audio output ports
+    int nOutputs = io->GetTotalNChannels(ERoute::kOutput);
+    for (int n = 0; n < nOutputs; ++n)
+    {
+      config->add("lv2:port", new TTLSubject(outPorts[n + 1]));
+    }
+    // Control ports are generally unused, so let's save them for when
+    // we don't have to duplicate all the information.
     #endif
   }
 
   // UI declaration
+  WDL_String refreshRate;
+  refreshRate.SetFormatted(20, "\"%0.4f\"^^xsd:float", (double)PLUG_FPS);
   auto subject = doc->subject(PROP_PREFIX ":ui");
   (*subject)
     .add("a", UI_TYPE)
@@ -527,7 +557,7 @@ int IPlugLV2DSP::write_also(const char* dest_dir)
     .add("lv2:requiredFeature", "ui:idleInterface")
     .add("lv2:extensionData", "ui:idleInterface")
     .add("lv2:extensionData", "ui:resize")
-    .add("ui:updateRate", "60");
+    .add("ui:updateRate", refreshRate.Get());
   // Register to receive UIMessage events for each plugin instance
   for (int n = 0; n < nIOConfigs; n++)
   {

@@ -268,14 +268,17 @@ void IPlugLV2DSP::run(uint32_t n_samples)
       // Handle patch messages
       if (obj->body.otype == mURIs.patch_Set)
       {
-        uint32_t sampleAt = ev->time.frames;
+        uint32_t sampleAt = 0;
         // We should check to make sure bad hosts don't do this.
         // If so, report to host.
-        if (sampleAt >= n_samples)
+        if (ev->time.frames < 0 || ev->time.frames > n_samples)
         {
           sampleAt = n_samples - 1;
         }
-
+        else
+        {
+          sampleAt = (uint32_t)ev->time.frames;
+        }
         HandleAtomPatchSet(obj, EParamSource::kHost, sampleAt);
       }
 

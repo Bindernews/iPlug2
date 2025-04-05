@@ -97,7 +97,7 @@ function(iplug_configure_clap base_plugin target)
   )
 
   # Handle resources
-  iplug_target_bundle_resources(${base_plugin} "${resource_dir}")
+  iplug_target_bundle_resources(${target} "${resource_dir}")
   # After building copy to the correct directory
   iplug_add_post_build_copy(${target} "${output_dir}" "${install_dir}")
 endfunction()
