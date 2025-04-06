@@ -1,10 +1,10 @@
 /*
  ==============================================================================
- 
- This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers. 
- 
+
+ This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers.
+
  See LICENSE.txt for  more info.
- 
+
  ==============================================================================
 */
 
@@ -171,11 +171,8 @@ IPlugVST2::IPlugVST2(const InstanceInfo& info, const Config& config)
   {
     mAEffect.flags |= effFlagsHasEditor;
     UpdateEditRect();
-#ifdef OS_LINUX
-    mEmbed = xcbt_embed_idle();
-#endif
   }
-  
+
   CreateTimer();
 }
 
@@ -209,7 +206,7 @@ bool IPlugVST2::EditorResize(int viewWidth, int viewHeight)
     {
       SetEditorSize(viewWidth, viewHeight);
       UpdateEditRect();
-  
+
       resized = mHostCallback(&mAEffect, audioMasterSizeWindow, viewWidth, viewHeight, 0, 0.f);
     }
   }
@@ -324,7 +321,7 @@ VstIntPtr VSTCALLBACK IPlugVST2::VSTDispatcher(AEffect *pEffect, VstInt32 opCode
         productStr[0] = '\0';
         int version = 0;
         _this->mHostCallback(&_this->mAEffect, audioMasterGetProductString, 0, 0, productStr, 0.0f);
-        
+
         if (CStringHasContents(productStr))
         {
           int decVer = (int) _this->mHostCallback(&_this->mAEffect, audioMasterGetVendorVersion, 0, 0, 0, 0.0f);
@@ -333,7 +330,7 @@ VstIntPtr VSTCALLBACK IPlugVST2::VSTDispatcher(AEffect *pEffect, VstInt32 opCode
           int rmin = (decVer - 10000 * ver - 100 * rmaj);
           version = (ver << 16) + (rmaj << 8) + rmin;
         }
-        
+
         _this->SetHost(productStr, version);
       }
       _this->OnParamReset(kReset);
@@ -465,8 +462,7 @@ VstIntPtr VSTCALLBACK IPlugVST2::VSTDispatcher(AEffect *pEffect, VstInt32 opCode
     }
     case effEditOpen:
     {
-#if defined OS_LINUX
-      _this->SetIntegration(_this->mEmbed);
+#if defined(OS_LINUX)
       if (_this->OpenWindow(ptr))
       {
         return 1;
@@ -498,10 +494,6 @@ VstIntPtr VSTCALLBACK IPlugVST2::VSTDispatcher(AEffect *pEffect, VstInt32 opCode
     case effEditIdle:
     case __effIdleDeprecated:
     {
-      if (_this->HasUI())
-      {
-        xcbt_embed_idle_cb(_this->mEmbed);
-      }
 //    #ifdef USE_IDLE_CALLS
     _this->OnIdle();
 //    #endif
@@ -758,7 +750,7 @@ VstIntPtr VSTCALLBACK IPlugVST2::VSTDispatcher(AEffect *pEffect, VstInt32 opCode
           }
         }
 #ifndef OS_LINUX
-        // A bit more should be done on LINUX for REAPER extensions... 
+        // A bit more should be done on LINUX for REAPER extensions...
 
         // Support Reaper VST extensions: http://www.reaper.fm/sdk/vst/
         if (!strcmp((char*) ptr, "hasCockosExtensions"))
@@ -782,7 +774,7 @@ VstIntPtr VSTCALLBACK IPlugVST2::VSTDispatcher(AEffect *pEffect, VstInt32 opCode
         {
           return _this->DoesMPE() ? 1 : 0;
         }
-        
+
         return _this->VSTCanDo((char *) ptr);
       }
       return 0;
@@ -922,7 +914,7 @@ VstIntPtr VSTCALLBACK IPlugVST2::VSTDispatcher(AEffect *pEffect, VstInt32 opCode
       char str[2];
       str[0] = static_cast<char>(idx);
       str[1] = '\0';
-      
+
       // Workaround for Reaper's funky behaviour
       if (_this->GetHost() == iplug::EHost::kHostReaper && value != VKEY_SPACE)
       {

@@ -59,6 +59,7 @@ iplug_target_add(iPlug2_CLAP INTERFACE
   DEFINE
   "CLAP_API"
   "BUILT_WITH_CMAKE"
+  IPLUG_DSP=1
   # "SAMPLE_TYPE_FLOAT=1"
 
   SOURCE ${_src}

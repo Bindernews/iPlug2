@@ -2,6 +2,8 @@
 
 #include <functional>
 #include <cstdint>
+#include <vector>
+#include "mutex.h"
 #include "IPlugPlatform.h"
 #include "IPlugQueue.h"
 
@@ -67,5 +69,49 @@ public:
 private:
   IPlugTaskThread_Impl* mImpl;
 };
+
+/**
+ * A very simple task list that is thread-safe.
+ * Items may be added from any thread, and will be processed in order
+ * in the "receiver" thread.
+ */
+template<class... FnArgs>
+class ThreadSafeCallList
+{
+public:
+  typedef std::function<void(FnArgs...)> functor_t;
+
+private:
+  /// @brief List of tasks
+  std::vector<functor_t> mTasks;
+  /// @brief Lock
+  WDL_Mutex mLock;
+
+public:
+
+  void Add(functor_t&& task)
+  {
+    mLock.Enter();
+    mTasks.push_back(std::move(task));
+    mLock.Leave();
+  }
+
+  void Process(FnArgs... args)
+  {
+    // create a new task list and swap it with our pending list
+    // so we can safely work on the pending list without holding the lock.
+    std::vector<functor_t> taskList;
+    mLock.Enter();
+    std::swap(taskList, mTasks);
+    mLock.Leave();
+
+    // run all pending tasks, they will get deleted when taskList goes out of scope
+    for (size_t i = 0; i < taskList.size(); i++) {
+      taskList[i](args...);
+    }
+  }
+};
+
+
 
 END_IPLUG_NAMESPACE

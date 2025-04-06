@@ -837,15 +837,7 @@ uint32_t IGraphicsLinux::GetUserDblClickTimeout()
 
 void IGraphicsLinux::AddUiTask(std::function<void()>&& task)
 {
-  char threadName[128];
-  pthread_getname_np(pthread_self(), threadName, sizeof(threadName));
-  if (strcmp(threadName, "iPlug2Loop") == 0) {
-    task();
-  } else {
-    mUiTasksLock.Enter();
-    mUiTasks.push_back(std::move(task));
-    mUiTasksLock.Leave();
-  }
+  mUiTasks.Add(std::move(task));
 }
 
 void IGraphicsLinux::UpdateUI()
@@ -853,17 +845,8 @@ void IGraphicsLinux::UpdateUI()
   // allow the platform to process things
   gPlatform->ProcessEvents();
 
-  // create a new task list and swap it with our pending list
-  // so we can safely work on the pending list without holding the lock.
-  std::vector<std::function<void()>> taskList;
-  mUiTasksLock.Enter();
-  std::swap(taskList, mUiTasks);
-  mUiTasksLock.Leave();
-
-  // run all pending tasks, they will get deleted when taskList goes out of scope
-  for (size_t i = 0; i < taskList.size(); i++) {
-    taskList[i]();
-  }
+  // Run all tasks that have to happen on this thread.
+  mUiTasks.Process();
 
   if (WindowIsOpen())
   {

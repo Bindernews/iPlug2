@@ -92,13 +92,13 @@ elseif (IPLUG_OS MATCHES "Linux")
   endif()
 
   list(APPEND _src
-    ${cwd}/Platforms/PlatformX11.hpp
-    ${cwd}/Platforms/PlatformX11.cpp
+    ${cwd}/Platforms/GEvent.hpp
     ${cwd}/Platforms/IGraphicsLinux.cpp
-    ${deps_dir}/xcbt/xcbt.c
+    ${cwd}/Platforms/IGraphicsLinux.h
+    ${cwd}/Platforms/PlatformX11.cpp
+    ${cwd}/Platforms/PlatformX11.hpp
   )
   list(APPEND _inc
-    ${deps_dir}/xcbt
     ${WDL_DIR}
     ${IPLUG2_SDK_PATH}/../SDL/include
   )
@@ -106,7 +106,6 @@ elseif (IPLUG_OS MATCHES "Linux")
     PkgConfig::X11Libraries
     "dl"
   )
-  set_property(SOURCE ${deps_dir}/xcbt/xcbt.c PROPERTY LANGUAGE C)
 
 elseif (IPLUG_OS MATCHES "Darwin")
   list(APPEND _src

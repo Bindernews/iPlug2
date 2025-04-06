@@ -12,6 +12,7 @@
 
 #include "IGraphics_select.h"
 #include "PlatformX11.hpp"
+#include "IPlugTaskThread.h"
 #include <memory>
 #include <mutex.h>
 #include <functional>
@@ -84,9 +85,7 @@ private:
   /// @brief Locked mouse position
   IVec2 mMouseLockPos;
   /// @brief List of tasks for the UI thread to run
-  std::vector<std::function<void()>> mUiTasks;
-  /// @brief Lock for \c mUiTasks
-  WDL_Mutex mUiTasksLock;
+  ThreadSafeCallList<> mUiTasks;
   /// @brief Id for IPlugTaskThread task that calls UpdateUI
   uint32_t mTaskId = 0;
 

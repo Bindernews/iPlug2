@@ -1,10 +1,10 @@
 /*
  ==============================================================================
- 
- This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers. 
- 
+
+ This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers.
+
  See LICENSE.txt for  more info.
- 
+
  ==============================================================================
 */
 
@@ -20,10 +20,6 @@
 #include "aeffectx.h"
 #include "IPlugAPIBase.h"
 #include "IPlugProcessor.h"
-
-#if defined OS_LINUX
-#include "xcbt.h"
-#endif
 
 BEGIN_IPLUG_NAMESPACE
 
@@ -62,26 +58,26 @@ public:
 private:
   virtual VstIntPtr VSTVendorSpecific(VstInt32 idx, VstIntPtr value, void* ptr, float opt) { return 0; }
   virtual VstIntPtr VSTCanDo(const char* hostString) { return 0; }
-    
+
   /** Called prior to every ProcessBlock call in order to update certain properties and connect buffers if necessary
    * @param inputs Pointer to a 2D array of SAMPLETYPE precision audio input data for each channel
    * @param outputs Pointer to a 2D array of SAMPLETYPE precision audio input data for each channel
    * @param nFrames the number of samples to be processed this block */
   template <class SAMPLETYPE>
   void VSTPreProcess(SAMPLETYPE** inputs, SAMPLETYPE** outputs, VstInt32 nFrames);
-  
+
   static VstIntPtr VSTCALLBACK VSTDispatcher(AEffect *pEffect, VstInt32 opCode, VstInt32 idx, VstIntPtr value, void *ptr, float opt);
   static void VSTCALLBACK VSTProcess(AEffect *pEffect, float **inputs, float **outputs, VstInt32 nFrames);  // Deprecated.
   static void VSTCALLBACK VSTProcessReplacing(AEffect *pEffect, float **inputs, float **outputs, VstInt32 nFrames);
   static void VSTCALLBACK VSTProcessDoubleReplacing(AEffect *pEffect, double **inputs, double **outputs, VstInt32 nFrames);
   static float VSTCALLBACK VSTGetParameter(AEffect *pEffect, VstInt32 idx);
   static void VSTCALLBACK VSTSetParameter(AEffect *pEffect, VstInt32 idx, float value);
-  
+
   bool SendVSTEvent(VstEvent& event);
   bool SendVSTEvents(WDL_TypedBuf<VstEvent>* pEvents);
-  
+
   void UpdateEditRect();
-    
+
   ERect mEditRect;
   VstSpeakerArrangement mInputSpkrArr, mOutputSpkrArr;
 
@@ -90,10 +86,7 @@ private:
 
   IByteChunk mState;     // Persistent storage if the host asks for plugin state.
   IByteChunk mBankState; // Persistent storage if the host asks for bank state.
-  
-#ifdef OS_LINUX
-  xcbt_embed* mEmbed;
-#endif
+
 protected:
   AEffect mAEffect;
   audioMasterCallback mHostCallback;
