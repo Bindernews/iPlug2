@@ -100,6 +100,7 @@ elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
     ${CMAKE_SOURCE_DIR}/resources/main.rc_mac_menu
   )
   target_link_libraries(WDL_SWELL PUBLIC PkgConfig::SWELL_PubDependencies)
+  target_compile_options(WDL_SWELL PRIVATE "-Wno-suggest-override")
 endif()
 
 target_sources(WDL_SWELL PRIVATE ${_src})
