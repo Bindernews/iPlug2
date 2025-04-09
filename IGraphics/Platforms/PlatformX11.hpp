@@ -12,8 +12,8 @@
 
 #include "IPlugPlatform.h"
 #include <cstdint>
-#include <SDL3/SDL_events.h>
 #include <heapbuf.h>
+#include "SDL_events.hpp"
 
 BEGIN_IPLUG_NAMESPACE
 BEGIN_IGRAPHICS_NAMESPACE
@@ -140,7 +140,7 @@ class PlatformX11
 private:
   // implementation fields hidden to simplify public API.
   // This struct MUST NOT be copied, it's a pointer-only object.
-  char hidden[sizeof(void*) * 26];
+  char hidden[sizeof(void*)];
 
   PlatformX11();
   PlatformX11(const PlatformX11&) = delete;

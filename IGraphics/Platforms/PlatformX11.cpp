@@ -19,7 +19,6 @@
 #include <xcb/xcb_event.h>
 #include <xcb/xcb_icccm.h>
 #include <xcb/xfixes.h>
-#include <xcb/xcb_ewmh.h>
 #include <sys/wait.h>
 #include <poll.h>
 
@@ -84,32 +83,43 @@ struct RealWindow;
 #define XEMBED_MAPPED           (1 << 0)
 
 
-/// @brief Indexes of the different atoms in \c catoms
-enum AtomIds {
-  ATOM_WM_PROTOCOLS = 0,
-  ATOM_WM_DELETE_WINDOW,
-  ATOM_XEMBED_INFO,
-  ATOM_XEMBED,
-  ATOM_CLIPBOARD,
-  ATOM_UTF8_STRING,
-  ATOM_XSEL_DATA,
-  ATOM_STRING,
-  ATOM_TEXT,
-  ATOM_TARGETS,
-  kAtomIdsCount,
-};
+/// @brief List/set of atoms we'll use
+struct AtomSet
+{
+  // clipboard related
+  xcb_atom_t CLIPBOARD = 0;
+  xcb_atom_t UTF8_STRING;
+  xcb_atom_t XSEL_DATA;
+  xcb_atom_t STRING;
+  xcb_atom_t TEXT;
+  xcb_atom_t TARGETS;
+  xcb_atom_t IMAGE_PNG;
+  // misc for window management
+  xcb_atom_t WM_PROTOCOLS;
+  xcb_atom_t WM_DELETE_WINDOW;
+  // xembed atoms
+  xcb_atom_t _XEMBED_INFO;
+  xcb_atom_t _XEMBED;
+  // atoms from "extended window manager hints"
+  // see <xcb/xcb_ewmh.h> for more details
+  xcb_atom_t _NET_WM_WINDOW_TYPE;
+  xcb_atom_t _NET_WM_PID;
+  xcb_atom_t _NET_WM_WINDOW_TYPE_DESKTOP;
+  xcb_atom_t _NET_WM_WINDOW_TYPE_DOCK;
+  xcb_atom_t _NET_WM_WINDOW_TYPE_TOOLBAR;
+  xcb_atom_t _NET_WM_WINDOW_TYPE_MENU;
+  xcb_atom_t _NET_WM_WINDOW_TYPE_UTILITY;
+  xcb_atom_t _NET_WM_WINDOW_TYPE_SPLASH;
+  xcb_atom_t _NET_WM_WINDOW_TYPE_DIALOG;
+  xcb_atom_t _NET_WM_WINDOW_TYPE_DROPDOWN_MENU;
+  xcb_atom_t _NET_WM_WINDOW_TYPE_POPUP_MENU;
+  xcb_atom_t _NET_WM_WINDOW_TYPE_TOOLTIP;
+  xcb_atom_t _NET_WM_WINDOW_TYPE_NOTIFICATION;
+  xcb_atom_t _NET_WM_WINDOW_TYPE_COMBO;
+  xcb_atom_t _NET_WM_WINDOW_TYPE_DND;
+  xcb_atom_t _NET_WM_WINDOW_TYPE_NORMAL;
 
-static const char *common_atom_names[kAtomIdsCount] = {
-  "WM_PROTOCOLS",
-  "WM_DELETE_WINDOW",
-  "_XEMBED_INFO",
-  "_XEMBED",
-  "CLIPBOARD",
-  "UTF8_STRING",
-  "XSEL_DATA",
-  "STRING",
-  "TEXT",
-  "TARGETS",
+  void load(xcb_connection_t* conn);
 };
 
 struct XcbPlatform
@@ -155,8 +165,6 @@ struct XcbPlatform
   /// @brief XCB connection
   xcb_connection_t* mConn = nullptr;
 
-  xcb_ewmh_connection_t* mWmhConn = nullptr;
-
   /// @brief default X11 screen
   int mDefaultScreen;
 
@@ -179,7 +187,7 @@ struct XcbPlatform
   std::vector<RealWindow*> mWindows;
 
   /// @brief Common atoms
-  xcb_atom_t catoms[kAtomIdsCount];
+  AtomSet atoms;
 
   /// @brief Lock for all X operations, for thread-safety
   WDL_Mutex mXLock;
@@ -234,9 +242,6 @@ struct XcbPlatform
   /// @brief Create a window with a GLX context
   RealWindow* CreateGlxWindow(const WindowOptions& options);
 
-  /// @brief Initializes \c catoms
-  void LoadAtoms();
-
   /// @brief Find and return screen number for xcb <window>.
   /// @return -1 in case of errors, the <window> is not found or its screen is not known
   int WindowToScreen(xcb_window_t wnd);
@@ -277,9 +282,16 @@ struct XcbPlatform
    */
   bool CheckCookie(xcb_void_cookie_t ck, const char* prefix) const;
 
-  /// @brief Returns the screen at index \c i or \c NULL
-  xcb_screen_t* GetScreen(unsigned i) const
-  { return i < mScreens.size() ? mScreens[i] : nullptr; }
+  /// @brief Returns the screen at index \c i
+  /// @param i either a valid screen index or \c -1 for the default screen
+  /// @return a pointer to a screen, or NULL if the index was invalid
+  xcb_screen_t* GetScreen(int i) const
+  {
+    if (i == -1) {
+      i = mDefaultScreen;
+    }
+    return i < mScreens.size() ? mScreens[i] : nullptr;
+  }
 
   /**
    * @brief Simple wrapper around ``xcb_change_property(mConn, XCB_PROP_MODE_REPLACE, ...)`` for convenience
@@ -389,6 +401,11 @@ struct RealWindow
   void ProcessXEvent(xcb_generic_event_t* ev);
 
   bool PollEvent(SDL_Event* event);
+
+  /// @brief Helper to set a window-manager atom property to a single atom value.
+  /// @param atom property
+  /// @param value value
+  void SetWmAtom(xcb_atom_t atom, xcb_atom_t value);
 };
 
 #pragma region static helpers
@@ -455,10 +472,77 @@ static uint64_t get_time_ms()
 
 #pragma endregion static helpers
 
+#pragma region Misc methods
 
-//------------------------//
-// XcbPlatform implementation //
-//------------------------//
+void AtomSet::load(xcb_connection_t* conn)
+{
+  AtomSet& a = *this;
+
+  // If this is non-zero assume we loaded already
+  if (a.CLIPBOARD) {
+    return;
+  }
+
+  const int ATOM_COUNT = 27;
+  static const char *atom_names[ATOM_COUNT];
+  xcb_atom_t* atoms[ATOM_COUNT];
+  int ix = 0;
+  #define DEF_ATOM2(name, strname) do{ atoms[ix] = &a. name ; atom_names[ix] = strname; ix++; }while(0)
+  #define DEF_ATOM1(name) DEF_ATOM2(name, #name)
+  DEF_ATOM1(CLIPBOARD);
+  DEF_ATOM1(UTF8_STRING);
+  DEF_ATOM1(XSEL_DATA);
+  DEF_ATOM1(STRING);
+  DEF_ATOM1(TEXT);
+  DEF_ATOM1(TARGETS);
+  DEF_ATOM2(IMAGE_PNG, "image/png");
+  DEF_ATOM1(WM_PROTOCOLS);
+  DEF_ATOM1(WM_DELETE_WINDOW);
+  DEF_ATOM1(_XEMBED_INFO);
+  DEF_ATOM1(_XEMBED);
+  DEF_ATOM1(_NET_WM_WINDOW_TYPE);
+  DEF_ATOM1(_NET_WM_PID);
+  DEF_ATOM1(_NET_WM_WINDOW_TYPE_DESKTOP);
+  DEF_ATOM1(_NET_WM_WINDOW_TYPE_DOCK);
+  DEF_ATOM1(_NET_WM_WINDOW_TYPE_TOOLBAR);
+  DEF_ATOM1(_NET_WM_WINDOW_TYPE_MENU);
+  DEF_ATOM1(_NET_WM_WINDOW_TYPE_UTILITY);
+  DEF_ATOM1(_NET_WM_WINDOW_TYPE_SPLASH);
+  DEF_ATOM1(_NET_WM_WINDOW_TYPE_DIALOG);
+  DEF_ATOM1(_NET_WM_WINDOW_TYPE_DROPDOWN_MENU);
+  DEF_ATOM1(_NET_WM_WINDOW_TYPE_POPUP_MENU);
+  DEF_ATOM1(_NET_WM_WINDOW_TYPE_TOOLTIP);
+  DEF_ATOM1(_NET_WM_WINDOW_TYPE_NOTIFICATION);
+  DEF_ATOM1(_NET_WM_WINDOW_TYPE_COMBO);
+  DEF_ATOM1(_NET_WM_WINDOW_TYPE_DND);
+  DEF_ATOM1(_NET_WM_WINDOW_TYPE_NORMAL);
+  #undef DEF_ATOM1
+  #undef DEF_ATOM2
+  assert(ix == ATOM_COUNT);
+
+  xcb_intern_atom_cookie_t ck[ATOM_COUNT];
+  xcb_intern_atom_reply_t *ar;
+  int i;
+  for (i = 0; i < ATOM_COUNT; ++i){
+    ck[i] = xcb_intern_atom(conn, 0, strlen(atom_names[i]), atom_names[i]);
+  }
+
+  for (i = 0; i < ATOM_COUNT; ++i){
+    ar = xcb_intern_atom_reply(conn, ck[i], NULL);
+    if (ar) {
+      *atoms[i] = ar->atom;
+    } else {
+      *atoms[i] = 0;
+      TRACE("ERROR: could not get atom '%s'\n", atom_names[i]);
+    }
+  }
+}
+
+#pragma endregion Misc methods
+
+
+//-----------------------------------------------
+// XcbPlatform implementation
 #pragma region XcbImpl
 
 /// Macro that returns an auto-releasing mutex lock
@@ -488,11 +572,6 @@ XcbPlatform::~XcbPlatform()
   if(this->dpy){
       XCloseDisplay(this->dpy);
       this->dpy = NULL;
-  }
-  if (mWmhConn) {
-    xcb_ewmh_connection_wipe(mWmhConn);
-    free(mWmhConn);
-    mWmhConn = nullptr;
   }
   if (mConn) {
     xcb_disconnect(mConn);
@@ -536,24 +615,6 @@ void XcbPlatform::Connect()
 
   XSetEventQueueOwner(this->dpy, XCBOwnsEventQueue);
 
-  mWmhConn = (xcb_ewmh_connection_t*)malloc(sizeof(xcb_ewmh_connection_t));
-  if (!mWmhConn) {
-    // malloc failed, abort
-    std::abort();
-    return;
-  }
-  auto wmhCookie = xcb_ewmh_init_atoms(conn(), mWmhConn);
-  if (!wmhCookie) {
-    TRACE(LOG_PREFIX ":ERR: unable to initialize ewmh\n");
-    return;
-  }
-  if (!xcb_ewmh_init_atoms_replies(mWmhConn, wmhCookie, &err)) {
-    auto msg = xcb_event_get_error_label(err->error_code);
-    TRACE(LOG_PREFIX ":ERR: unable to initialize ewmh: %s\n", msg);
-    free(err);
-    return;
-  }
-
   // Try to load GLX, but don't exit if this fails.
   if (!gladLoadGLX(this->dpy, this->mDefaultScreen)) {
     TRACE(LOG_PREFIX ": Could not load GLX\n");
@@ -565,7 +626,7 @@ void XcbPlatform::Connect()
   TRACE("INFO: Xlib/XCB FD: %d\n", xcb_get_file_descriptor(mConn));
 
   // Load atoms for future use
-  LoadAtoms();
+  atoms.load(mConn);
 
   // Iterate through screens
   xcb_screen_iterator_t iter = xcb_setup_roots_iterator(xcb_get_setup(mConn));
@@ -753,34 +814,6 @@ RealWindow* XcbPlatform::CreateGlxWindow(const WindowOptions& options)
   return w.release();
 
 #undef LOG_PREFIX
-}
-
-/*
- * Load some common atoms
- */
-void XcbPlatform::LoadAtoms()
-{
-  if (catoms[0]) {
-    return;
-  }
-
-  xcb_intern_atom_cookie_t ck[kAtomIdsCount];
-  xcb_intern_atom_reply_t *ar;
-  int i;
-  //TRACE("Loading atoms\n");
-  for(i = 0; i < kAtomIdsCount; ++i){
-    ck[i] = xcb_intern_atom(mConn, 0, strlen(common_atom_names[i]), common_atom_names[i]);
-  }
-  for(i = 0; i < kAtomIdsCount; ++i){
-    ar = xcb_intern_atom_reply(mConn, ck[i], NULL);
-    if (ar) {
-      catoms[i] = ar->atom;
-      //TRACE(" [%d] %s: 0x%x\n", i, common_atom_names[i], ar->atom);
-    } else {
-      TRACE("ERROR: could not get atom '%s'\n", common_atom_names[i]);
-      catoms[i] = 0;
-    }
-  }
 }
 
 int XcbPlatform::WindowToScreen(xcb_window_t wnd)
@@ -1192,7 +1225,7 @@ void XcbPlatform::ProcessXEvent(xcb_generic_event_t* evt)
       destWnd = e->window;
       // This is another way in which we can receive clipboard data.
       // Maybe because of Xwayland?
-      if (e->atom == catoms[ATOM_CLIPBOARD]) {
+      if (e->atom == atoms.CLIPBOARD) {
         // TODO receive clipboard
         // xcbt_receive_clipboard(xw, XCBT_ATOM_CLIPBOARD(x));
       }
@@ -1218,20 +1251,20 @@ void XcbPlatform::ProcessXEvent(xcb_generic_event_t* evt)
       }
 
       bool valid = true;
-      if (e->target == catoms[ATOM_UTF8_STRING]
-          || e->target == catoms[ATOM_STRING]
-          || e->target == catoms[ATOM_TEXT]) {
+      if (e->target == atoms.UTF8_STRING
+          || e->target == atoms.STRING
+          || e->target == atoms.TEXT) {
         // Request clipboard contents
         ReplaceProperty(
           e->requestor, e->property, e->target, 8, mClipboardData.GetSize(), mClipboardData.GetFast());
       }
-      else if (e->target == catoms[ATOM_TARGETS]) {
+      else if (e->target == atoms.TARGETS) {
         // Request to see what type of targets we support
         xcb_atom_t targets[] = {
-          catoms[ATOM_TARGETS],
-          catoms[ATOM_UTF8_STRING],
-          catoms[ATOM_STRING],
-          catoms[ATOM_TEXT],
+          atoms.TARGETS,
+          atoms.UTF8_STRING,
+          atoms.STRING,
+          atoms.TEXT,
         };
         ReplaceProperty(
           // window, property, type
@@ -1262,7 +1295,7 @@ void XcbPlatform::ProcessXEvent(xcb_generic_event_t* evt)
       // For now we assume the data is in the format requested, but potentially it's not?
       // Not sure what to do with that yet.
       auto e = (xcb_selection_notify_event_t*) evt;
-      if (e->selection == catoms[ATOM_CLIPBOARD] && e->property != XCB_NONE) {
+      if (e->selection == atoms.CLIPBOARD && e->property != XCB_NONE) {
         xcb_icccm_get_text_property_reply_t prop;
         xcb_get_property_cookie_t cookie =
             xcb_icccm_get_text_property(mConn, e->requestor, e->property);
@@ -1420,13 +1453,11 @@ bool RealWindow::CreateXWindow(const WindowOptions& options, int visual_id)
 
   // Window manager hints
   if (options.flags & XcbPlatform::WM_DECORATIONS) {
-    xcb_atom_t wm_protocols[] = { xp->catoms[ATOM_WM_DELETE_WINDOW] };
-    xp->ReplaceProperty(mWnd, xp->catoms[ATOM_WM_PROTOCOLS], XCB_ATOM_ATOM, 32, 1, wm_protocols);
+    SetWmAtom(xp->atoms.WM_PROTOCOLS, xp->atoms.WM_DELETE_WINDOW);
   }
 
   if (options.flags & XcbPlatform::WM_NO_DECORATIONS) {
-    uint32_t values[] = {xp->mWmhConn->_NET_WM_WINDOW_TYPE_SPLASH};
-    xcb_ewmh_set_wm_window_type(xp->mWmhConn, mWnd, 1, values);
+    SetWmAtom(xp->atoms._NET_WM_WINDOW_TYPE, xp->atoms._NET_WM_WINDOW_TYPE_SPLASH);
   }
 
   // enable embedding by default
@@ -1644,9 +1675,9 @@ void RealWindow::EnableEmbed(bool on)
       // request to be visible
       info[1] |= XEMBED_MAPPED;
     }
-    xp->ReplaceProperty(mWnd, xp->catoms[ATOM_XEMBED_INFO], xp->catoms[ATOM_XEMBED_INFO], 32, 2, info);
+    xp->ReplaceProperty(mWnd, xp->atoms._XEMBED_INFO, xp->atoms._XEMBED_INFO, 32, 2, info);
   } else {
-    xcb_delete_property(conn(), mWnd, xp->catoms[ATOM_XEMBED_INFO]);
+    xcb_delete_property(conn(), mWnd, xp->atoms._XEMBED_INFO);
   }
 }
 
@@ -1683,7 +1714,7 @@ bool RealWindow::DrawImage(const WRect& area, int format, const uint8_t* data)
   }
   xcb_rectangle_t bounds = make_xrect(area);
   unsigned dataLen = area.w * area.h * 4;
-  unsigned depth = CastX()->GetScreen(0)->root_depth;
+  unsigned depth = CastX()->GetScreen(-1)->root_depth;
   return PutPixels(bounds, depth, dataLen, data);
 }
 
@@ -2000,7 +2031,7 @@ void RealWindow::ProcessXEvent(xcb_generic_event_t* evt)
     case XCB_PROPERTY_NOTIFY:
     {
       auto e = (xcb_property_notify_event_t*) evt;
-      xcb_atom_t atomXEMBED = xp->catoms[ATOM_XEMBED_INFO];
+      xcb_atom_t atomXEMBED = xp->atoms._XEMBED_INFO;
       if (e->atom == atomXEMBED) {
         // While we SHOULD check the property value, it's sometimes glitchy?
         // So for now just always set to true.
@@ -2026,7 +2057,7 @@ void RealWindow::ProcessXEvent(xcb_generic_event_t* evt)
     case XCB_CLIENT_MESSAGE:
     {
       auto e = (xcb_client_message_event_t*) evt;
-      if (e->type == xp->catoms[ATOM_XEMBED]) {
+      if (e->type == xp->atoms._XEMBED) {
         // TODO: process different xembed messages
         uint32_t op = e->data.data32[1];
         TRACE("Received _XEMBED message opcode: %u\n", op);
@@ -2053,6 +2084,12 @@ bool RealWindow::PollEvent(SDL_Event* event)
   return true;
 }
 
+void RealWindow::SetWmAtom(xcb_atom_t property, xcb_atom_t value)
+{
+  xcb_atom_t values[] = {value};
+  xcb_change_property(conn(), XCB_PROP_MODE_REPLACE, mWnd, property, XCB_ATOM_ATOM, 32, 1, values);
+}
+
 #pragma endregion RealWindow
 
 //----------------------------------//
@@ -2064,11 +2101,6 @@ bool RealWindow::PollEvent(SDL_Event* event)
 
 PlatformX11* PlatformX11::Create()
 {
-  // make sure that, if someone DOES accidentally copy the PlatformX11,
-  // that it copies the whole thing, not just part of it. Then it should
-  // crash more reasonably, instead of weirdly.
-  static_assert(sizeof(PlatformX11) >= sizeof(XcbPlatform));
-
   XcbPlatform* xp = new XcbPlatform();
   xp->Connect();
   if (!(xp->mStatus & XcbPlatform::kLoadSuccess)) {

@@ -58,7 +58,6 @@ elseif (IPLUG_OS MATCHES "Linux")
     "xcb-util"
     "xcb-icccm"
     "xcb-xfixes"
-    "xcb-ewmh"
   )
 
   # Try to help user by listing required dev packages for their platform.
@@ -92,7 +91,7 @@ elseif (IPLUG_OS MATCHES "Linux")
   endif()
 
   list(APPEND _src
-    ${cwd}/Platforms/GEvent.hpp
+    ${cwd}/Platforms/SDL_events.hpp
     ${cwd}/Platforms/IGraphicsLinux.cpp
     ${cwd}/Platforms/IGraphicsLinux.h
     ${cwd}/Platforms/PlatformX11.cpp
@@ -100,7 +99,6 @@ elseif (IPLUG_OS MATCHES "Linux")
   )
   list(APPEND _inc
     ${WDL_DIR}
-    ${IPLUG2_SDK_PATH}/../SDL/include
   )
   list(APPEND _lib
     PkgConfig::X11Libraries
