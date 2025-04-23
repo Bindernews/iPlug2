@@ -84,17 +84,20 @@ set(_inc
 set(_src
   ${cwd}/IPlugAPIBase.h
   ${cwd}/IPlugAPIBase.cpp
-  ${cwd}/IPlugConstants.h
   ${cwd}/IPlugEditorDelegate.h
+  ${cwd}/IPlugPluginBase.h
+  ${cwd}/IPlugPluginBase.cpp
+)
+
+set(_static_src
+  ${cwd}/IPlugConstants.h
+  ${cwd}/IPlugPlatform.h
   ${cwd}/IPlugLogger.h
   ${cwd}/IPlugMidi.h
   ${cwd}/IPlugParameter.h
   ${cwd}/IPlugParameter.cpp
   ${cwd}/IPlugPaths.h
   ${cwd}/IPlugPaths.cpp
-  ${cwd}/IPlugPlatform.h
-  ${cwd}/IPlugPluginBase.h
-  ${cwd}/IPlugPluginBase.cpp
   ${cwd}/IPlugProcessor.h
   ${cwd}/IPlugProcessor.cpp
   ${cwd}/IPlugQueue.h
@@ -103,7 +106,6 @@ set(_src
   ${cwd}/IPlugTimer.cpp
   ${cwd}/IPlugUtilities.h
 )
-
 
 # Platform Settings
 if (IPLUG_OS MATCHES "Windows")
@@ -126,13 +128,13 @@ elseif (IPLUG_OS MATCHES "Linux")
   list(APPEND _lib "pthread" "rt")
   list(APPEND _opt "-Wno-multichar")
   # We require the task thread for our gui loop on Linux and to implement IPlugTimer
-  list(APPEND _src
+  list(APPEND _static_src
     ${cwd}/IPlugTaskThread.h
     ${cwd}/IPlugTaskThread.cpp
   )
 
 elseif (IPLUG_OS MATCHES "Darwin")
-  list(APPEND _src
+  list(APPEND _static_src
     ${IPLUG_SRC}/IPlugPaths.mm)
   list(APPEND _inc
     ${WDL_DIR}/swell)
@@ -174,12 +176,11 @@ endif()
 iplug_target_add(iPlug2_Core INTERFACE
   DEFINE ${_def}
   INCLUDE ${_inc}
-  SOURCE ${_src}
+  SOURCE ${_src} ${_static_src}
   OPTION ${_opt}
   LINK ${_lib}
   FEATURE cxx_std_17
 )
-
 
 #------------------------------------------------
 

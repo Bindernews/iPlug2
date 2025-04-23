@@ -1,11 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
-set(WDL_DIR ${IPLUG2_SDK_PATH}/WDL)
-
 set(cwd ${IPLUG2_SDK_PATH}/IPlug/APP)
 add_subdirectory(${cwd}/RTLibs ${CMAKE_BINARY_DIR}/IPlug/RTLibs)
-add_subdirectory(${WDL_DIR}/lice ${CMAKE_BINARY_DIR}/WDL/lice)
-add_subdirectory(${WDL_DIR}/swell ${CMAKE_BINARY_DIR}/WDL/swell)
 
 ##############
 # iPlug2_APP #
@@ -23,7 +19,7 @@ set(_src
 set(_lib
   iPlug2_Core
   iPlug2_IGraphicsCore
-  iPlug2_RTAudioMidi
+  RTAudioMidi
 )
 set(_inc
   ${cwd}
@@ -65,6 +61,7 @@ iplug_target_add(iPlug2_APP INTERFACE
   INCLUDE ${_inc}
   DEFINE ${_def}
   LINK ${_lib}
+  OPTION ${IPLUG_MSVC_FLAGS}
 )
 
 # Add a source group for all sources

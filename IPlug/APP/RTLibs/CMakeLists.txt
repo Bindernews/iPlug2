@@ -13,7 +13,7 @@ set(RTM_DIR ${IPLUG_DEPS}/RTMidi)
 # Statically build RTAudio and RTMidi, configured here
 # because their CMakeLists.txt files are funky.
 
-add_library(iPlug2_RTAudioMidi STATIC)
+add_library(RTAudioMidi STATIC)
 set(_def)
 set(_lib)
 set(_src
@@ -90,8 +90,8 @@ elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
 endif()
 
 
-# Set properties on iPlug2_RTLibs target
-set(tgt iPlug2_RTAudioMidi)
+# Set properties on RTAudioMidi target
+set(tgt RTAudioMidi)
 target_sources(${tgt} PRIVATE ${_src})
 target_include_directories(${tgt} PUBLIC ${_inc})
 target_link_libraries(${tgt} PRIVATE ${_lib})

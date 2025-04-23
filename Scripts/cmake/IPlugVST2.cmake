@@ -13,8 +13,9 @@ endif()
 # Determine VST2 directories
 if (IPLUG_OS MATCHES "Windows")
   set(fn "VstPlugins")
+  set(_paths $ENV{CommonProgramFiles}/VST2)
   if (PROCESSOR_ARCH STREQUAL "Win32")
-    set(_paths "$ENV{ProgramFiles\(x86\)}/${fn}" "$ENV{ProgramFiles\(x86\)}/Steinberg/${fn}")
+    list(APPEND _paths "$ENV{ProgramFiles\(x86\)}/${fn}" "$ENV{ProgramFiles\(x86\)}/Steinberg/${fn}")
   endif()
   # Append this for x86, x64, and ARM I guess
   list(APPEND _paths "'$ENV{ProgramFiles}/${fn}'" "'$ENV{ProgramFiles}/Steinberg/${fn}'")
@@ -65,6 +66,44 @@ iplug_target_add(iPlug2_VST2 INTERFACE
 
 source_group(IPlug/VST2 FILES ${cwd}/IPlugVST2.h ${cwd}/IPlugVST2.cpp)
 
+
+# Get all propreties that cmake supports
+if(NOT CMAKE_PROPERTY_LIST)
+    execute_process(COMMAND ${CMAKE_COMMAND} --help-property-list OUTPUT_VARIABLE CMAKE_PROPERTY_LIST)
+
+    # Convert command output into a CMake list
+    string(REGEX REPLACE ";" "\\\\;" CMAKE_PROPERTY_LIST "${CMAKE_PROPERTY_LIST}")
+    string(REGEX REPLACE "\n" ";" CMAKE_PROPERTY_LIST "${CMAKE_PROPERTY_LIST}")
+    list(REMOVE_DUPLICATES CMAKE_PROPERTY_LIST)
+    set(CMAKE_PROPERTY_LIST "${CMAKE_PROPERTY_LIST}" CACHE INTERNAL "" FORCE)
+endif()
+
+function(print_properties)
+    message("CMAKE_PROPERTY_LIST = ${CMAKE_PROPERTY_LIST}")
+endfunction()
+
+function(print_target_properties target)
+    if(NOT TARGET ${target})
+      message(STATUS "There is no target named '${target}'")
+      return()
+    endif()
+
+    foreach(property ${CMAKE_PROPERTY_LIST})
+        string(REPLACE "<CONFIG>" "${CMAKE_BUILD_TYPE}" property ${property})
+
+        # Fix https://stackoverflow.com/questions/32197663/how-can-i-remove-the-the-location-property-may-not-be-read-from-target-error-i
+        if(property STREQUAL "LOCATION" OR property MATCHES "^LOCATION_" OR property MATCHES "_LOCATION$")
+            continue()
+        endif()
+
+        get_property(was_set TARGET ${target} PROPERTY ${property} SET)
+        if(was_set)
+            get_target_property(value ${target} ${property})
+            message(STATUS "${target} ${property} = ${value}")
+        endif()
+    endforeach()
+endfunction()
+
 #--------------------------------------------------------------------
 # configure function
 function(iplug_configure_vst2 base_plugin target)
@@ -85,10 +124,13 @@ function(iplug_configure_vst2 base_plugin target)
     )
 
   elseif (IPLUG_OS MATCHES "Darwin")
+    iplug_file_in_binary_dir(${target} "Info.plist" info_plist)
+    iplug_configure_basic_plist(${base_plugin} FORMAT vst2 OUTPUT "${info_plist}")
+
     set_target_properties(${target} PROPERTIES
       BUNDLE TRUE
       MACOSX_BUNDLE TRUE
-      MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/resources/${plugin_name}-VST2-Info.plist"
+      MACOSX_BUNDLE_INFO_PLIST "${info_plist}"
       BUNDLE_EXTENSION "vst"
       PREFIX ""
       SUFFIX "")
@@ -114,6 +156,7 @@ function(iplug_configure_vst2 base_plugin target)
   endif()
 
   iplug_add_post_build_copy(${target} "${output_dir}" "${install_dir}")
+
 endfunction()
 
 set(IPlugVST2_FOUND TRUE)

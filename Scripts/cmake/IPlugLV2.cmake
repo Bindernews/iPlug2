@@ -7,11 +7,17 @@ set(deps_dir ${IPLUG2_SDK_PATH}/Dependencies/IPlug)
 add_subdirectory(${deps_dir}/rundyn ${CMAKE_BINARY_DIR}/IPlug/rundyn)
 
 # Locate the LV2 sdk
-find_path(LV2_SDK_PATH "lv2"
+find_path(LV2_SDK_PATH
+  NAMES "lv2.pc.in"
   PATHS "${deps_dir}/lv2" "${deps_dir}/LV2"
   DOC "Path to LV2 sdk"
-  REQUIRED
 )
+
+if (NOT LV2_SDK_PATH)
+  set(IPlugLV2_FOUND FALSE)
+  set(IPlugLV2_ERROR "LV2 sdk not found or doesn't contain required files.")
+  return()
+endif()
 
 # Find the install path for lv2 plugins based on OS.
 if (IPLUG_OS MATCHES "Windows")
@@ -75,11 +81,6 @@ iplug_target_add(iPlug2_LV2_UI INTERFACE
   LINK
   iPlug2_LV2
 )
-
-iplug_source_tree(iPlug2_LV2 PREFIX "IPlug/LV2")
-iplug_source_tree(iPlug2_LV2_DSP PREFIX "IPlug/LV2")
-iplug_source_tree(iPlug2_LV2_UI PREFIX "IPlug/LV2")
-
 
 function(iplug_configure_lv2 base_plugin target)
   # DSP target first

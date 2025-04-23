@@ -103,6 +103,59 @@ macro(iplug_ternary VAR val_true val_false)
   endif()
 endmacro()
 
+#[===[.rst
+
+.. parsed-literal::
+
+  iplug_list(`CONTAINS_ALL` <list> <item> [<items>...] <output-variable>)
+  iplug_list(`CONTAINS_ANY` <list> <item> [<items>...] <output-variable>)
+
+.. signature::
+  iplug_list(CONTAINS_ALL <list> <item> [<items>...] <output-variable>)
+
+  Returns ``TRUE`` if the list contains all the listed items, ``FALSE`` otherwise.
+
+.. signature::
+  iplug_list(CONTAINS_ANY <list> <item> [<items>...] <output-variable>)
+
+  Returns ``TRUE`` if the list contains any of the given items, ``FALSE`` otherwise.
+
+#]===]
+function(iplug_list command)
+  if (command STREQUAL "CONTAINS_ALL" OR command STREQUAL "CONTAINS_ANY")
+    # Same setup for both
+    set(items "${ARGN}")
+    list(POP_FRONT items list_var)
+    list(POP_BACK items out_var)
+
+    if (command STREQUAL "CONTAINS_ALL")
+      # Default to true, fail if missing item
+      set(ok TRUE)
+      foreach (item IN LISTS items)
+        if (NOT "${item}" IN_LIST ${list_var})
+          set(ok FALSE)
+          break()
+        endif()
+      endforeach()
+    else()
+      # Default to false, succeed on found item
+      set(ok FALSE)
+      foreach (item IN LISTS items)
+        if ("${item}" IN_LIST ${list_var})
+          set(ok TRUE)
+          break()
+        endif()
+      endforeach()
+    endif()
+
+    set(${out_var} ${ok} PARENT_SCOPE)
+    return()
+
+  else()
+    message(FATAL_ERROR "Unknown command '${command}'")
+  endif()
+endfunction(iplug_list)
+
 function(iplug_source_tree target)
   cmake_parse_arguments(arg "" "PREFIX" "" ${ARGN})
   get_target_property(_tmp ${target} INTERFACE_SOURCES)
@@ -169,6 +222,76 @@ function(iplug_find_path VAR)
     set(${VAR} ${out} PARENT_SCOPE)
   endif()
 endfunction(iplug_find_path)
+
+function(iplug_file_in_binary_dir target filename out_var)
+  get_target_property(bin_dir ${target} BINARY_DIR)
+  set(${out_var} "${bin_dir}/${target}.dir/${filename}" PARENT_SCOPE)
+endfunction()
+
+function(iplug_configure_basic_plist base_target)
+  cmake_parse_arguments(PARSE_ARGV 1 arg "" "FORMAT;CUSTOM_XML;OUTPUT" "")
+
+  # Check required arguments
+  if (NOT arg_OUTPUT)
+    message(SEND_ERROR "Argument OUTPUT is required")
+  endif()
+  if (NOT arg_FORMAT)
+    message(SEND_ERROR "Argument FORMAT is required")
+  endif()
+
+  get_target_property(PLUGIN_NAME ${base_target} IPLUG_PLUGIN_NAME)
+  get_target_property(PLUGIN_VERSION ${base_target} IPLUG_PLUGIN_VERSION)
+  set(PLUGIN_FORMAT "${arg_FORMAT}")
+  set(BUNDLE_PACKAGE_TYPE "BNDL")
+
+  # TODO determine some way to allow the developer to override or set these values
+  set(DEVELOPMENT_LANGUAGE "English")
+  set(BUNDLE_SIGNATURE "PmBl")
+  set(PLUGIN_COPYRIGHT "Copyright 2020 Acme Inc")
+
+  # List of additional XML lines to put in the file
+  set(custom "")
+
+  # Format specific custom XML
+  set(FORMAT_CUSTOM_XML "")
+  if (arg_CUSTOM_XML)
+    string(CONFIGURE "${arg_CUSTOM_XML}" FORMAT_CUSTOM_XML @ONLY)
+  endif()
+
+  if (arg_FORMAT STREQUAL "aax")
+    list(APPEND custom
+      "<key>LSMultipleInstancesProhibited</key> <string>true</string>"
+      "<key>LSPrefersCarbon</key> <false/>"
+      "<key>NSAppleScriptEnabled</key> <string>No</string>"
+    )
+    set(BUNDLE_PACKAGE_TYPE "TDMw")
+    # Not sure if this is required
+    set(BUNDLE_SIGNATURE "PTul")
+  endif()
+
+  if (arg_FORMAT STREQUAL "au3")
+    set(BUNDLE_PACKAGE_TYPE "XPC!")
+  endif()
+
+  if (arg_FORMAT STREQUAL "app")
+    list(APPEND custom
+      "<key>LSApplicationCategoryType</key> <string>public.app-category.music</string>"
+      "<key>NSMainNibFile</key> <string>${PLUGIN_NAME}-macOS-MainMenu</string>"
+      "<key>NSPrincipalClass</key> <string>SWELLApplication</string>"
+      "<key>CFBundleIconFile</key> <string>${PLUGIN_NAME}.icns</string>"
+    )
+  endif()
+
+  list(JOIN custom "\n" CUSTOM_XML)
+
+  configure_file(
+    ${IPLUG2_SDK_PATH}/IPlug/resource/Basic-Info.plist.in
+    ${arg_OUTPUT}
+    NEWLINE_STYLE UNIX
+    @ONLY)
+endfunction()
+
+
 
 #! iplug_target_bundle_resource : Internal function to copy all resources to the output directory
 #
@@ -396,6 +519,9 @@ function(iplug_load_module module_name)
   # Try to include the module
   include(${module_name} OPTIONAL RESULT_VARIABLE mod_found)
   # If we succeeded, but ${module_name}_FOUND is not set, then we still failed
+  if (NOT mod_found)
+    message(WARNING "Module ${module_name} not found; ${CMAKE_MODULE_PATH}")
+  endif()
   if (mod_found AND NOT ${module_name}_FOUND)
     set(mod_found FALSE)
     # Allow modules to add an extra error message
@@ -422,11 +548,30 @@ endfunction(iplug_load_module)
 Setup the base INTERFACE target for an iPlug2 plugin with required options.
 
 .. code-block:: cmake
-  iplug_setup_plugin(<target> [NAME <name>] [VERSION <version>]
-    [GRAPHICS <backend> [api]] [COPY_AFTER_BUILD])
+  iplug_setup_plugin(
+    <base_target>
+    FORMATS [``ALL`` | formats...]
+    [NAME <name>]
+    [VERSION <version>]
+    [GRAPHICS <backend> [api]]
+    [COPY_AFTER_BUILD])
 
-``<target>``
-  Plugin base target to configure.
+``<base_target>``
+  Plugin base target to configure. This target MUST be an INTERFACE.
+
+``FORMATS``
+  The list of output formats to build for this target. One or more of
+  ``aax, app, au2, au3, lv2, vst2, vst3, web, wam, clap``. If the option ``ALL``
+  is given, output for all formats supported on this platform.
+
+  Some output formats are only available with certain outputs. If an output format is
+  not supported on the current platform CMake will output a warning and not create the target
+  or try to load any dependencies for it. For example au2 and au3 are only available on Apple
+  platforms, while web and wam are only available when using the Emscripten SDK.
+  See the `Emscripten CMake SDK`_ for details on how to use Emscripten with CMake.
+
+  The formats will generate library and executable targets named "<name>_<format>".
+  Some formats may generate more than one target, depending on the requirements.
 
 ``NAME``
   The name of the plugin. If unspecified, this defaults to the project name.
@@ -451,9 +596,12 @@ Setup the base INTERFACE target for an iPlug2 plugin with required options.
   that format.
 
 #]===]
-function(iplug_setup_plugin target)
-  cmake_parse_arguments(arg "COPY_AFTER_BUILD" "VERSION;NAME" "GRAPHICS" ${ARGN})
+function(iplug_setup_plugin base_target)
+  cmake_parse_arguments(arg "COPY_AFTER_BUILD" "VERSION;NAME" "GRAPHICS;FORMATS" ${ARGN})
 
+  if (NOT arg_FORMATS)
+    message(SEND_ERROR "In iplug_setup_plugin the FORMATS argument is required")
+  endif()
   if (NOT arg_NAME)
     set(arg_NAME ${CMAKE_PROJECT_NAME})
   endif()
@@ -464,7 +612,8 @@ function(iplug_setup_plugin target)
     set(arg_COPY_AFTER_BUILD OFF)
   endif()
 
-  ## Parse graphics options ##
+  #========================================================
+  # Parse graphics options
 
   # Default to NanoVG
   if (NOT arg_GRAPHICS)
@@ -520,158 +669,73 @@ function(iplug_setup_plugin target)
     set(gui_libs iPlug2_${gui0} iPlug2_${gui_api})
   endif()
 
-  message(VERBOSE "GUI libraries for ${target} are ${gui_libs}")
+  message(VERBOSE "GUI libraries for ${base_target} are ${gui_libs}")
 
-  ## End parse graphics options ##
+  # End parse graphics options
+  #========================================================
 
   # On Windows, we automatically include main.rc and resource.h
   if (WIN32)
-    # Get the source dir for the target
-    get_target_property(plugin_src_dir ${target} SOURCE_DIR)
+    # On Windows ours fonts are included in the RC file, meaning we need to include main.rc
+    # in ALL our builds. Yay for platform-specific bundling!
+    get_target_property(plugin_src_dir ${base_target} SOURCE_DIR)
     set(_src
       ${plugin_src_dir}/resources/main.rc
       ${plugin_src_dir}/resources/resource.h
     )
-    target_sources(${target} INTERFACE ${_src})
+    target_sources(${base_target} INTERFACE ${_src})
     source_group(Resources FILES ${_src})
   endif()
 
   set_target_properties(
-    ${target}
+    ${base_target}
     PROPERTIES
     IPLUG_PLUGIN_NAME ${arg_NAME}
     IPLUG_PLUGIN_VERSION ${arg_VERSION}
     IPLUG_PLUGIN_GRAPHICS "${gui_libs}"
     IPLUG_COPY_AFTER_BUILD ${arg_COPY_AFTER_BUILD}
   )
-endfunction(iplug_setup_plugin)
 
+  #========================================================
+  # Generate output targets for the desired formats
 
-#[===[.rst:
-.. code-block:: cmake
-
-  iplug_add_format(<base_target> <format>
-    [TARGET <target>]
-    [COPY_AFTER_BUILD]
-    [PLUGIN_NAME <name>]
-    [VERSION <major.minor.bugfix>]
-    [GRAPHICS <NONE | SKIA_GL2 | SKIA_GL3 | SKIA_CPU | NANOVG_GL2 | NANOVG_GL3 | CUSTOM>])
-
-Creates a non-interface target that builds the ``<base_target>`` for the given ``<format>``.
-The ``<base_target>`` should be an interface so that the source gets re-built with different
-configurations based on the plugin format.
-
-``<format>``
-  The output format, one of ``aax, app, au2, au3, lv2, vst2, vst3, web, wam``.
-
-  Some output formats are only available with certain outputs. If an output format is
-  not supported on the current platform CMake will output a warning and not create the target
-  or try to load any dependencies for it. For example au2 and au3 are only available on Apple
-  platforms, while web and wam are only available when using the Emscripten SDK.
-  See the `Emscripten CMake SDK`_ for details on how to use Emscripten with CMake.
-
-``TARGET <target>``
-  Override the output target name. By default the output target will be ``${PLUG_NAME}_${format}``.
-
-``COPY_AFTER_BUILD``
-  After a plugin format builds successfully the plugin will be copied to a directory where
-  hosts can locate it. This is for easier debugging.
-
-.. _`Emscripten CMake SDK`: https://github.com/emscripten-core/emscripten/blob/main/cmake/Modules/Platform/Emscripten.cmake
-#]===]
-function(iplug_add_format base_target format)
-  cmake_parse_arguments(arg "COPY_AFTER_BUILD;OPTIONAL" "TARGET" "" ${ARGN})
-
-  # List of all valid plugin formats
-  set(VALID_FORMATS "aax;app;au2;au3;lv2;vst2;vst3;wam;clap")
-  # Directory to load for each format in VALID_FORMATS
-  set(FORMAT_DIRS "AAX;APP;AUv2;AUv3;LV2;VST2;VST3;WEB;CLAP")
-
-  # Ensure the format is one of the valid options
-  if (NOT ${format} IN_LIST VALID_FORMATS)
-    message(FATAL_ERROR "Invalid plugin format ${format}")
+  set(output_formats ${arg_FORMATS})
+  if ("ALL" IN_LIST arg_FORMATS)
+    set(output_formats "${IPLUG_VALID_FORMATS}")
   endif()
 
-  # Ensure the format is valid on this platform by copying the list of
-  # valid formats, then removing any invalid ones.
-  set(ok_formats ${VALID_FORMATS})
-  if (NOT IPLUG_OS MATCHES "Darwin")
-    list(REMOVE_ITEM ok_formats "au2" "au3")
-  endif()
-  # AAX is windows and mac only
-  if (NOT IPLUG_OS MATCHES "(Darwin)|(Windows)")
-    list(REMOVE_ITEM ok_formats "aax")
-  endif()
-  # Currently only support LV2 on Linux and Windows, through it's technically cross-platform
-  if (NOT IPLUG_OS MATCHES "(Linux)|(Windows)")
-    list(REMOVE_ITEM ok_formats "lv2")
-  endif()
-  if (CMAKE_SYSTEM_NAME MATCHES "Emscripten")
-    # Straight up override the valid formats
-    set(ok_formats wam)
-  else()
-    list(REMOVE_ITEM ok_formats "wam")
-  endif()
-  # Check if the format is valid
-  if (NOT ${format} IN_LIST ok_formats)
-    message(STATUS "Plugin format ${format} not available on ${CMAKE_SYSTEM_NAME}, ignoring")
-    return()
-  endif()
-
-  # Call iplug_setup_plugin() if the user hasn't already done so.
-  get_target_property(plugin_name ${base_target} IPLUG_PLUGIN_NAME)
-  # Specifically check the variable, not the string, so that we
-  if (NOT plugin_name)
-    iplug_setup_plugin(${base_target})
-    # Re-get the plugin name
-    get_target_property(plugin_name ${base_target} IPLUG_PLUGIN_NAME)
-  endif()
-
-  # Determine the output target
-  set(target "${plugin_name}_${format}")
-  if (arg_TARGET)
-    set(target ${arg_TARGET})
-  endif()
-
-  # Take the plugin format name, and get the subdirectory / module name.
-  list(FIND VALID_FORMATS ${format} format_index)
-  list(GET FORMAT_DIRS ${format_index} format_subdir)
-  set(module_name IPlug${format_subdir})
-
-  # Dynamically load the plugin format, and the associated configure command
-  set(configure_command "iplug_configure_${format}")
-  if (NOT COMMAND ${configure_command})
-    iplug_load_module(
-      ${module_name}
-      OPTIONAL ${arg_OPTIONAL}
-      ERROR_MESSAGE "Failed to load plugin format ${module_name}"
-    )
-    if (NOT ${module_name}_FOUND)
-      return()
+  foreach (format IN LISTS output_formats)
+    # Check that the format is known, valid for this platform, and loaded successfully
+    if (NOT "${format}" IN_LIST IPLUG_ALL_FORMATS)
+      message(SEND_ERROR "Invalid output format '${format}'")
     endif()
-  endif()
+    if (NOT "${format}" IN_LIST IPLUG_VALID_FORMATS)
+      message(VERBOSE "Skipping output format '${format}'")
+      continue()
+    endif()
+    if (NOT "${format}" IN_LIST IPLUG_LOADED_FORMATS)
+      message(WARNING "Output format '${format}' failed to load, skipping")
+      continue()
+    endif()
 
-  # Call the configure command to setup the plugin target(s).
-  cmake_language(CALL ${configure_command} ${base_target} ${target})
+    # Determine the output target
+    set(target "${arg_NAME}_${format}")
 
-  # Platform-handling for all formats.
-  # This happens *after* calling the configure command so that the target exists.
-  if (IPLUG_OS MATCHES "Windows")
-    # On Windows ours fonts are included in the RC file, meaning we need to include main.rc
-    # in ALL our builds. Yay for platform-specific bundling!
-    set(_res "${CMAKE_SOURCE_DIR}/resources/main.rc")
-    iplug_target_add(${target} PUBLIC RESOURCE ${_res})
-    source_group("Resources" FILES ${_res})
+    # Call the configure command to setup the plugin target(s).
+    cmake_language(CALL "iplug_configure_${format}" ${base_target} ${target})
 
-  elseif (IPLUG_OS MATCHES "Darwin")
-    # For MacOS we make sure the output name is the same as the app name.
-    # This is basically required for bundles.
-    set_property(TARGET ${target} PROPERTY OUTPUT_NAME "${plugin_name}")
+    # Platform-handling for all formats.
+    # This happens *after* calling the configure command so that the target exists.
+    if (IPLUG_OS MATCHES "(Windows)|(Linux)")
+      # Nothing special here!
 
-  elseif (IPLUG_OS MATCHES "Linux")
-    # Nothing special here!
+    elseif (IPLUG_OS MATCHES "Darwin")
+      # For MacOS we make sure the output name is the same as the app name.
+      # This is basically required for bundles.
+      set_property(TARGET ${target} PROPERTY OUTPUT_NAME "${plugin_name}")
 
-  endif()
+    endif()
+  endforeach()
 
   # For CMake, files have to be organized on a per-directory or per-target basis,
   # it's not 100% clear. Either way, if we repeat the organization steps it works consistently.
@@ -681,5 +745,12 @@ function(iplug_add_format base_target format)
   iplug_source_tree(iPlug2_GL2 PREFIX "IPlug/IGraphics")
   iplug_source_tree(iPlug2_GL3 PREFIX "IPlug/IGraphics")
 
-endfunction()
+  iplug_source_tree(iPlug2_APP PREFIX "IPlug/APP")
+  iplug_source_tree(iPlug2_CLAP PREFIX "IPlug/CLAP")
+  iplug_source_tree(iPlug2_LV2 PREFIX "IPlug/LV2")
+  iplug_source_tree(iPlug2_LV2_DSP PREFIX "IPlug/LV2")
+  iplug_source_tree(iPlug2_LV2_UI PREFIX "IPlug/LV2")
+  iplug_source_tree(iPlug2_VST2 PREFIX "IPlug/VST2")
+  iplug_source_tree(iPlug2_VST3 PREFIX "IPlug/VST3")
 
+endfunction(iplug_setup_plugin)

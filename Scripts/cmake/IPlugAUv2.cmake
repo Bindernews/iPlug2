@@ -34,6 +34,24 @@ iplug_target_add(iPlug2_AUv2 INTERFACE
     ${cwd}/IPlugAU_view_factory.mm
 )
 
+set(IPLUG_AU2_CUSTOM_XML [=[
+  <key>AudioUnit Version</key> <string>0x00010000</string>
+  <key>NSPrincipalClass</key> <string>@PLUGIN_NAME@_View</string>
+  <key>AudioComponents</key>
+  <array>
+    <dict>
+      <key>description</key> <string>@PLUGIN_NAME</string>
+      <key>factoryFunction</key> <string>@PLUGIN_NAME@_Factory</string>
+      <key>manufacturer</key> <string>Acme</string>
+      <key>name</key> <string>AcmeInc: @PLUGIN_NAME</string>
+      <key>sandboxSafe</key> <true/>
+      <key>subtype</key> <string>@BUNDLE_SIGNATURE@</string>
+      <key>type</key> <string>aumu</string>
+      <key>version</key> <integer>65536</integer>
+    </dict>
+  </array>
+]=] CACHE INTERNAL "")
+
 function(iplug_configure_au2 base_plugin target)
   # Create target
   add_library(${target} MODULE)
@@ -52,14 +70,21 @@ function(iplug_configure_au2 base_plugin target)
   endif()
   set(install_dir "${AUv2_INSTALL_PATH}/${PLUG_NAME}.component")
 
+  iplug_file_in_binary_dir(${target} Info.plist info_plist)
+  iplug_configure_basic_plist(
+    ${base_plugin}
+    OUTPUT "${info_plist}"
+    FORMAT au2
+    CUSTOM_XML "${IPLUG_AU2_CUSTOM_XML}"
+  )
+
   set_target_properties(${target} PROPERTIES
     BUNDLE TRUE
     MACOSX_BUNDLE TRUE
-    MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/resources/${PLUG_NAME}-AU-Info.plist
+    MACOSX_BUNDLE_INFO_PLIST ${info_plist}
     BUNDLE_EXTENSION "component"
     PREFIX ""
     SUFFIX "")
-
 
   if (res_dir)
     iplug_target_bundle_resources(${target} "${res_dir}")

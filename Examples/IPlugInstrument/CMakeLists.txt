@@ -16,7 +16,14 @@ project(IPlugInstrument VERSION 1.0.0 LANGUAGES C CXX)
 if (NOT IPLUG2_SDK_PATH)
   set(IPLUG2_SDK_PATH ${CMAKE_SOURCE_DIR}/../../)
 endif()
+set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 include(${IPLUG2_SDK_PATH}/iPlug2.cmake)
+
+foreach (format app clap)
+  if (NOT ${format} IN_LIST IPLUG_LOADED_FORMATS)
+    message(FATAL_ERROR "Missing required output format: ${format}")
+  endif()
+endforeach()
 
 # Disable compiler-dependent C++ extension features (optional, but recommended for code portability)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -64,16 +71,13 @@ source_group(TREE "${cwd}/resources" PREFIX Resources FILES ${_res})
 
 # Configure the plugin with the default name and version
 # from the project, using NanoVG with OpenGL 3 as the backend.
-iplug_setup_plugin(plugin_base GRAPHICS NanoVG GL3 COPY_AFTER_BUILD)
+iplug_setup_plugin(
+  plugin_base
+  GRAPHICS NanoVG GL3
+  # List of plugin formats to export, or ALL for all supported formats on this platform.
+  FORMATS
+    app clap
+    # vst2 au2 au3 lv2 wam clap
+  COPY_AFTER_BUILD
+)
 
-# Add the various output formats we want to use.
-# Any that are not supported on this platform will be ignored.
-iplug_add_format(plugin_base vst2)
-iplug_add_format(plugin_base vst3)
-iplug_add_format(plugin_base app)
-iplug_add_format(plugin_base au2)
-iplug_add_format(plugin_base au3)
-iplug_add_format(plugin_base aax OPTIONAL)
-iplug_add_format(plugin_base lv2)
-iplug_add_format(plugin_base wam)
-iplug_add_format(plugin_base clap)
