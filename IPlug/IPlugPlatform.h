@@ -1,10 +1,10 @@
 /*
  ==============================================================================
- 
- This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers. 
- 
+
+ This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers.
+
  See LICENSE.txt for  more info.
- 
+
  ==============================================================================
 */
 
@@ -17,6 +17,7 @@
 
 #ifdef _WIN32
   #define OS_WIN
+  #define IPLUG_EXPORT __declspec(dllexport)
 #elif defined __APPLE__
   #include <TargetConditionals.h>
   #if TARGET_OS_IPHONE
@@ -26,10 +27,13 @@
   #elif TARGET_OS_VISION
     #define OS_VISION
   #endif
+  #define IPLUG_EXPORT __attribute__ ((visibility("default")))
 #elif defined __linux || defined __linux__ || defined linux
   #define OS_LINUX
+  #define IPLUG_EXPORT __attribute__ ((visibility("default")))
 #elif defined EMSCRIPTEN
   #define OS_WEB
+  #define IPLUG_EXPORT
 #else
   #error "No OS defined!"
 #endif
@@ -42,7 +46,7 @@
 #define IPLUG_CPP14
 #endif
 
-//these two components of the c standard library are used thoughtout IPlug/WDL 
+//these two components of the c standard library are used thoughtout IPlug/WDL
 #include <cstring>
 #include <cstdlib>
 
