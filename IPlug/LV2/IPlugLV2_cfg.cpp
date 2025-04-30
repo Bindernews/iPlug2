@@ -198,7 +198,7 @@ int IPlugLV2DSP::write_manifest(const char* dest_dir)
   #ifdef PLUG_HAS_UI
     doc->addPrefix("ui", "<http://lv2plug.in/ns/extensions/ui#>");
 
-    subj = doc->subject("<" PLUG_UI_URI ">");
+    subj = doc->subject(fmtStr(msg, "<%s>", PLUG_UI_URI));
     (*subj)
       .add("a", UI_TYPE)
       .add("lv2:binary", "<" PLUG_NAME "_ui." DLL_EXT ">")
@@ -258,7 +258,7 @@ int IPlugLV2DSP::write_also(const char* dest_dir)
     .addPrefix("ui",    "<http://lv2plug.in/ns/extensions/ui#>")
     .addPrefix("urid",  "<http://lv2plug.in/ns/ext/urid#>")
     .addPrefix("iplug2", "<https://iplug2.github.io/lv2#>")
-    .addPrefix(PROP_PREFIX, "<" PLUG_URI "#>");
+    .addPrefix(PROP_PREFIX, fmtStr(msg, "<%s#>", PLUG_URI));
 
   // Write iplug2 units, regardless of if we use them or not.
   auto build_unit = [&](const char* name, const char* label, const char *symbol, const char *format_str) -> TTLSubject*

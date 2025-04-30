@@ -25,14 +25,10 @@
 
 BEGIN_IPLUG_NAMESPACE
 
-
-#ifndef PLUG_URI
-#define PLUG_URI PLUG_URL_STR "/plugins/" PLUG_NAME
-#endif
-
-#ifndef PLUG_UI_URI
-#define PLUG_UI_URI PLUG_URI "#ui"
-#endif
+/// @brief The plugin URI, defined in IPlug_include_in_plug_src.h
+extern const char *PLUG_URI;
+/// @brief The URI for the plugin's UI (note this is just PLUG_URI + "#ui")
+extern const char *PLUG_UI_URI;
 
 #define LV2_IPLUG2_PREFIX "https://iplug2.github.io/lv2#"
 #define LV2_IPLUG2__UIMessage  LV2_IPLUG2_PREFIX "UIMessage"
@@ -174,9 +170,6 @@ struct InstanceInfo
   const LV2_Feature* const* features;
 };
 
-typedef LV2_Handle (*LV2_InstantiateFn)(const LV2_Descriptor *descriptor,
-                                      double rate, const char* bundle_path,
-                                      const LV2_Feature* const* features);
 
 /**  LV2 processor base class for an IPlug plug-in
 *   @ingroup APIClasses */
@@ -221,7 +214,7 @@ public:
   void  run(uint32_t n_samples);
   void  deactivate();
 
-  static const LV2_Descriptor* descriptor(uint32_t index, LV2_InstantiateFn instantiate);
+  static const LV2_Descriptor* descriptor(uint32_t index);
 
   int GetFirstControlPort() const;
   int write_manifest(const char* dest_dir);
@@ -231,6 +224,12 @@ private:
   int write_also_io(FILE* f, const IOConfig* io, int io_index);
   int write_cfg_parameters(FILE* f);
   int write_indent(FILE* f, int indent, const char* msg);
+
+  static LV2_Handle instantiate_fn(
+    const LV2_Descriptor *descriptor,
+    double rate,
+    const char* bundle_path,
+    const LV2_Feature* const* features);
 
   WDL_TypedBuf<void*>  mPorts;
   WDL_TypedBuf<float*> mIOPorts;
@@ -242,9 +241,9 @@ private:
   bool mFirstActivate;
 };
 
-#endif
+IPlugLV2DSP* MakePlug(const InstanceInfo& info);
 
-#if IPLUG_EDITOR
+#elif IPLUG_EDITOR
 
 /** Used to pass various instance info to the API class */
 struct InstanceInfo
@@ -295,6 +294,8 @@ private:
   URIDMap mURIs;
   bool mHostSupportIdle;
 };
+
+IPlugLV2Editor* MakePlug(const InstanceInfo& info);
 
 #endif
 

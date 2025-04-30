@@ -345,6 +345,14 @@ void IPlugLV2DSP::deactivate()
 // LV2 DSP Callbacks //
 ///////////////////////
 
+extern "C" {
+  // This MUST be extern C with the name "lv2_descriptor"
+  LV2_SYMBOL_EXPORT const LV2_Descriptor* lv2_descriptor(uint32_t index)
+  {
+    return IPlugLV2DSP::descriptor(index);
+  }
+}
+
 static void c_connect_port(LV2_Handle instance, uint32_t port, void *data)
 {
   (static_cast<IPlugLV2DSP*>(instance))->connect_port(port, data);
@@ -375,13 +383,22 @@ static const void *c_extension_data(const char *uri)
   return nullptr;
 }
 
+
+LV2_Handle IPlugLV2DSP::instantiate_fn(
+  const LV2_Descriptor *descriptor, double rate, const char* bundle_path, const LV2_Feature* const* features)
+{
+  struct InstanceInfo info = { descriptor, rate, bundle_path, features };
+  IPlugLV2DSP *instance = MakePlug(info);
+  return static_cast<LV2_Handle>(instance);
+}
+
 static WDL_TypedBuf<LV2_Descriptor> sDescriptors;
 // Static buffer for ALL URI strings.
 // Instead of doing a bunch of small allocations, we do one large one. Why? Because it's easy and efficient.
 static WDL_TypedBuf<char> sUriBuf;
 
 const LV2_Descriptor*
-IPlugLV2DSP::descriptor(uint32_t index, LV2_InstantiateFn instantiate)
+IPlugLV2DSP::descriptor(uint32_t index)
 {
   // Statically initialize the list of descriptors, one for each IO config.
   if (sDescriptors.GetSize() == 0)
@@ -401,7 +418,7 @@ IPlugLV2DSP::descriptor(uint32_t index, LV2_InstantiateFn instantiate)
       int uriLen = snprintf(urip, uripEnd - urip, "%s#io_%d", PLUG_URI, i);
       sDescriptors.Add(LV2_Descriptor {
         urip,
-        instantiate,
+        &instantiate_fn,
         &c_connect_port,
         &c_activate,
         &c_run,
@@ -427,196 +444,14 @@ IPlugLV2DSP::descriptor(uint32_t index, LV2_InstantiateFn instantiate)
 #endif // IPLUG_DSP
 
 #if IPLUG_EDITOR
-
-IPlugLV2Editor::IPlugLV2Editor(const InstanceInfo &info, const Config& config) : IPlugAPIBase(config, kAPILV2)
-, mHostSupportIdle(false), mHostWidget(nullptr), mHostResize(nullptr)
-{
-  Trace(TRACELOC, "%s", config.pluginName);
-
-  WDL_PtrList<IOConfig> IOConfigs;
-  int totalNInChans, totalNOutChans;
-  int totalNInBuses, totalNOutBuses;
-  IPlugProcessor::ParseChannelIOStr(config.channelIOStr, IOConfigs, totalNInChans, totalNOutChans, totalNInBuses, totalNOutBuses);
-
-  mParameterPortOffset = totalNInChans + totalNOutChans;
-
-#ifdef OS_LINUX
-  mEmbed = xcbt_embed_idle();
-#endif
-
-  mHostWrite      = info.write_function;
-  mHostController = info.controller;
-
-  auto features = info.features;
-  if (features)
-  {
-    const LV2_Feature *feature;
-    while((feature = *features++))
-    {
-      if (!strcmp(feature->URI, LV2_URID__map))
-      {
-        mURIs.init((LV2_URID_Map*)feature->data, 0);
-      }
-      if(!strcmp(feature->URI, LV2_UI__parent))
-      {
-        mHostWidget = (LV2UI_Widget)feature->data;
-      }
-      else if(!strcmp(feature->URI, LV2_UI__idleInterface))
-      {
-        mHostSupportIdle = true;
-      }
-      else if(!strcmp(feature->URI, LV2_UI__resize))
-      {
-        mHostResize = (LV2UI_Resize *)feature->data;
-      }
-      else
-      {
-        // printf("Host feature: %s\n", feature->URI);
-      }
-    }
-  }
-
-
-  // TODO: CreateTimer();
-}
-
-LV2UI_Widget IPlugLV2Editor::CreateUI()
-{
-  // we can not do this in constructor, user code is not yet executed and so graphics can not be created
-#ifdef OS_LINUX
-  SetIntegration(mEmbed);
-#endif
-
-  auto widget = reinterpret_cast<LV2UI_Widget>(OpenWindow(mHostWidget));
-  return widget;
-}
-
-IPlugLV2Editor::~IPlugLV2Editor()
-{
-  CloseWindow();
-
-#ifdef OS_LINUX
-  //xcbt_embed_dtor(mEmbed);
-#endif
-}
-
-void IPlugLV2Editor::InformHostOfParamChange(int idx, double normalizedValue)
-{
-  // I use original (not normilized) value in LV2
-  ENTER_PARAMS_MUTEX_STATIC;
-  float value = GetParam(idx)->Value();
-  LEAVE_PARAMS_MUTEX_STATIC;
-
-  uint32_t port_index = mParameterPortOffset + idx;
-
-  if (mHostWrite)
-  {
-    mHostWrite(mHostController, port_index, sizeof(float), 0, &value);
-  }
-}
-
-
-void IPlugLV2Editor::port_event(uint32_t port_index, uint32_t buffer_size, uint32_t format, const void*  buffer)
-{
-#ifdef LV2_CONTROL_PORTS
-  // This is for control ports
-  if ((format == 0) && (buffer_size == sizeof(float)) && buffer)
-  {
-    float value = *((float *)buffer);
-    if (port_index >= mParameterPortOffset)
-    {
-      int idx = port_index - mParameterPortOffset;
-      // printf("  Param %d = %f\n", idx, value);
-      if (idx < NParams())
-      {
-        ENTER_PARAMS_MUTEX_STATIC;
-        GetParam(idx)->Set(value);
-        SendParameterValueFromDelegate(idx, value, false);
-        OnParamChange(idx, kHost);
-        LEAVE_PARAMS_MUTEX_STATIC;
-      }
-    }
-  }
-#endif
-
-  // Listening for output messages from the control_out port
-  if (port_index == 1 && format == mURIs.atom_eventTransfer)
-  {
-    auto atom = reinterpret_cast<const LV2_Atom*>(buffer);
-
-    if (atom->type == mURIs.atom_Object)
-    {
-      const LV2_Atom_Object* obj = reinterpret_cast<const LV2_Atom_Object*>(((const uint8_t*)buffer) + sizeof(LV2_Atom));
-      // Handle patch messages
-      if (obj->body.otype == mURIs.patch_Set)
-      {
-        // We don't get frame times so sampleAt = 0
-        HandleAtomPatchSet(obj, EParamSource::kHost, 0);
-      }
-
-      // Handle arbitrary messages from the UI
-      if (obj->body.otype == mURIs.iplug2_UIMessage)
-      {
-        HandleAtomUIMessage(obj);
-      }
-    }
-
-    // Handle MIDI messages
-    if (atom->type == mURIs.midi_MidiEvent)
-    {
-      /*
-      const uint8_t* const msg = (const uint8_t*)(ev + 1);
-      switch (lv2_midi_message_type(msg))
-      {
-      case LV2_MIDI_MSG_NOTE_ON:
-      case LV2_MIDI_MSG_NOTE_OFF:
-        ProcessMidiMsg(IMidiMsg((int)(ev->time.frames), msg[0], msg[1], msg[2]));
-        break;
-      // TODO finish switch-case for processing MIDI messages
-      }
-      */
-    }
-  }
-
-}
-
-int IPlugLV2Editor::ui_idle()
-{
-  OnIdle();
-#ifdef OS_LINUX
-  xcbt_embed_idle_cb(mEmbed);
-#endif
-
-  // Return 0 if the UI is still open
-  if (GetUI() != nullptr) {
-    return 0;
-  } else {
-    return 1;
-  }
-}
-
-int IPlugLV2Editor::ui_resize(int width, int height)
-{
-  SetEditorSize(width, height);
-  return 0;
-}
-
-bool IPlugLV2Editor::EditorResizeFromUI(int viewWidth, int viewHeight, bool needsPlatformResize)
-{
-  if (mHostResize && needsPlatformResize)
-  {
-    return mHostResize->ui_resize(mHostResize->handle, viewWidth, viewHeight) == 0;
-  }
-  return false;
-}
-
-
-#endif // IPLUG_DSP
+// See IPlugLV2Editor.cpp
+#endif // IPLUG_EDITOR
 
 
 /////////////////
 // Common Code //
 /////////////////
+#pragma region Common Code
 
 AtomSequenceForge::AtomSequenceForge()
 {}
@@ -713,5 +548,7 @@ LV2_URID URIDMap::get(const char *uri)
     return it->second;
   }
 }
+
+#pragma endregion Common Code
 
 END_IPLUG_NAMESPACE

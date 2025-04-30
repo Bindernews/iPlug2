@@ -380,113 +380,16 @@ CLAP_EXPORT const clap_plugin_entry_t clap_entry = {
 #elif defined AUv3_API || defined AAX_API || defined APP_API
 // Nothing to do here
 #elif defined LV2_API
-#include "lv2/core/lv2.h"
 
-extern "C" {
-
-#if IPLUG_DSP
-
-static LV2_Handle instantiate(const LV2_Descriptor *descriptor, double rate, const char* bundle_path, const LV2_Feature* const* features)
-{
-  struct InstanceInfo info = { descriptor, rate, bundle_path, features };
-  return static_cast<LV2_Handle>(new PLUG_CLASS_NAME(info));
+namespace iplug {
+  #ifndef PLUG_URI_STR
+  #define PLUG_URI_STR PLUG_URL_STR "/plugins/" PLUG_NAME
+  #endif
+  const char *PLUG_URI = PLUG_URI_STR;
+  const char *PLUG_UI_URI = PLUG_URI_STR "#ui";
 }
 
-LV2_SYMBOL_EXPORT const LV2_Descriptor* lv2_descriptor(uint32_t index)
-{
-  return IPlugLV2DSP::descriptor(index, &instantiate);
-}
-#endif
-
-#if IPLUG_EDITOR
-
-static LV2UI_Handle ui_instantiate(const LV2UI_Descriptor*   descriptor,
-                                const char*               plugin_uri,
-                                const char*               bundle_path,
-                                LV2UI_Write_Function      write_function,
-                                LV2UI_Controller          controller,
-                                LV2UI_Widget*             widget,
-                                const LV2_Feature* const* features)
-{
-  struct InstanceInfo info = { descriptor, plugin_uri, bundle_path, write_function, controller, features };
-  auto instance = new PLUG_CLASS_NAME(info);
-  *widget = instance->CreateUI();
-  return static_cast<LV2UI_Handle>(instance);
-}
-
-static void ui_cleanup(LV2UI_Handle instance)
-{
-  delete (static_cast<IPlugLV2Editor*>(instance));
-}
-
-static void ui_port_event(LV2UI_Handle instance, uint32_t port_index, uint32_t buffer_size, uint32_t format, const void*  buffer)
-{
-  (static_cast<IPlugLV2Editor*>(instance))->port_event(port_index, buffer_size, format, buffer);
-}
-
-static int ui_idle(LV2UI_Handle instance)
-{
-  return (static_cast<IPlugLV2Editor*>(instance))->ui_idle();
-}
-
-static int ui_show(LV2UI_Handle instance)
-{
-  return (static_cast<IPlugLV2Editor*>(instance))->ui_idle();
-}
-
-static int ui_hide(LV2UI_Handle instance)
-{
-  return (static_cast<IPlugLV2Editor*>(instance))->ui_idle();
-}
-
-static int ui_resize(LV2UI_Feature_Handle handle, int width, int height)
-{
-  return static_cast<IPlugLV2Editor*>(handle)->ui_resize(width, height);
-}
-
-static const void *ui_extension_data(const char *uri)
-{
-  static const LV2UI_Idle_Interface idle = { ui_idle };
-  static const LV2UI_Resize ext_resize = { NULL, ui_resize };
-  //static const LV2UI_Show_Interface uiShow = { ui_show, ui_hide };
-
-  if (!strcmp(uri, LV2_UI__idleInterface))
-  {
-    return &idle;
-  }
-  else if (!strcmp(uri, LV2_UI__resize))
-  {
-    return &ext_resize;
-  }
-  // if (strcmp(uri, LV2_UI__showInterface) == 0)
-  // {
-  //   return &uiShow;
-  // }
-  return nullptr;
-}
-
-static const LV2UI_Descriptor ui_descriptor =
-{
-  PLUG_UI_URI,
-  ui_instantiate,
-  ui_cleanup,
-  ui_port_event,
-  ui_extension_data
-};
-
-LV2_SYMBOL_EXPORT const LV2UI_Descriptor* lv2ui_descriptor(uint32_t index)
-{
-        switch (index) {
-        case 0:
-                return &ui_descriptor;
-        default:
-                return NULL;
-        }
-}
-
-#endif
-
-}
+// MakePlug defined below
 
 #else
   #error "No API defined!"
@@ -499,7 +402,8 @@ BEGIN_IPLUG_NAMESPACE
 #pragma mark -
 #pragma mark VST2, VST3, AAX, AUv3, APP, WAM, WEB, CLAP
 
-#if defined VST2_API || defined VST3_API || defined AAX_API || defined AUv3_API || defined APP_API  || defined WAM_API || defined WEB_API || defined CLAP_API
+#if defined VST2_API || defined VST3_API || defined AAX_API || defined AUv3_API || defined APP_API \
+  || defined WAM_API || defined WEB_API || defined CLAP_API || defined(LV2C_API) || defined(LV2P_API)
 
 Plugin* MakePlug(const iplug::InstanceInfo& info)
 {

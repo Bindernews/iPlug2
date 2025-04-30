@@ -76,6 +76,9 @@ iplug_target_add(iPlug2_LV2_UI INTERFACE
   "LV2C_API=1"
   "IPLUG_EDITOR=1"
 
+  SOURCE
+  ${cwd}/IPlugLV2Editor.cpp
+
   LINK
   iPlug2_LV2
 )
