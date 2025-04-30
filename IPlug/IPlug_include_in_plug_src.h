@@ -385,7 +385,33 @@ Steinberg::FUnknown* MakeProcessor()
 
 static Config MakeConfig(int nParams, int nPresets)
 {
-  return Config(nParams, nPresets, PLUG_CHANNEL_IO, PLUG_NAME, PLUG_NAME, PLUG_MFR, PLUG_VERSION_HEX, PLUG_UNIQUE_ID, PLUG_MFR_ID, PLUG_LATENCY, PLUG_DOES_MIDI_IN, PLUG_DOES_MIDI_OUT, PLUG_DOES_MPE, PLUG_DOES_STATE_CHUNKS, PLUG_TYPE, PLUG_HAS_UI, PLUG_WIDTH, PLUG_HEIGHT, PLUG_HOST_RESIZE, PLUG_MIN_WIDTH, PLUG_MAX_WIDTH, PLUG_MIN_HEIGHT, PLUG_MAX_HEIGHT, BUNDLE_ID, APP_GROUP_ID); // TODO: Product Name?
+  return Config {
+    nParams, // nParams
+    nPresets, // nPresets
+    PLUG_CHANNEL_IO, // channelIOStr
+    PLUG_NAME, // pluginName
+    PLUG_NAME, // productName
+    PLUG_MFR, // mfrName
+    PLUG_VERSION_HEX, // vendorVersion
+    PLUG_UNIQUE_ID, // uniqueID
+    PLUG_MFR_ID, // mfrID
+    PLUG_LATENCY, // latency
+    PLUG_DOES_MIDI_IN, // plugDoesMidiIn
+    PLUG_DOES_MIDI_OUT, // plugDoesMidiOut
+    PLUG_DOES_MPE, // plugDoesMPE
+    PLUG_DOES_STATE_CHUNKS, // plugDoesChunks
+    PLUG_TYPE, // plugType
+    PLUG_HAS_UI, // plugHasUI
+    PLUG_WIDTH, // plugWidth
+    PLUG_HEIGHT, // plugHeight
+    PLUG_MIN_WIDTH, // plugMinWidth
+    PLUG_MAX_WIDTH, // plugMaxWidth
+    PLUG_MIN_HEIGHT, // plugMinHeight
+    PLUG_MAX_HEIGHT, // plugMaxHeight
+    PLUG_HOST_RESIZE, // plugHostResize
+    BUNDLE_ID, // bundleID
+    APP_GROUP_ID, // appGroupID
+  };
 }
 
 END_IPLUG_NAMESPACE
