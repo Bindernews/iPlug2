@@ -83,18 +83,18 @@ IPlugInstrument::IPlugInstrument(const InstanceInfo& info)
   GetParam(kParamLFORateTempo)->InitEnum("LFO Rate", LFO<>::k1, {LFO_TEMPODIV_VALIST});
   GetParam(kParamLFORateMode)->InitBool("LFO Sync", true);
   GetParam(kParamLFODepth)->InitPercentage("LFO Depth");
-    
+
 #if IPLUG_EDITOR // http://bit.ly/2S64BDd
   mMakeGraphicsFunc = [&]() {
     return MakeGraphics(*this, PLUG_WIDTH, PLUG_HEIGHT, PLUG_FPS, GetScaleForScreen(PLUG_WIDTH, PLUG_HEIGHT));
   };
-  
+
   mLayoutFunc = [&](IGraphics* pGraphics) {
     pGraphics->AttachCornerResizer(EUIResizerMode::Scale, false);
     pGraphics->AttachPanelBackground(COLOR_GRAY);
     pGraphics->EnableMouseOver(true);
     pGraphics->EnableMultiTouch(true);
-    
+
 #ifdef OS_WEB
     pGraphics->AttachPopupMenuControl();
 #endif
@@ -118,16 +118,16 @@ IPlugInstrument::IPlugInstrument(const InstanceInfo& info)
     pGraphics->AttachControl(new IVSliderControl(sliders.GetGridCell(2, 1, 4).GetMidHPadded(30.), kParamSustain, "Sustain"));
     pGraphics->AttachControl(new IVSliderControl(sliders.GetGridCell(3, 1, 4).GetMidHPadded(30.), kParamRelease, "Release"));
     pGraphics->AttachControl(new IVLEDMeterControl<2>(controls.GetFromRight(100).GetPadded(-30)), kCtrlTagMeter);
-    
+
     pGraphics->AttachControl(new IVKnobControl(lfoPanel.GetGridCell(0, 0, 2, 3).GetCentredInside(60), kParamLFORateHz, "Rate"), kNoTag, "LFO")->Hide(true);
     pGraphics->AttachControl(new IVKnobControl(lfoPanel.GetGridCell(0, 0, 2, 3).GetCentredInside(60), kParamLFORateTempo, "Rate"), kNoTag, "LFO")->DisablePrompt(false);
     pGraphics->AttachControl(new IVKnobControl(lfoPanel.GetGridCell(0, 1, 2, 3).GetCentredInside(60), kParamLFODepth, "Depth"), kNoTag, "LFO");
     pGraphics->AttachControl(new IVKnobControl(lfoPanel.GetGridCell(0, 2, 2, 3).GetCentredInside(60), kParamLFOShape, "Shape"), kNoTag, "LFO")->DisablePrompt(false);
     pGraphics->AttachControl(new IVSlideSwitchControl(lfoPanel.GetGridCell(1, 0, 2, 3).GetFromTop(30).GetMidHPadded(20), kParamLFORateMode, "Sync", DEFAULT_STYLE.WithShowValue(false).WithShowLabel(false).WithWidgetFrac(0.5f).WithDrawShadows(false), false), kNoTag, "LFO");
     pGraphics->AttachControl(new IVDisplayControl(lfoPanel.GetGridCell(1, 1, 2, 3).Union(lfoPanel.GetGridCell(1, 2, 2, 3)), "", DEFAULT_STYLE, EDirection::Horizontal, 0.f, 1.f, 0.f, 1024), kCtrlTagLFOVis, "LFO");
-    
+
     pGraphics->AttachControl(new IVGroupControl("LFO", "LFO", 10.f, 20.f, 10.f, 10.f));
-    
+
     pGraphics->AttachControl(new IVButtonControl(keyboardBounds.GetFromTRHC(200, 30).GetTranslated(0, -30), SplashClickActionFunc,
       "Show/Hide Keyboard", DEFAULT_STYLE.WithColor(kFG, COLOR_WHITE).WithLabelText({15.f, EVAlign::Middle})))->SetAnimationEndActionFunction(
       [pGraphics](IControl* pCaller) {
@@ -144,13 +144,13 @@ IPlugInstrument::IPlugInstrument(const InstanceInfo& info)
 //                             }, "BTMIDI"));
 //    }
 //#endif
-    
+
     pGraphics->SetQwertyMidiKeyHandlerFunc([pGraphics](const IMidiMsg& msg) {
                                               pGraphics->GetControlWithTag(kCtrlTagKeyboard)->As<IVKeyboardControl>()->SetNoteFromMidi(msg.NoteNumber(), msg.StatusMsg() == IMidiMsg::kNoteOn);
                                            });
 
     pGraphics->EnableTooltips(true);
-    pGraphics->ShowFPSDisplay(true);
+    // pGraphics->ShowFPSDisplay(true);
 
     IRECT testPanel = b.GetFromTLHC(400, 50).GetTranslated(80, 80);
     const int TEST_COLS = 5;
@@ -164,7 +164,7 @@ IPlugInstrument::IPlugInstrument(const InstanceInfo& info)
     pGraphics->AttachControl(new IVButtonControl(testPanel.GetGridCell(1, 1, TEST_COLS), [&](IControl* ctrl) {
       ctrl->GetUI()->SetTextInClipboard("Clipboard text set test.");
     }, "Test ClipSet"));
-    
+
     auto ctrlTest3 = pGraphics->AttachControl(new ContextMenuButton(testPanel.GetGridCell(2, 1, TEST_COLS), [&](IControl* ctrl) {
       IColor col = COLOR_RED;
       if (ctrl->GetUI()->PromptForColor(col, "Memes"))
@@ -176,7 +176,7 @@ IPlugInstrument::IPlugInstrument(const InstanceInfo& info)
         printf("No color selected.\n");
       }
     }, "Test Color"));
-    
+
     pGraphics->AttachControl(new IVButtonControl(testPanel.GetGridCell(3, 1, TEST_COLS), [&](IControl* ctrl) {
       int result = ctrl->GetUI()->ShowMessageBox("A message for you", "Testy Testerson Title", EMsgBoxType::kMB_OKCANCEL);
       printf("MsgBox result: %d\n", result);
@@ -211,9 +211,9 @@ void IPlugInstrument::OnReset()
 void IPlugInstrument::ProcessMidiMsg(const IMidiMsg& msg)
 {
   TRACE;
-  
+
   int status = msg.StatusMsg();
-  
+
   switch (status)
   {
     case IMidiMsg::kNoteOn:
@@ -229,7 +229,7 @@ void IPlugInstrument::ProcessMidiMsg(const IMidiMsg& msg)
     default:
       return;
   }
-  
+
 handle:
   mDSP.ProcessMidiMsg(msg);
   SendMidiMsg(msg);
@@ -262,7 +262,7 @@ bool IPlugInstrument::OnMessage(int msgTag, int ctrlTag, int dataSize, const voi
     const int bendRange = *static_cast<const int*>(pData);
     mDSP.mSynth.SetPitchBendRange(bendRange);
   }
-  
+
   return false;
 }
 #endif
