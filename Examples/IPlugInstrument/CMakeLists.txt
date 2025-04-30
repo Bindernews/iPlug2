@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.20 FATAL_ERROR)
 
 #########
 # This is a build file for iPlug2.
@@ -77,7 +77,7 @@ iplug_setup_plugin(
   # List of plugin formats to export, or ALL for all supported formats on this platform.
   FORMATS
     app clap
-    # vst2 au2 au3 lv2 wam clap
+    vst2 vst3 au2 au3 lv2 wam
   COPY_AFTER_BUILD
 )
 

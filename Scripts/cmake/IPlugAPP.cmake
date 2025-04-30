@@ -64,9 +64,6 @@ iplug_target_add(iPlug2_APP INTERFACE
   OPTION ${IPLUG_MSVC_FLAGS}
 )
 
-# Add a source group for all sources
-source_group(IPlug/APP FILES ${_src})
-
 #--------------------------------------------------------------------
 # configure function
 function(iplug_configure_app base_plugin target)
@@ -77,11 +74,16 @@ function(iplug_configure_app base_plugin target)
   # Link
   iplug_target_add(${target} PUBLIC LINK iPlug2_APP ${base_plugin} ${gui_libraries})
 
-  if (WIN32)
+
+  #--------------------------------------------------------
+  # Windows
+  if (IPLUG_OS MATCHES "Windows")
     set_target_properties(${target} PROPERTIES
       OUTPUT_NAME "${plugin_name}"
-      RUNTIME_OUTPUT_DIRECTORY "${output_dir}")
+    )
 
+  #--------------------------------------------------------
+  # MacOS
   elseif (CMAKE_SYSTEM_NAME MATCHES "Darwin")
     set(resource_dir "${CMAKE_BINARY_DIR}/${target}/${plugin_name}.app/Contents/Resources")
     # Set the Info.plist file and add required resources
@@ -95,13 +97,15 @@ function(iplug_configure_app base_plugin target)
     # Disable resource processing
     set(resource_dir "")
 
+  #--------------------------------------------------------
+  # Linux
   elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
     set_target_properties(${target} PROPERTIES
       OUTPUT_NAME "${plugin_name}"
-      RUNTIME_OUTPUT_DIRECTORY "${output_dir}")
-
+    )
   endif()
 
+  bn_set_output_directory(${target} "${output_dir}")
   iplug_target_bundle_resources(${target} "${resource_dir}")
 endfunction()
 

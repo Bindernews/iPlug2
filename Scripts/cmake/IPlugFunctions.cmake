@@ -89,73 +89,6 @@ function(iplug_target_add target set_type)
   endif()
 endfunction()
 
-#! iplug_ternary : Evaluates extra arguments as a conditional and sets VAR to val_true or val_false accordingly.
-#
-# \arg:VAR Variable name to set
-# \arg:val_true Value to set if condition is true
-# \arg:val_false Value to set if condition is false
-# \argn Remaining arguments will be passed to IF()
-macro(iplug_ternary VAR val_true val_false)
-  if (${ARGN})
-    set(${VAR} ${val_true})
-  else()
-    set(${VAR} ${val_false})
-  endif()
-endmacro()
-
-#[===[.rst
-
-.. parsed-literal::
-
-  iplug_list(`CONTAINS_ALL` <list> <item> [<items>...] <output-variable>)
-  iplug_list(`CONTAINS_ANY` <list> <item> [<items>...] <output-variable>)
-
-.. signature::
-  iplug_list(CONTAINS_ALL <list> <item> [<items>...] <output-variable>)
-
-  Returns ``TRUE`` if the list contains all the listed items, ``FALSE`` otherwise.
-
-.. signature::
-  iplug_list(CONTAINS_ANY <list> <item> [<items>...] <output-variable>)
-
-  Returns ``TRUE`` if the list contains any of the given items, ``FALSE`` otherwise.
-
-#]===]
-function(iplug_list command)
-  if (command STREQUAL "CONTAINS_ALL" OR command STREQUAL "CONTAINS_ANY")
-    # Same setup for both
-    set(items "${ARGN}")
-    list(POP_FRONT items list_var)
-    list(POP_BACK items out_var)
-
-    if (command STREQUAL "CONTAINS_ALL")
-      # Default to true, fail if missing item
-      set(ok TRUE)
-      foreach (item IN LISTS items)
-        if (NOT "${item}" IN_LIST ${list_var})
-          set(ok FALSE)
-          break()
-        endif()
-      endforeach()
-    else()
-      # Default to false, succeed on found item
-      set(ok FALSE)
-      foreach (item IN LISTS items)
-        if ("${item}" IN_LIST ${list_var})
-          set(ok TRUE)
-          break()
-        endif()
-      endforeach()
-    endif()
-
-    set(${out_var} ${ok} PARENT_SCOPE)
-    return()
-
-  else()
-    message(FATAL_ERROR "Unknown command '${command}'")
-  endif()
-endfunction(iplug_list)
-
 function(iplug_source_tree target)
   cmake_parse_arguments(arg "" "PREFIX" "" ${ARGN})
   get_target_property(_tmp ${target} INTERFACE_SOURCES)
@@ -169,59 +102,12 @@ function(iplug_source_tree target)
   endif()
 endfunction()
 
-#! iplug_find_path : An alternative to find_file and find_path that allows a default value.
-#
-# \arg:VAR Variable name to set
-# \flag:DIR Search for a directory (cannot be used with FILE)
-# \flag:FILE Search for a file (cannot be used with DIR)
-# \flag:REQUIRED If this is set and there is no default cmake will abort with an error
-# \param:DEFAULT_IDX If the path can't be found use the path in PATHS at index DEFAULT_IDX,
-#                    negative values start from the end
-# \param:DEFAULT If the path can't be found use this path instead
-# \param:DOC Documentation string. If this is set the value will be set as a cache variable
-# \group:PATHS List of paths to search for
-function(iplug_find_path VAR)
-  cmake_parse_arguments("arg" "REQUIRED;DIR;FILE" "DEFAULT_IDX;DEFAULT;DOC" "PATHS" ${ARGN})
-  if (NOT arg_DIR AND NOT arg_FILE)
-    message("ERROR: iplug_find_path MUST specify either DIR or FILE as an argument" FATAL_ERROR)
-  endif()
-
-  set(out 0)
-  foreach (pt ${arg_PATHS})
-    cmake_path(NORMAL_PATH pt OUTPUT_VARIABLE pt2)
-    if (EXISTS ${pt2})
-      iplug_ternary(is_dir 1 0 IS_DIRECTORY ${pt2})
-      #message("Found path ${pt} and is_dir=${is_dir}")
-
-      if ( (arg_FILE AND NOT ${is_dir}) OR (arg_DIR AND ${is_dir}) )
-        set(out ${pt2})
-        break()
-      endif()
-    endif()
-  endforeach()
-
-  # Handle various default options
-  if ((NOT out) AND (arg_DEFAULT))
-    set(out ${arg_DEFAULT})
-  endif()
-  if ((NOT out) AND NOT ("${arg_DEFAULT_IDX}" STREQUAL ""))
-    list(GET arg_PATHS "${arg_DEFAULT_IDX}" out)
-  endif()
-
-  # Determine cache type for the variable
-  iplug_ternary(_cache_type PATH FILEPATH ${arg_DIR})
-  # Handle required
-  if ((NOT out) AND (arg_REQUIRED))
-    set(${VAR} "${VAR}-NOTFOUND" CACHE ${_cache_type} ${arg_DOC}})
-    message(FATAL_ERROR "Path ${VAR} not found!")
-  endif()
-  # Set cache var or var in parent scope
-  if (arg_DOC)
-    set(${VAR} ${out} CACHE ${_cache_type} ${arg_DOC})
-  else()
-    set(${VAR} ${out} PARENT_SCOPE)
-  endif()
-endfunction(iplug_find_path)
+function(iplug_set_install_paths format user_path system_path)
+  set(IPLUG_${format}_USER_INSTALL_PATH "${user_path}" CACHE PATH
+  "User-writeable path to install ${format} plugins for local development")
+  set(IPLUG_${format}_SYSTEM_INSTALL_PATH "${system_path}" CACHE PATH
+  "Path to install ${format} plugins to the system, potentially requiring administrator permissions")
+endfunction()
 
 function(iplug_file_in_binary_dir target filename out_var)
   get_target_property(bin_dir ${target} BINARY_DIR)
@@ -434,6 +320,7 @@ endfunction(iplug_list_to_js_list)
   iplug_configure_helper(
     `GET_VARS`_ <format>
     `COPY_PROPERTIES`_ <target>
+    `SET_OUTPUT_DIRECTORY`_ <target> <directory>
   )
 
 Combines several pieces of helper code for the ``iplug_configure_*`` functions
@@ -449,13 +336,16 @@ exist, and what are safe to set.
   Copies ``IPLUG_RESOURCES`` and ``IPLUG_COPY_AFTER_BUILD`` from the base plugin
   target to ``<target>``.
 
+`SET_OUTPUT_DIRECTORY`
+  Set the output directory for all configurations.
+
 #]===]
 function(iplug_configure_helper)
   if (NOT TARGET ${base_plugin})
     message(FATAL_ERROR "iplug_configure_util called but 'base_plugin' not defined.\n
     This is an error in the format's configure function.")
   endif()
-  cmake_parse_arguments(arg "" "GET_VARS;COPY_PROPERTIES" "" ${ARGN})
+  cmake_parse_arguments(PARSE_ARGV 0 arg "" "GET_VARS;COPY_PROPERTIES" "")
 
   if (arg_GET_VARS)
     set(format ${arg_GET_VARS})
@@ -536,7 +426,7 @@ function(iplug_load_module module_name)
   # Now this will trigger if we failed for any reason
   if (NOT mod_found)
     # If arg_OPTIONAL is set, then warn but don't fail the full build
-    iplug_ternary(msg_status NOTICE SEND_ERROR arg2_OPTIONAL)
+    bn_tern(msg_status NOTICE SEND_ERROR arg2_OPTIONAL)
     message(${msg_status} "${arg2_ERROR_MESSAGE}${extra_error}")
     return()
   endif()

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.25)
 
 set(cwd ${IPLUG2_SDK_PATH}/IPlug/LV2)
 set(deps_dir ${IPLUG2_SDK_PATH}/Dependencies/IPlug)
@@ -21,19 +21,17 @@ endif()
 
 # Find the install path for lv2 plugins based on OS.
 if (IPLUG_OS MATCHES "Windows")
-  set(_paths "$ENV{APPDATA}/LV2" "$ENV{COMMONPROGRAMFILES}/LV2")
+  set(_user_install_path "$ENV{APPDATA}/LV2")
+  set(_system_install_path "$ENV{COMMONPROGRAMFILES}/LV2")
 elseif (IPLUG_OS MATCHES "Darwin")
-  set(_paths "$ENV{HOME}/Library/Audio/Plug-Ins/LV2" "/Library/Audio/Plug-Ins/LV2")
+  set(_user_install_path "$ENV{HOME}/Library/Audio/Plug-Ins/LV2")
+  set(_system_install_path "/Library/Audio/Plug-Ins/LV2")
 elseif (IPLUG_OS MATCHES "Linux")
-  set(_paths "$ENV{HOME}/.lv2" "/usr/local/lib/lv2" "/usr/lib/lv2")
+  set(_user_install_path "$ENV{HOME}/.lv2")
+  set(_system_install_path "/usr/local/lib/lv2") # Or /usr/lib/lv2
 endif()
 
-iplug_find_path(
-  LV2_INSTALL_PATH DIR
-  DEFAULT_IDX 0
-  DOC "Path to install LV2 plugins"
-  PATHS ${_paths}
-)
+iplug_set_install_paths(LV2 "${_user_install_path}" "${_system_install_path}")
 
 # Core LV2 interface library.
 add_library(iPlug2_LV2 INTERFACE)
@@ -86,7 +84,7 @@ function(iplug_configure_lv2 base_plugin target)
   # DSP target first
   add_library(${target} MODULE)
   iplug_configure_helper(GET_VARS lv2 COPY_PROPERTIES ${target})
-  set(install_dir "${LV2_INSTALL_PATH}/${plugin_name}.lv2")
+  set(install_dir "${IPLUG_LV2_USER_INSTALL_PATH}/${plugin_name}.lv2")
   iplug_target_add(${target} PUBLIC LINK iPlug2_LV2_DSP iPlug2_NoGraphics ${base_plugin})
 
   if (IPLUG_OS MATCHES "Windows")
@@ -101,9 +99,6 @@ function(iplug_configure_lv2 base_plugin target)
   set_target_properties(
     ${target} PROPERTIES
     OUTPUT_NAME "${plugin_name}"
-    LIBRARY_OUTPUT_DIRECTORY "${output_dir}"
-    LIBRARY_OUTPUT_DIRECTORY_DEBUG "${output_dir}"
-    LIBRARY_OUTPUT_DIRECTORY_RELEASE "${output_dir}"
     PREFIX ""
     SUFFIX ${suffix}
   )
@@ -124,9 +119,6 @@ function(iplug_configure_lv2 base_plugin target)
     target_link_libraries(${target_ui} PUBLIC iPlug2_LV2_UI ${base_plugin} ${gui_libraries})
     set_target_properties(${target_ui} PROPERTIES
       OUTPUT_NAME "${plugin_name}_ui"
-      LIBRARY_OUTPUT_DIRECTORY "${output_dir}"
-      LIBRARY_OUTPUT_DIRECTORY_DEBUG "${output_dir}"
-      LIBRARY_OUTPUT_DIRECTORY_RELEASE "${output_dir}"
       PREFIX ""
       SUFFIX ${suffix}
     )
@@ -136,8 +128,12 @@ function(iplug_configure_lv2 base_plugin target)
 
     # Handle resources
     iplug_target_bundle_resources(${target_ui} "${resource_dir}")
+    # All in one directory
+    bn_set_output_directory(${target_ui} "${output_dir}")
   endif()
 
+  # Remove configuration sub-directories.
+  bn_set_output_directory(${target} "${output_dir}")
   # After building copy to the correct directory
   iplug_add_post_build_copy(${target} "${output_dir}" "${install_dir}")
 endfunction()

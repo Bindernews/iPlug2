@@ -27,35 +27,32 @@ target_compile_options(sdk_common PUBLIC ${IPLUG_MSVC_FLAGS})
 target_compile_options(pluginterfaces PUBLIC ${IPLUG_MSVC_FLAGS})
 target_compile_options(base PUBLIC ${IPLUG_MSVC_FLAGS})
 
+# Reference: https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical+Documentation/Locations+Format/Plugin+Locations.html
 if (IPLUG_OS MATCHES "Windows")
-  set(_paths
-    $ENV{LOCALAPPDATA}/Programs/Common/VST3
-    $ENV{CommonProgramFiles}/VST3
-  )
+  set(_user_install_path "$ENV{LOCALAPPDATA}/Programs/Common/VST3")
+  set(_system_install_path $ENV{CommonProgramFiles}/VST3)
+  # Tehcnically we should install to "$ENV{CommonProgramFiles\(x86\)}/VST3"
+  # of the host is x64 but the plugin is x32. For now, this is good enough.
   if (CMAKE_SYSTEM_PROCESSOR MATCHES "X86")
     set(vst3_target_arch "x86-win")
-  elseif (CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "(AMD64)|(IA64)")
+  elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "(AMD64)|(IA64)")
     set(vst3_target_arch "x86_64-win")
   endif()
-
 elseif (IPLUG_OS MATCHES "Darwin")
-  set(_paths
-    "$ENV{HOME}/Library/Audio/Plug-Ins/VST3"
-    "/Library/Audio/Plug-Ins/VST3"
-  )
-
+  set(_user_install_path "$ENV{HOME}/Library/Audio/Plug-Ins/VST3")
+  set(_system_install_path "/Library/Audio/Plug-Ins/VST3")
+  set(vst3_target_arch "MacOS")
 elseif (IPLUG_OS MATCHES "Linux")
-  set(_paths "$ENV{HOME}/.vst3")
+  set(_user_install_path "$ENV{HOME}/.vst3")
+  set(_system_install_path "/usr/local/lib/vst3")
   set(vst3_target_arch "${CMAKE_SYSTEM_PROCESSOR}-linux")
 endif()
 
-iplug_find_path(VST3_INSTALL_PATH REQUIRED DIR DEFAULT_IDX 0
-  DOC "Path to install VST3 plugins"
-  PATHS ${_paths})
+iplug_set_install_paths(VST3 "${_user_install_path}" "${_system_install_path}")
+set(IPLUG_VST3_TARGET_ARCH "${vst3_target_arch}" CACHE INTERNAL "")
 
-set(IPLUG2_VST_ICON
-  "${VST3_SDK}/doc/artwork/VST_Logo_Steinberg.ico"
-  CACHE FILEPATH "Path to VST3 plugin icon")
+set(IPLUG_VST3_ICON "${VST3_SDK}/doc/artwork/VST_Logo_Steinberg.ico" CACHE FILEPATH
+  "Path to VST3 plugin icon")
 
 ##########################
 # VST3 Interface Library #
@@ -127,13 +124,9 @@ function(iplug_configure_vst3 base_plugin target)
   set(res_dir "${output_dir}/Contents/Resources")
 
   if (IPLUG_OS MATCHES "Windows")
-    set(dll_dir "${output_dir}/Contents/${vst3_target_arch}/")
     # Use .vst3 as the extension instead of .dll
     set_target_properties(${target} PROPERTIES
       OUTPUT_NAME "${plugin_name}"
-      LIBRARY_OUTPUT_DIRECTORY ${dll_dir}
-      LIBRARY_OUTPUT_DIRECTORY_DEBUG ${dll_dir}
-      LIBRARY_OUTPUT_DIRECTORY_RELEASE ${dll_dir}
       PREFIX ""
       SUFFIX ".vst3")
 
@@ -148,14 +141,13 @@ function(iplug_configure_vst3 base_plugin target)
       SUFFIX "")
 
     if (CMAKE_GENERATOR STREQUAL "Xcode")
-      set(output_dir "${CMAKE_BINARY_DIR}/$<CONFIG>/${plugin_name}.vst3")
+      # set(output_dir "${CMAKE_BINARY_DIR}/$<CONFIG>/${plugin_name}.vst3")
       set(res_dir "")
     endif()
 
   elseif (IPLUG_OS MATCHES "Linux")
     set_target_properties(${target} PROPERTIES
       OUTPUT_NAME "${IPLUG_APP_NAME}"
-      LIBRARY_OUTPUT_DIRECTORY "${output_dir}/Contents/${vst3_target_arch}/"
       PREFIX ""
       SUFFIX ".so")
 
@@ -164,7 +156,7 @@ function(iplug_configure_vst3 base_plugin target)
   if (res_dir)
     iplug_target_bundle_resources(${target} "${res_dir}")
   endif()
-
+  bn_set_output_directory(${target} "${output_dir}/Contents/${IPLUG_VST3_TARGET_ARCH}")
   iplug_add_post_build_copy(${target} "${output_dir}" "${install_dir}")
 endfunction()
 

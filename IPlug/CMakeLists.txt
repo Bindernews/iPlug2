@@ -7,6 +7,8 @@ include(CheckCXXCompilerFlag)
 include(CheckLinkerFlag)
 
 # Load helper functions
+set(BN_RESOURCE_PROPERTY "IPLUG_RESOURCES" CACHE INTERNAL "" FORCE)
+include(BnFunctions)
 include(IPlugFunctions)
 
 if (CMAKE_SYSTEM_NAME MATCHES "Windows")
