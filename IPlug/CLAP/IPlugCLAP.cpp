@@ -31,6 +31,75 @@
 
 using namespace iplug;
 
+//=========================================================
+// CLAP plugin initialization
+#pragma region Init
+
+// global storage
+static std::string gPluginPath;
+
+bool clap_init(const char* pluginPath)
+{
+  // Init globals
+  gPluginPath = pluginPath;
+
+  return true;
+}
+
+static void clap_deinit(void)
+{
+  gPluginPath.clear();
+}
+
+static uint32_t clap_get_plugin_count(const clap_plugin_factory_t *factory)
+{
+  return 1;
+}
+
+static const clap_plugin_descriptor* clap_get_plugin_descriptor(const clap_plugin_factory_t *factory, uint32_t index)
+{
+  if (!index)
+    return GetClapDescriptor();
+
+  return nullptr;
+}
+
+static const clap_plugin* clap_create_plugin(const clap_plugin_factory_t *factory, const clap_host* host, const char* plugin_id)
+{
+  if (!strcmp(GetClapDescriptor()->id, plugin_id))
+  {
+    IPlugCLAP* pPlug = MakePlug(InstanceInfo{GetClapDescriptor(), host});
+    return pPlug->clapPlugin();
+  }
+
+  return nullptr;
+}
+
+CLAP_EXPORT const clap_plugin_factory_t clap_factory = {
+  clap_get_plugin_count,
+  clap_get_plugin_descriptor,
+  clap_create_plugin,
+};
+
+const void *clap_get_factory(const char *factory_id)
+{
+   if (!::strcmp(factory_id, CLAP_PLUGIN_FACTORY_ID))
+      return &clap_factory;
+
+   return nullptr;
+}
+
+CLAP_EXPORT const clap_plugin_entry_t clap_entry = {
+  CLAP_VERSION,
+  clap_init,
+  clap_deinit,
+  clap_get_factory,
+};
+
+#pragma endregion Init
+//=========================================================
+
+
 void ClapNameCopy(char* destination, const char* source)
 {
   strncpy(destination, source, CLAP_NAME_SIZE);

@@ -68,34 +68,7 @@
 
 #pragma mark - VST2
 #if defined VST2_API
-  extern "C"
-  {
-    EXPORT void* VSTPluginMain(audioMasterCallback hostCallback)
-    {
-      using namespace iplug;
-
-      IPlugVST2* pPlug = iplug::MakePlug(iplug::InstanceInfo{hostCallback});
-
-      if (pPlug)
-      {
-        AEffect& aEffect = pPlug->GetAEffect();
-        pPlug->EnsureDefaultPreset();
-        aEffect.numPrograms = std::max(aEffect.numPrograms, 1); // some hosts don't like 0 presets
-        return &aEffect;
-      }
-      return 0;
-    }
-#ifndef OS_LINUX
-    EXPORT int main(int hostCallback)
-    {
-    #if defined OS_MAC
-      return (VstIntPtr) VSTPluginMain((audioMasterCallback)hostCallback);
-    #else
-      return (int) VSTPluginMain((audioMasterCallback)hostCallback);
-    #endif
-    }
-#endif
-  };
+// Nothing to do here
 #pragma mark - VST3 (All)
 #elif defined VST3_API || VST3C_API || defined VST3P_API
   #include "public.sdk/source/main/pluginfactory.h"
@@ -296,86 +269,35 @@
   #endif
 #endif
 
-std::string gPluginPath;
-std::unique_ptr<clap_plugin_descriptor> gPluginDesc;
+// Define and statically initialize the
+static std::unique_ptr<clap_plugin_descriptor> gPluginDesc;
 
-static bool clap_init(const char* pluginPath)
+const clap_plugin_descriptor* iplug::GetClapDescriptor()
 {
-  // Init globals
-
-  gPluginPath = pluginPath;
-  gPluginDesc = std::unique_ptr<clap_plugin_descriptor>(new clap_plugin_descriptor());
-
-  // Init the descriptor
-
-  gPluginDesc->clap_version = CLAP_VERSION;
-
-  gPluginDesc->id = BUNDLE_DOMAIN "." BUNDLE_MFR "." BUNDLE_NAME;
-  gPluginDesc->name = PLUG_NAME;
-  gPluginDesc->vendor = PLUG_MFR;
-  gPluginDesc->url = PLUG_URL_STR;
-
-  gPluginDesc->manual_url = CLAP_MANUAL_URL;
-  gPluginDesc->version = PLUG_VERSION_STR;
-  gPluginDesc->support_url = CLAP_SUPPORT_URL;
-  gPluginDesc->description = CLAP_DESCRIPTION;
-
-  static const char *clap_features[] = { CLAP_FEATURES, NULL };
-  gPluginDesc->features = clap_features;
-
-  return true;
-}
-
-static void clap_deinit(void)
-{
-  gPluginPath.clear();
-  gPluginDesc = nullptr;
-}
-
-static uint32_t clap_get_plugin_count(const clap_plugin_factory_t *factory)
-{
-  return 1;
-}
-
-static const clap_plugin_descriptor* clap_get_plugin_descriptor(const clap_plugin_factory_t *factory, uint32_t index)
-{
-  if (!index)
-    return gPluginDesc.get();
-
-  return nullptr;
-}
-
-static const clap_plugin* clap_create_plugin(const clap_plugin_factory_t *factory, const clap_host* host, const char* plugin_id)
-{
-  if (!strcmp(gPluginDesc->id, plugin_id))
+  if (!gPluginDesc)
   {
-    IPlugCLAP* pPlug = MakePlug(InstanceInfo{gPluginDesc.get(), host});
-    return pPlug->clapPlugin();
+    clap_plugin_descriptor *pDesc = new clap_plugin_descriptor();
+
+    // Init the descriptor
+    pDesc->clap_version = CLAP_VERSION;
+
+    pDesc->id = BUNDLE_DOMAIN "." BUNDLE_MFR "." BUNDLE_NAME;
+    pDesc->name = PLUG_NAME;
+    pDesc->vendor = PLUG_MFR;
+    pDesc->url = PLUG_URL_STR;
+
+    pDesc->manual_url = CLAP_MANUAL_URL;
+    pDesc->version = PLUG_VERSION_STR;
+    pDesc->support_url = CLAP_SUPPORT_URL;
+    pDesc->description = CLAP_DESCRIPTION;
+
+    static const char *clap_features[] = { CLAP_FEATURES, NULL };
+    pDesc->features = clap_features;
+
+    gPluginDesc.reset(pDesc);
   }
-
-  return nullptr;
+  return gPluginDesc.get();
 }
-
-CLAP_EXPORT const clap_plugin_factory_t clap_factory = {
-  clap_get_plugin_count,
-  clap_get_plugin_descriptor,
-  clap_create_plugin,
-};
-
-const void *clap_get_factory(const char *factory_id)
-{
-   if (!::strcmp(factory_id, CLAP_PLUGIN_FACTORY_ID))
-      return &clap_factory;
-
-   return nullptr;
-}
-
-CLAP_EXPORT const clap_plugin_entry_t clap_entry = {
-  CLAP_VERSION,
-  clap_init,
-  clap_deinit,
-  clap_get_factory,
-};
 
 #elif defined AUv3_API || defined AAX_API || defined APP_API
 // Nothing to do here
@@ -454,9 +376,6 @@ Steinberg::FUnknown* MakeProcessor()
   info.mOtherGUID = Steinberg::FUID(VST3_CONTROLLER_UID);
   return static_cast<Steinberg::Vst::IAudioProcessor*>(new PLUG_CLASS_NAME(info));
 }
-
-#pragma mark - LV2 processor
-#elif defined LV2_API
 
 #else
 #error "No API defined!"

@@ -29,6 +29,9 @@
 
 BEGIN_IPLUG_NAMESPACE
 
+/// @brief Get the global plugin descriptor, implemented in IPlug_include_in_plug_src.h
+const clap_plugin_descriptor* GetClapDescriptor();
+
 /** Used to pass various instance info to the API class */
 struct InstanceInfo
 {
