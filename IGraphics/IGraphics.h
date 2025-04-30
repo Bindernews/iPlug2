@@ -1550,8 +1550,9 @@ public:
   /** @param x The X coordinate at which the mouse event occurred
    * @param y The Y coordinate at which the mouse event occurred
    * @param mod IMouseMod struct contain information about the modifiers held
-   * @param delta Delta value \todo explain */
-  void OnMouseWheel(float x, float y, const IMouseMod& mod, float delta);
+   * @param delta Delta value \todo explain
+   * @return /c true on handled */
+  bool OnMouseWheel(float x, float y, const IMouseMod& mod, float delta);
 
   /** @param x The X coordinate of the mouse cursor at the time of the key press
    * @param y The Y coordinate of the mouse cursor at the time of the key press
@@ -1607,8 +1608,8 @@ public:
   /** Used to tell the graphics context to stop tracking mouse interaction with a control */
   void ReleaseMouseCapture();
 
-  /** @return \c true if the context can handle mouse overs */
-  bool CanEnableMouseOver() const { return mEnableMouseOver; }
+  /** @return \c true if the context has mouse overs enabled */
+  bool MouseOverEnabled() const { return mEnableMouseOver; }
 
   /** @return An integer representing the control index in IGraphics::mControls which the mouse is over, or -1 if it is not */
   inline int GetMouseOver() const { return mMouseOverIdx; }
