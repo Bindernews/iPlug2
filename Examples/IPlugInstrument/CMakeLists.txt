@@ -4,21 +4,20 @@ cmake_minimum_required(VERSION 3.20 FATAL_ERROR)
 # This is a build file for iPlug2.
 # It may work on Windows and MacOS, but that isn't the initial goal.
 #
-# To setup the build (change CMAKE_BUILD_TYPE as desired):
-#   cmake -S . -B build-linux -DCMAKE_BUILD_TYPE=Debug
+# To setup the build:
+#   cmake -S. --preset default-linux
 # To build the VST2 version:
 #   cmake --build build-linux --target IPlugInstrument_vst2
-# To build the VST3 version:
-#   cmake --build build-linux --target IPlugInstrument_vst2
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 project(IPlugInstrument VERSION 1.0.0 LANGUAGES C CXX)
 
 if (NOT IPLUG2_SDK_PATH)
   set(IPLUG2_SDK_PATH ${CMAKE_SOURCE_DIR}/../../)
 endif()
-set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 include(${IPLUG2_SDK_PATH}/iPlug2.cmake)
 
+# Verify that the required formats loaded successfully.
 foreach (format app clap)
   if (NOT ${format} IN_LIST IPLUG_LOADED_FORMATS)
     message(FATAL_ERROR "Missing required output format: ${format}")
@@ -65,6 +64,13 @@ iplug_target_add(plugin_base INTERFACE
     ${cwd}/resources
 )
 
+iplug_embed_files(
+  plugin_base
+  FILES
+    ${IPLUG2_SDK_PATH}/IPlug/resource/Roboto-Regular.ttf
+    resources/IPlugInstrument.ico
+)
+
 # Make things pretty in IDEs.
 # source_group(TREE ${cwd} FILES ${_src})
 source_group(TREE "${cwd}/resources" PREFIX Resources FILES ${_res})
@@ -80,4 +86,3 @@ iplug_setup_plugin(
     vst2 vst3 au2 au3 lv2 wam
   COPY_AFTER_BUILD
 )
-

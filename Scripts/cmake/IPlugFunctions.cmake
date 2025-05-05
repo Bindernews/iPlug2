@@ -1,13 +1,19 @@
 cmake_minimum_required(VERSION 3.20)
 include_guard(GLOBAL)
 
+find_package(Python 3.8 REQUIRED COMPONENTS Interpreter)
+
 # Define iplug-specific properties
 define_property(TARGET PROPERTY IPLUG_PLUGIN_NAME
   BRIEF_DOCS "The name of the plugin/app"
-  FULL_DOCS "The name of the plugin/app")
+  FULL_DOCS "The name of the plugin/app. If not specified it will default to the project name.")
 define_property(TARGET PROPERTY IPLUG_PLUGIN_VERSION
   BRIEF_DOCS "The version (major.minor.bugfix) of the plugin."
   FULL_DOCS "The version (major.minor.bugfix) of the plugin. If not specified it will default to the project version.")
+define_property(TARGET PROPERTY IPLUG_PLUGIN_DESCRIPTION
+  BRIEF_DOCS "Description of the plugin."
+  FULL_DOCS "See brief doc"
+  INITIALIZE_FROM_VARIABLE IPLUG_PLUGIN_DESCRIPTION)
 define_property(TARGET PROPERTY IPLUG_PLUGIN_GRAPHICS
   BRIEF_DOCS "The IGraphics backend API."
   FULL_DOCS "See iplug_setup_plugin.")
@@ -18,6 +24,32 @@ define_property(TARGET PROPERTY IPLUG_COPY_AFTER_BUILD
 define_property(TARGET PROPERTY IPLUG_RESOURCES
   BRIEF_DOCS "List of resource files to be copied or loaded into the plugin's resource directory"
   FULL_DOCS "See brief doc")
+define_property(TARGET PROPERTY IPLUG_PLUGIN_CATEGORY
+  BRIEF_DOCS "The category or categories the plugin applies to"
+  FULL_DOCS "The plugin category/categories, used by hosts for organization.
+    This uses values from CLAP (https://github.com/free-audio/clap/blob/main/include/clap/plugin-features.h)
+    and converts them to other formats as appropriate.")
+define_property(TARGET PROPERTY IPLUG_EMBEDC_FILES
+  BRIEF_DOCS "List of converted C files that will be bundled for a target using embedc.py"
+  FULL_DOCS "See brief doc")
+
+# List of valid plugin categories, sourced from plugin-features.h
+set(IPLUG_VALID_PLUGIN_CATEGORIES
+  # Main categories
+  "instrument" "audio-effect" "note-effect" "note-detector" "analyzer"
+  # Sub-categories - instrument
+  "synthesizer" "sampler" "drum" "drum-machine"
+  # Sub-categories - audio effect
+  "filter" "phaser" "equalizer" "de-esser" "phase-vocoder" "granular" "frequency-shifter" "pitch-shifter"
+  "distortion" "transient-shaper" "compressor" "Expander" "gate" "limiter"
+  "flanger" "chorus" "delay" "reverb" "tremolo" "glitch"
+  # Sub-categories - misc
+  "utility" "pitch-correction" "restoration"
+  "multi-effects"
+  "mixing" "mastering"
+  # Remainder of set args
+  CACHE INTERNAL ""
+)
 
 #! iplug_target_add : Helper function to add sources, include directories, etc.
 #
@@ -177,8 +209,6 @@ function(iplug_configure_basic_plist base_target)
     @ONLY)
 endfunction()
 
-
-
 #! iplug_target_bundle_resource : Internal function to copy all resources to the output directory
 #
 # This pulls the list of resources from the target's RESOURCE property. Currently
@@ -245,6 +275,75 @@ function(iplug_target_bundle_resources target res_dir)
 
     endforeach()
   endif()
+endfunction()
+
+#[===[.rst
+
+]===]
+function(iplug_embed_files target)
+  # Get the variables back in-scope. Since this package is already found at the start of the file
+  # it will give the same results as earlier.
+  find_package(Python QUIET COMPONENTS Interpreter)
+
+  # Parse our arguments
+  cmake_parse_arguments(PARSE_ARGV 1 arg "" "INTO" "FILES")
+
+  # Setup some paths
+  set(embedc_cmd "${Python_EXECUTABLE}" "${IPLUG2_SDK_PATH}/Scripts/embedc.py")
+  set(bundle_c ${CMAKE_CURRENT_BINARY_DIR}/${target}_bundle.c)
+  set(bundle_h ${CMAKE_CURRENT_BINARY_DIR}/${target}_bundle.h)
+
+  # Determine set-type for target_sources
+  get_target_property(target_type ${target} TYPE)
+  bn_tern(set_type "INTERFACE" "PRIVATE" "${target_type}" STREQUAL "INTERFACE_LIBRARY")
+
+  # Get the existing property value. If NOTFOUND then we know we need to
+  # do some initialization.
+  get_target_property(embedc_files ${target} IPLUG_EMBEDC_FILES)
+  if (NOT embedc_files)
+    set(bundle_depends $<TARGET_PROPERTY:${target},IPLUG_EMBEDC_FILES>)
+    add_custom_command(
+      OUTPUT ${bundle_c} ${bundle_h}
+      COMMAND ${embedc_cmd} --bundle -o "${bundle_c}" --header "${bundle_h}" $<JOIN:${bundle_depends}," ">
+      DEPENDS ${bundle_depends}
+      VERBATIM
+    )
+    # Make target depend on the generated bundle files
+    target_sources(${target} ${set_type} ${bundle_c} ${bundle_h})
+    # Clear embedc_files so we can append it properly later
+    set(embedc_files "")
+  endif()
+
+  # Make unique name for data file
+  string(SHA256 names_hash "${arg_FILES}")
+  set(convert_c "${CMAKE_CURRENT_BINARY_DIR}/embedc/convert_${names_hash}.c")
+
+  # Use embedc to parse the inputs
+  bn_tern(into_option "--into=${arg_INTO}" "" arg_INTO)
+  execute_process(
+    COMMAND
+      ${embedc_cmd} --show -o -
+      -C "${CMAKE_CURRENT_SOURCE_DIR}" ${into_options}
+      ${arg_FILES}
+    OUTPUT_VARIABLE convert_input
+  )
+
+  # Extract the resource files from the output by replacing all "keys" with ";".
+  string(REGEX REPLACE "\n([^=]+)=" ";" resource_files "\n${convert_input}")
+  # Turn newline-separated list into CMake list so it outputs correctly
+  string(REPLACE "\n" ";" resource_input "${convert_input}")
+  # Custom command to generate the embed file
+  add_custom_command(
+    OUTPUT ${convert_c}
+    COMMAND ${embedc_cmd} --convert -o "${convert_c}" ${resource_input}
+    DEPENDS ${resource_files}
+    VERBATIM
+  )
+  # The target needs to actually compile and link the generated C file
+  target_sources(${target} ${set_type} ${convert_c})
+  # Update the IPLUG_EMBEDC_FILES property, remember this is SPACE-separated
+  list(APPEND embedc_files "${convert_c}")
+  set_property(TARGET ${target} PROPERTY IPLUG_EMBEDC_FILES "${embedc_files}")
 endfunction()
 
 #[===[.rst:

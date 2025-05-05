@@ -15,7 +15,7 @@
         "lhs": "${hostSystemName}",
         "rhs": "Linux"
       },
-      "binaryDir": "${sourceDir}/build-default/",
+      "binaryDir": "${sourceDir}/build-linux/",
       "cacheVariables": {
         "IPLUG_APP_JACK": "OFF",
         "CMAKE_BUILD_TYPE": "Debug"

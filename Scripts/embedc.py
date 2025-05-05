@@ -40,13 +40,13 @@ NON_ESCAPED_EQUALS = re.compile(r'(?<!\\)=')
 DATA_SUFFIX = '_data'
 INC_STDINT = '#include <stdint.h>\n'
 
-EXPORT_C_BEGIN = '''\
+EXTERN_C_BEGIN = '''\
 #ifdef __cplusplus
-export "C" {
+extern "C" {
 #endif
 '''
 
-EXPORT_C_END = '''\
+EXTERN_C_END = '''\
 #ifdef __cplusplus
 }
 #endif
@@ -121,6 +121,10 @@ def bytes_to_c_string(d: bytes) -> str:
   # Join the lines
   return ''.join(lines)
 
+
+class UserError(Exception):
+  pass
+
 @dataclasses.dataclass
 class FileEmbed:
   """Represends a file to be embedded in an executable.
@@ -153,7 +157,7 @@ class FileEmbed:
     fd.write('{\n' + bytes_to_c_string(d) + "};\n")
 
   def declaration(self) -> str:
-    return f'{{ \"{self.name}\", {len(self.data)}, {self.cname}_data }}'
+    return f'{{ \"{self.name}\", {self.size}, {self.data_name} }}'
   
   @staticmethod
   def parse_declaration(decl: str) -> 'FileEmbed':
@@ -169,7 +173,10 @@ class FileEmbed:
     data_name = decl1[comma2 + 1:].strip()
     size = int(decl1[comma1 + 1:comma2].strip())
     # Json string parsing is close enough to C for this, probably
-    name = json.loads(decl1[0:comma1 - 1])
+    try:
+      name = json.loads(decl1[0:comma1])
+    except json.JSONDecodeError:
+      raise ValueError('invalid declaration')
     # Assume this is true for now
     cname = data_name.removesuffix(DATA_SUFFIX)
     # Return parsed result
@@ -225,13 +232,15 @@ class InputSpec:
       return
     if f_path.is_dir():
       # Cannot handle directories yet
-      raise ValueError(f'Cannot embed directories, please use globs - input: {f_path}')
+      raise UserError(f'Cannot embed directories, please use globs - input: {f_path}')
     # Check if the path contains any glob characters, if not then it's invalid.
     if not InputSpec.maybe_glob(str(f_path)):
-      raise ValueError(f'Cannot find file(s) - input: {f_path}')
+      raise UserError(f'Cannot find file(s) - input: {f_path}')
     # Try to resolve as a glob. Globs must be relative, so make it "relative" to the anchor
     for p in Path(f_path.anchor).glob('/'.join(f_path.parts[1:])):
       self.files.append(p)
+    if len(self.files) == 0:
+      logger.warning('msg="input spec did not match any files" spec="%s"', self.path_str)
 
   @staticmethod
   def flatten(specs: 'list[InputSpec]', absolute: bool = False) -> 'list[InputSpec]':
@@ -266,7 +275,7 @@ class InputSpec:
     return '*' in s or '?' in s or ('[' in s and ']' in s)
 
   @staticmethod
-  def parse(input: 'str|Path|InputSpec', cwd: 'Path|None' = None) -> 'InputSpec':
+  def parse(input: 'str|Path|InputSpec', cwd: 'Path|None' = None, default_dir: str = '') -> 'InputSpec':
     """Parse an input specification. See :ref:`InputSpec` for details.
 
     If ``cwd`` is not `None`, then this will also call ``resolve_files()`` before returning the instance.
@@ -295,7 +304,7 @@ class InputSpec:
     # Make a reasonable embed_path, but don't guess.
     # Either it's provided, or just assume file at the root.
     if embed_path is None:
-      embed_path = ''
+      embed_path = default_dir
     embed_path = embed_path.lstrip('/')
 
     spec = InputSpec(embed_path=embed_path, path_str=path_str, files=[])
@@ -304,8 +313,8 @@ class InputSpec:
     return spec
   
   @staticmethod
-  def parse_all(inputs: 'list[str]', cwd: 'Path|None' = None) -> 'list[InputSpec]':
-    return [InputSpec.parse(s, cwd) for s in inputs]
+  def parse_all(inputs: 'list[str]', cwd: 'Path|None' = None, default_dir: str = '') -> 'list[InputSpec]':
+    return [InputSpec.parse(s, cwd, default_dir) for s in inputs]
 
 class EmbedHelper:
   """ Helper for various embedc operations. """
@@ -329,6 +338,8 @@ class EmbedHelper:
     """ List of files to embed """
     self.indent = '  '
     """ Indentation string """
+    self.default_embed_directory: str = ''
+    """ Default directory to place embedded files, does not override explicit locations. """
     self.scaled_file_types = ['.png']
     """ bin2c will search for higher-resolution copies of files with these extensions """
 
@@ -363,7 +374,7 @@ class EmbedHelper:
     msg = []
     if extern:
       for e in self.file_list:
-        msg.append(f'extern const unsigned char *{e.data_name};\n')
+        msg.append(f'extern const unsigned char {e.data_name}[{e.size}];\n')
     msg.append('\n\n')
     msg.append(f'const struct {self.resource_type} {self.array_name}[] = {{\n')
     for e in self.file_list:
@@ -375,23 +386,68 @@ class EmbedHelper:
 
   def write_list_header(self, fd: 'TextIO'):
     fd.write('#pragma once\n')
-    fd.write(EXPORT_C_BEGIN)
+    fd.write(EXTERN_C_BEGIN)
     self.write_header(fd)
     fd.write(f'extern const {self.resource_type} *{self.array_name};\n')
     fd.write(f'const void* {self.load_function}(const char *path, unsigned int *p_size);\n')
-    fd.write(EXPORT_C_END)
+    fd.write(EXTERN_C_END)
     fd.write('\n')
 
+  def parse_all_inputs(self, inputs: 'list[str]') -> 'list[InputSpec]':
+    return InputSpec.parse_all(inputs, self.cwd, default_dir=self.default_embed_directory)
+
   def load_inputs_for_convert(self, inputs: 'list[str]') -> 'list[FileEmbed]':
-    specs = self.resolve_input_specs(InputSpec.parse_all(inputs, self.cwd))
+    specs = self.resolve_input_specs(self.parse_all_inputs(inputs))
     return self.make_embeds_from_files(specs)
   
   def load_inputs_for_bundle(self, inputs: 'list[str]') -> 'list[FileEmbed]':
-    specs = InputSpec.flatten(InputSpec.parse_all(inputs, self.cwd), absolute=True)
+    specs = InputSpec.flatten(self.parse_all_inputs(inputs), absolute=True)
     return self.scan_data_files([p.files[0] for p in specs])
   
   def load_inputs_for_show(self, inputs: 'list[str]') -> 'list[InputSpec]':
-    return self.resolve_input_specs(InputSpec.parse_all(inputs, self.cwd))
+    return self.resolve_input_specs(self.parse_all_inputs(inputs))
+  
+
+  def handle_cli(self, args: 'HelperCliArgs'):
+    # Set self options from CLI arguments
+    if args.C:
+      self.cwd = Path(args.C).resolve()
+    if args.type:
+      self.resource_type = args.type
+    if args.array:
+      self.array_name = args.array
+    if args.scaled:
+      self.scaled_file_types = args.scaled.split(',')
+    if args.into:
+      self.default_embed_directory = args.into
+
+    if args.convert:
+      # Convert and possibly bundle
+      self.file_list = self.load_inputs_for_convert(args.inputs)
+      with args.output as fd:
+        self.write_header(fd)
+        self.write_data_file(fd)
+        # If convert and bundle in one, then append here
+        if args.bundle:
+          self.write_list(fd, extern=False)
+
+    elif args.bundle:
+      # Bundle existing converted files, but NOT converting any new ones
+      self.file_list = self.load_inputs_for_bundle(args.inputs)
+      with args.output as fd:
+        self.write_header(fd)
+        self.write_list(fd, extern=True)
+
+    elif args.show:
+      # Parse inputs and then list them to the output
+      specs = self.load_inputs_for_show(args.inputs)
+      msg = [str(e) for e in specs]
+      args.output.write('\n'.join(msg))
+
+    if args.bundle and args.header:
+      # Do this regardless of the value of args.convert or args.show
+      with open(args.header, 'w') as fd:
+        self.write_list_header(fd)
 
   def scan_data_files(self, files: 'list[os.PathLike]') -> 'list[FileEmbed]':
     """
@@ -474,17 +530,40 @@ class EmbedHelper:
         data=data_in
       ))
     return result
+  
+@dataclasses.dataclass
+class HelperCliArgs:
+  """Typed representation of the cli parser options."""
 
-def main(argv):
-  parser = argparse.ArgumentParser(prog=argv[0])
+  bundle: bool = False
+  convert: bool = False
+  show: bool = False
+
+  header: 'Path|None' = None
+  array: 'str|None' = None
+  scaled: 'str|None' = None
+  C: 'str|None' = None
+  into: 'str|None' = None
+  type: 'str|None' = None
+  verbose: int = 0
+  output: 'TextIO' = None
+  inputs: 'list[str]' = None
+
+def make_parser(prog: str = 'embedc.py') -> argparse.ArgumentParser:
+  parser = argparse.ArgumentParser(prog=prog)
   
   g_bundle = parser.add_argument_group('bundle options')
-  g_bundle.add_argument('--bundle', action='store_true', help='Bundle one or more C data files into a single list')
-  g_bundle.add_argument('--header', type=str, help='Output header file which will contain the list declaration')
-  g_bundle.add_argument('--array', type=str, help='Name of the list (default: EMBED_LIST)')
+  g_bundle.add_argument('--bundle', action='store_true', help="""
+  Bundle one or more C data files into a single list. If this option is given
+  along with --convert then the files will be converted and bundled together.
+  Otherwise the inputs are assumed to be existing C files that were produced
+  as the output of --convert, and they will be scanned for embeds.  
+  """)
+  g_bundle.add_argument('--header', type=Path, help='Output header file which will contain the list declaration.')
+  g_bundle.add_argument('--array', type=str, help='Name of the list. (default: EMBED_LIST)')
 
   g_convert = parser.add_argument_group('convert options')
-  g_convert.add_argument('--convert', action='store_true', help='Convert one or more resource files into C data files')
+  g_convert.add_argument('--convert', action='store_true', help='Convert one or more resource files into C data files.')
   g_convert.add_argument('-s', '--scaled', type=str, help='''
   Comma-separated list of extensions that bin2c should search for higher-resolution
   copies of (e.g. icon_20pt.png and icon_20pt@2x.png)
@@ -493,10 +572,11 @@ def main(argv):
   g_find = parser.add_argument_group('show options')
   g_find.add_argument('--show', action='store_true', help='Print the files located and their embed paths')
 
-  parser.add_argument('-C', type=str, default='.', metavar='<working directory>', help='Change to the given directory before doing anything else')
-  parser.add_argument('--type', type=str, help='Override the struct type name (default: embedded_file)')
-  parser.add_argument('-o', '--output', type=argparse.FileType('w'), default='-', required=True, help='Output file (default: stdout)')
-  parser.add_argument('-v', '--verbose', action='count', default=0, help='Increase the amount of log output')
+  parser.add_argument('-C', type=str, default='.', metavar='<working directory>', help='Perform operations from the given directory.')
+  parser.add_argument('--into', type=str, help='Set the sub-directory to put embed files into.')
+  parser.add_argument('--type', type=str, help='Override the struct type name. (default: embedded_file)')
+  parser.add_argument('-o', '--output', type=argparse.FileType('w'), default='-', required=True, help='Output file. (default: stdout)')
+  parser.add_argument('-v', '--verbose', action='count', default=0, help='Increase the amount of log output.')
 
   INPUTS_HELP = '''
   Files to convert/bundle, in the format "<path>" or "<embed_path>=<path>".
@@ -507,54 +587,25 @@ def main(argv):
   ALL .ttf file in the "fonts/" embedded folder, regardless of location.
   '''
   parser.add_argument('inputs', type=str, nargs='*', default=[], help=INPUTS_HELP)
-  
-  args = parser.parse_args(argv[1:])
+  return parser
+
+def main(argv):
+  parser = make_parser()
+  args = parser.parse_args(argv[1:], HelperCliArgs())
 
   if not (args.convert or args.bundle or args.show):
     parser.error('at least one of --convert, --bundle, or --show is required')
 
-  # Setup logger
-  log_level = max(0, logging.WARNING - (10 * args.verbose))
-  logger.setLevel(log_level)
+  try:
+    # Setup logger
+    log_level = max(0, logging.WARNING - (10 * args.verbose))
+    logger.setLevel(log_level)
 
-  b2 = EmbedHelper()
-
-  # Set b2 options from CLI arguments
-  if args.C:
-    b2.cwd = Path(args.C).resolve()
-  if args.type:
-    b2.resource_type = args.type
-  if args.array:
-    b2.array_name = args.array
-  if args.scaled:
-    b2.scaled_file_types = args.scaled.split(',')
-
-  if args.convert:
-    # Convert and possibly bundle
-    b2.file_list = b2.load_inputs_for_convert(args.inputs)
-    with args.output as fd:
-      b2.write_header(fd)
-      b2.write_data_file(fd)
-      # If convert and bundle in one, then append here
-      if args.bundle:
-        b2.write_list(fd, extern=False)
-
-  elif args.bundle:
-    # Bundle existing converted files, but NOT converting any new ones
-    b2.file_list = b2.load_inputs_for_bundle(args.inputs)
-    with args.output as fd:
-      b2.write_header(fd)
-      b2.write_list(fd, extern=True)
-
-  elif args.show:
-    specs = b2.load_inputs_for_show(args.inputs)
-    msg = [str(e) for e in specs]
-    args.output.write('\n'.join(msg))
-
-  if args.bundle and args.header:
-    # Do this regardless of the value of args.convert
-    with open(args.header, 'w') as fd:
-      b2.write_list_header(fd)
+    # Handle CLI operations
+    b2 = EmbedHelper()
+    b2.handle_cli(args)
+  except UserError as e:
+    logger.error(str(e))
 
 if __name__ == '__main__':
   main(sys.argv)
