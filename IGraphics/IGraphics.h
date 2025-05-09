@@ -560,7 +560,7 @@ public:
   /** Applies a drop shadow directly onto a layer
   * @param layer - the layer to add the shadow to 
   * @param shadow - the shadow to add */
-  void ApplyLayerDropShadow(ILayerPtr& layer, const IShadow& shadow);
+  virtual void ApplyLayerDropShadow(ILayerPtr& layer, const IShadow& shadow);
 
   /** Get the contents of a layer as Raw RGBA bitmap data
    * NOTE: you should only call this within IControl::Draw()
@@ -975,6 +975,17 @@ public:
   /** Get the app group ID on macOS and iOS, returns emtpy string on other OSs */
   virtual const char* GetAppGroupID() const { return ""; }
 
+  // An RAII helper to manage the IGraphics GL context
+  class ScopedGLContext
+  {
+  public:
+    ScopedGLContext(IGraphics* pGraphics)
+    : mIGraphics(*pGraphics) { mIGraphics.ActivateGLContext(); }
+    ~ScopedGLContext() { mIGraphics.DeactivateGLContext(); }
+  private:
+    IGraphics& mIGraphics;
+  };
+  
 protected:
   /* Activate the context for the view (GL only) */
   virtual void ActivateGLContext() {};
@@ -1354,6 +1365,9 @@ public:
   
   /* Called by controls to display text in the bubble control */
   void ShowBubbleControl(IControl* pCaller, float x, float y, const char* str, EDirection dir = EDirection::Horizontal, IRECT minimumContentBounds = IRECT());
+  
+  /* Sets the region of the IGraphics context that should be used for the FPS display */
+  void SetFPSDisplayBounds(const IRECT& bounds) { mPerfDisplayBounds = bounds; }
 
   /** Shows a control to display the frame rate of drawing
    * @param enable \c true to show */
@@ -1827,6 +1841,8 @@ private:
   std::unique_ptr<IControl> mLiveEdit;
   
   IPopupMenu mPromptPopupMenu;
+  
+  IRECT mPerfDisplayBounds;
   
   WDL_String mSharedResourcesSubPath;
   
