@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 include_guard(GLOBAL)
+find_package(Embedc QUIET)
 
-find_package(Python 3.8 REQUIRED COMPONENTS Interpreter)
+find_program(IBTOOL "ibtool")
 
 # Define iplug-specific properties
 define_property(TARGET PROPERTY IPLUG_PLUGIN_NAME
@@ -29,9 +30,6 @@ define_property(TARGET PROPERTY IPLUG_PLUGIN_CATEGORY
   FULL_DOCS "The plugin category/categories, used by hosts for organization.
     This uses values from CLAP (https://github.com/free-audio/clap/blob/main/include/clap/plugin-features.h)
     and converts them to other formats as appropriate.")
-define_property(TARGET PROPERTY IPLUG_EMBEDC_FILES
-  BRIEF_DOCS "List of converted C files that will be bundled for a target using embedc.py"
-  FULL_DOCS "See brief doc")
 
 # List of valid plugin categories, sourced from plugin-features.h
 set(IPLUG_VALID_PLUGIN_CATEGORIES
@@ -233,117 +231,56 @@ function(iplug_target_bundle_resources target res_dir)
   else()
     # Without Xcode we manually copy resources.
     foreach (res ${resources})
+      # Get the filename so and file extension so we can pick the right destination.
+      cmake_path(GET res FILENAME fn)
+      cmake_path(GET res EXTENSION LAST_ONLY f_ext)
 
-      get_filename_component(fn "${res}" NAME)
+      # Default destination
+      set(dst "${res_dir}/${fn}")
       # Default is to simply copy the file, some file types may need special
       # handling in which case they set copy to FALSE.
       set(copy TRUE)
+      # Determine destination directory
+      if (f_ext STREQUAL ".ttf")
+        # Fonts go in fonts/
+        set(dst "${res_dir}/fonts/${fn}")
 
-      set(dst "${res_dir}/${fn}")
-      if (NOT APPLE)
-        # No Apple, this is the "normal" case
-        if (fn MATCHES ".*\\.ttf")
-          set(dst "${res_dir}/fonts/${fn}")
-        elseif ((fn MATCHES ".*\\.png") OR (fn MATCHES ".*\\.svg"))
-          set(dst "${res_dir}/img/${fn}")
+      elseif (f_ext MATCHES "\\.(png|svg|gif|tiff)")
+        # Images go in img/
+        set(dst "${res_dir}/img/${fn}")
+
+      elseif (f_ext STREQUAL ".xib")
+        if (NOT IBTOOL)
+          message(WARNING "ibtool not found, cannot compile .xib files")
+          continue()
         endif()
-      else()
-        # Apple but no Xcode? Manually compile xib files
-        if (fn MATCHES ".*\\.xib")
-          get_filename_component(tmp "${res}" NAME_WE)
-          set(dst "${res_dir}/${tmp}.nib")
-          add_custom_command(OUTPUT ${dst}
-            COMMAND ${IBTOOL} ARGS "--errors" "--warnings" "--notices" "--compile" "${dst}" "${res}"
-            MAIN_DEPENDENCY "${res}")
-          set(copy FALSE)
-        endif()
+        # Compile .xib to .nib
+        cmake_path(GET res STEM LAST_ONLY stem)
+        set(dst "${res_dir}/${stem}.nib")
+        add_custom_command(
+          OUTPUT ${dst}
+          COMMAND ${IBTOOL} "--errors" "--warnings" "--notices" "--compile" "${dst}" "${res}"
+          MAIN_DEPENDENCY "${res}"
+          VERBATIM
+        )
+        set(copy FALSE)
       endif()
 
       if (copy)
         add_custom_command(
           OUTPUT "${dst}"
-          COMMAND ${CMAKE_COMMAND} ARGS "-E" "copy" "${res}" "${dst}"
+          COMMAND ${CMAKE_COMMAND} -E copy_if_different "${res}" "${dst}"
           COMMENT "Copying resource to ${dst}"
           MAIN_DEPENDENCY "${res}"
+          VERBATIM
         )
       endif()
 
       # Make the target depend on the resource output so it gets copied.
       target_sources(${target} PRIVATE "${dst}")
       source_group("Resources" FILES ${dst})
-
-
     endforeach()
   endif()
-endfunction()
-
-#[===[.rst
-
-]===]
-function(iplug_embed_files target)
-  # Get the variables back in-scope. Since this package is already found at the start of the file
-  # it will give the same results as earlier.
-  find_package(Python QUIET COMPONENTS Interpreter)
-
-  # Parse our arguments
-  cmake_parse_arguments(PARSE_ARGV 1 arg "" "INTO" "FILES")
-
-  # Setup some paths
-  set(embedc_cmd "${Python_EXECUTABLE}" "${IPLUG2_SDK_PATH}/Scripts/embedc.py")
-  set(bundle_c ${CMAKE_CURRENT_BINARY_DIR}/${target}_bundle.c)
-  set(bundle_h ${CMAKE_CURRENT_BINARY_DIR}/${target}_bundle.h)
-
-  # Determine set-type for target_sources
-  get_target_property(target_type ${target} TYPE)
-  bn_tern(set_type "INTERFACE" "PRIVATE" "${target_type}" STREQUAL "INTERFACE_LIBRARY")
-
-  # Get the existing property value. If NOTFOUND then we know we need to
-  # do some initialization.
-  get_target_property(embedc_files ${target} IPLUG_EMBEDC_FILES)
-  if (NOT embedc_files)
-    set(bundle_depends $<TARGET_PROPERTY:${target},IPLUG_EMBEDC_FILES>)
-    add_custom_command(
-      OUTPUT ${bundle_c} ${bundle_h}
-      COMMAND ${embedc_cmd} --bundle -o "${bundle_c}" --header "${bundle_h}" $<JOIN:${bundle_depends}," ">
-      DEPENDS ${bundle_depends}
-      VERBATIM
-    )
-    # Make target depend on the generated bundle files
-    target_sources(${target} ${set_type} ${bundle_c} ${bundle_h})
-    # Clear embedc_files so we can append it properly later
-    set(embedc_files "")
-  endif()
-
-  # Make unique name for data file
-  string(SHA256 names_hash "${arg_FILES}")
-  set(convert_c "${CMAKE_CURRENT_BINARY_DIR}/embedc/convert_${names_hash}.c")
-
-  # Use embedc to parse the inputs
-  bn_tern(into_option "--into=${arg_INTO}" "" arg_INTO)
-  execute_process(
-    COMMAND
-      ${embedc_cmd} --show -o -
-      -C "${CMAKE_CURRENT_SOURCE_DIR}" ${into_options}
-      ${arg_FILES}
-    OUTPUT_VARIABLE convert_input
-  )
-
-  # Extract the resource files from the output by replacing all "keys" with ";".
-  string(REGEX REPLACE "\n([^=]+)=" ";" resource_files "\n${convert_input}")
-  # Turn newline-separated list into CMake list so it outputs correctly
-  string(REPLACE "\n" ";" resource_input "${convert_input}")
-  # Custom command to generate the embed file
-  add_custom_command(
-    OUTPUT ${convert_c}
-    COMMAND ${embedc_cmd} --convert -o "${convert_c}" ${resource_input}
-    DEPENDS ${resource_files}
-    VERBATIM
-  )
-  # The target needs to actually compile and link the generated C file
-  target_sources(${target} ${set_type} ${convert_c})
-  # Update the IPLUG_EMBEDC_FILES property, remember this is SPACE-separated
-  list(APPEND embedc_files "${convert_c}")
-  set_property(TARGET ${target} PROPERTY IPLUG_EMBEDC_FILES "${embedc_files}")
 endfunction()
 
 #[===[.rst:

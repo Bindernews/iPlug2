@@ -394,7 +394,11 @@ class EmbedHelper:
     fd.write('\n')
 
   def parse_all_inputs(self, inputs: 'list[str]') -> 'list[InputSpec]':
-    return InputSpec.parse_all(inputs, self.cwd, default_dir=self.default_embed_directory)
+    # Interop for CMake
+    inputs2 = []
+    for x in inputs:
+      inputs2.extend(x.split(';'))
+    return InputSpec.parse_all(inputs2, self.cwd, default_dir=self.default_embed_directory)
 
   def load_inputs_for_convert(self, inputs: 'list[str]') -> 'list[FileEmbed]':
     specs = self.resolve_input_specs(self.parse_all_inputs(inputs))

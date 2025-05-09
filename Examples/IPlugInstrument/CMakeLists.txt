@@ -64,12 +64,14 @@ iplug_target_add(plugin_base INTERFACE
     ${cwd}/resources
 )
 
-iplug_embed_files(
+embedc_add_files(
   plugin_base
+  DIR fonts/
   FILES
     ${IPLUG2_SDK_PATH}/IPlug/resource/Roboto-Regular.ttf
-    resources/IPlugInstrument.ico
+    resources/main.rc
 )
+embedc_add_files(plugin_base FILES resources/IPlugInstrument.ico)
 
 # Make things pretty in IDEs.
 # source_group(TREE ${cwd} FILES ${_src})
