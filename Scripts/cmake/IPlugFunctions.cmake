@@ -577,6 +577,7 @@ function(iplug_setup_plugin base_target)
 
   # Checks for Skia
   if (gui0 STREQUAL "Skia")
+    find_package(Skia REQUIRED)
     if (NOT gui_api IN_LIST SKIA_API_OPTIONS)
       message(FATAL_ERROR "Invalid api for Skia ${gui_api} - choices are ${SKIA_API_OPTIONS}")
     endif()
