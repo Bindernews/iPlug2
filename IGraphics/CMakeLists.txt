@@ -35,17 +35,35 @@ set(_inc
 )
 set(_src
   ${cwd}/IControl.cpp
+  ${cwd}/IControl.h
+  ${cwd}/IGraphics_select.h
   ${cwd}/IGraphics.cpp
+  ${cwd}/IGraphics.h
+  ${cwd}/IGraphicsConstants.h
   ${cwd}/IGraphicsEditorDelegate.cpp
+  ${cwd}/IGraphicsEditorDelegate.h
+  ${cwd}/IGraphicsLiveEdit.h
+  ${cwd}/IGraphicsPopupMenu.h
+  ${cwd}/IGraphicsPrivate.h
+  ${cwd}/IGraphicsStructs.h
+  ${cwd}/IGraphicsUtilities.h
+
   ${cwd}/Controls/IControls.cpp
+  ${cwd}/Controls/IControls.h
   ${cwd}/Controls/IPopupMenuControl.cpp
+  ${cwd}/Controls/IPopupMenuControl.h
   ${cwd}/Controls/ITextEntryControl.cpp
+  ${cwd}/Controls/ITextEntryControl.h
 )
 set(_opt "")
 
 # Platform Settings
 if (IPLUG_OS MATCHES "Windows")
-  list(APPEND _src ${cwd}/Platforms/IGraphicsWin.cpp)
+  list(APPEND _src
+    ${cwd}/Platforms/IGraphicsWin.cpp
+    ${cwd}/Platforms/IGraphicsWin.h
+    ${cwd}/Platforms/IGraphicsWinFonts.h
+  )
 
 elseif (IPLUG_OS MATCHES "Linux")
   pkg_check_modules(
@@ -286,4 +304,4 @@ endif()
 ########
 # Skia #
 ########
-# Use find_package(Skia) to load the Skia libraries.
+# Loaded dynamically during iplug_setup_plugin.
