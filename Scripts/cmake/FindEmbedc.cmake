@@ -107,6 +107,7 @@ function(embedc_add_files target)
     )
     # Make target depend on the generated bundle files
     target_sources(${target} ${set_type} ${bundle_c} ${bundle_h})
+    source_group("Resources" FILES ${bundle_c} ${bundle_h})
     # Clear embedc_files so we can append it properly later
     set(embedc_files "")
   endif()
@@ -140,6 +141,7 @@ function(embedc_add_files target)
   )
   # The target needs to actually compile and link the generated C file
   target_sources(${target} ${set_type} ${convert_c})
+  source_group("Resources" FILES ${convert_c})
   # Update the EMBEDC_FILES property
   list(APPEND embedc_files "${convert_c}")
   set_property(TARGET ${target} PROPERTY EMBEDC_FILES "${embedc_files}")
