@@ -32,27 +32,15 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # The plugin base target MUST be an interface library.
 add_library(plugin_base INTERFACE)
 
-# Shorthand for the current directory
-set(cwd "${CMAKE_CURRENT_LIST_DIR}")
-
-# Absolute paths are not required for sources or resources.
-set(_src
-  config.h
-  IPlugInstrument.h
-  IPlugInstrument.cpp
-  IPlugInstrument_DSP.h
-)
-# List of resources to include. These may also be added directly
-# with iplug_target_add(<target> INTERFACE RESOURCE <file1> <files...>).
-set(_res
-  resources/fonts/Roboto-Regular.ttf
-)
-
 iplug_target_add(plugin_base INTERFACE
   SOURCE
-    ${_src}
+    config.h
+    IPlugInstrument.h
+    IPlugInstrument.cpp
+    IPlugInstrument_DSP.h
   RESOURCE
-    ${_res}
+    # Resources to include
+    resources/fonts/Roboto-Regular.ttf
   LINK
     # This is an instrument, so we link to Synth to help generate output
     iPlug2_Synth
@@ -60,22 +48,8 @@ iplug_target_add(plugin_base INTERFACE
     # Using C++ 17
     cxx_std_17
   INCLUDE
-    ${cwd}
-    ${cwd}/resources
+    ${CMAKE_CURRENT_LIST_DIR}
 )
-
-embedc_add_files(
-  plugin_base
-  DIR fonts/
-  FILES
-    ${IPLUG2_SDK_PATH}/IPlug/resource/Roboto-Regular.ttf
-    resources/main.rc
-)
-embedc_add_files(plugin_base FILES resources/IPlugInstrument.ico)
-
-# Make things pretty in IDEs.
-# source_group(TREE ${cwd} FILES ${_src})
-source_group(TREE "${cwd}/resources" PREFIX Resources FILES ${_res})
 
 # Configure the plugin with the default name and version
 # from the project, using NanoVG with OpenGL 3 as the backend.
@@ -83,8 +57,8 @@ iplug_setup_plugin(
   plugin_base
   GRAPHICS NanoVG GL3
   # List of plugin formats to export, or ALL for all supported formats on this platform.
-  FORMATS
-    app clap
-    vst2 vst3 au2 au3 lv2 wam
+  FORMATS ALL
+  # The icon to use for the plugin
+  # ICON resources/IPlugInstrument.ico
   COPY_AFTER_BUILD
 )
