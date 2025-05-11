@@ -121,6 +121,9 @@ endfunction()
 
 function(iplug_source_tree target)
   cmake_parse_arguments(arg "" "PREFIX" "" ${ARGN})
+  if (NOT TARGET ${target})
+    return()
+  endif()
   get_target_property(_tmp ${target} INTERFACE_SOURCES)
   if ("${_tmp}" STREQUAL "_tmp-NOTFOUND")
     return()
@@ -626,9 +629,11 @@ function(iplug_setup_plugin base_target)
   #========================================================
   # Generate output targets for the desired formats
 
+  set(all_formats FALSE)
   set(output_formats ${arg_FORMATS})
   if ("ALL" IN_LIST arg_FORMATS)
     set(output_formats "${IPLUG_VALID_FORMATS}")
+    set(all_formats TRUE)
   endif()
 
   foreach (format IN LISTS output_formats)
@@ -641,7 +646,11 @@ function(iplug_setup_plugin base_target)
       continue()
     endif()
     if (NOT "${format}" IN_LIST IPLUG_LOADED_FORMATS)
-      message(WARNING "Output format '${format}' failed to load, skipping")
+      # Don't message if a format is not loaded, but we were doing all formats.
+      if (NOT all_formats)
+        message(WARNING "Output format '${format}' failed to load, skipping")
+      endif()
+      # Either way, skip this format
       continue()
     endif()
 
@@ -673,6 +682,8 @@ function(iplug_setup_plugin base_target)
   iplug_source_tree(iPlug2_GL3 PREFIX "IPlug/IGraphics")
 
   iplug_source_tree(iPlug2_APP PREFIX "IPlug/APP")
+  iplug_source_tree(iPlug2_AUv2 PREFIX "IPlug/AUv2")
+  iplug_source_tree(iPlug2_AUv3 PREFIX "IPlug/AUv3")
   iplug_source_tree(iPlug2_CLAP PREFIX "IPlug/CLAP")
   iplug_source_tree(iPlug2_LV2 PREFIX "IPlug/LV2")
   iplug_source_tree(iPlug2_LV2_DSP PREFIX "IPlug/LV2")
