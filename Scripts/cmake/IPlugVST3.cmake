@@ -112,7 +112,7 @@ function(iplug_configure_vst3 base_plugin target)
   # Create target
   add_library(${target} MODULE)
   # Grab some variables and copy props
-  iplug_configure_helper(GET_VARS vst3 COPY_PROPERTIES ${target})
+  iplug_configure_helper(TARGET ${target} GET_VARS vst3 COPY_PROPERTIES)
   # Link to iPlug library and GUI libraries
   target_link_libraries(${target} PUBLIC iPlug2_VST3 ${base_plugin} ${gui_libraries})
 
@@ -120,7 +120,11 @@ function(iplug_configure_vst3 base_plugin target)
   set(public_sdk_SOURCE_DIR ${smtg_public_sdk_SOURCE_DIR})
   smtg_target_add_library_main(${target})
 
-  set(install_dir "${VST3_INSTALL_PATH}/${plugin_name}.vst3")
+  if (IPLUG_VST3_USER_INSTALL_PATH)
+    set(install_dir "${IPLUG_VST3_USER_INSTALL_PATH}/${plugin_name}.vst3")
+  else()
+    set(install_dir "")
+  endif()
   set(res_dir "${output_dir}/Contents/Resources")
 
   if (IPLUG_OS MATCHES "Windows")
@@ -131,19 +135,18 @@ function(iplug_configure_vst3 base_plugin target)
       SUFFIX ".vst3")
 
   elseif (IPLUG_OS MATCHES "Darwin")
-    # Set the Info.plist file we're using and add resources
+    # Configure the .plist file
+    set(info_plist "${binary_subdir}/Info.plist")
+    iplug_configure_basic_plist(${base_plugin} FORMAT vst3 OUTPUT "${info_plist}")
+
+    # Set bundle settings
     set_target_properties(${target} PROPERTIES
       BUNDLE TRUE
       MACOSX_BUNDLE TRUE
-      MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/resources/${PLUG_NAME}-VST3-Info.plist
+      MACOSX_BUNDLE_INFO_PLIST "${info_plist}"
       BUNDLE_EXTENSION "vst3"
       PREFIX ""
       SUFFIX "")
-
-    if (CMAKE_GENERATOR STREQUAL "Xcode")
-      # set(output_dir "${CMAKE_BINARY_DIR}/$<CONFIG>/${plugin_name}.vst3")
-      set(res_dir "")
-    endif()
 
   elseif (IPLUG_OS MATCHES "Linux")
     set_target_properties(${target} PROPERTIES
@@ -153,11 +156,9 @@ function(iplug_configure_vst3 base_plugin target)
 
   endif()
 
-  if (res_dir)
-    iplug_target_bundle_resources(${target} "${res_dir}")
-  endif()
+  iplug_target_bundle_resources(${target} "${res_dir}")
   bn_set_output_directory(${target} "${output_dir}/Contents/${IPLUG_VST3_TARGET_ARCH}")
-  iplug_add_post_build_copy(${target} "${output_dir}" "${install_dir}")
+  iplug_configure_helper(TARGET ${target} MAIN_RC POST_BUILD_COPY "${install_dir}")
 endfunction()
 
 set(IPlugVST3_FOUND TRUE)

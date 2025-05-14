@@ -86,7 +86,7 @@ iplug_target_add(iPlug2_LV2_UI INTERFACE
 function(iplug_configure_lv2 base_plugin target)
   # DSP target first
   add_library(${target} MODULE)
-  iplug_configure_helper(GET_VARS lv2 COPY_PROPERTIES ${target})
+  iplug_configure_helper(TARGET ${target} GET_VARS lv2 COPY_PROPERTIES)
   set(install_dir "${IPLUG_LV2_USER_INSTALL_PATH}/${plugin_name}.lv2")
   iplug_target_add(${target} PUBLIC LINK iPlug2_LV2_DSP iPlug2_NoGraphics ${base_plugin})
 
@@ -118,7 +118,7 @@ function(iplug_configure_lv2 base_plugin target)
   if (NOT gui_libraries STREQUAL iPlug2_NoGraphics)
     set(target_ui ${target}_ui)
     add_library(${target_ui} MODULE)
-    iplug_configure_helper(COPY_PROPERTIES ${target_ui})
+    iplug_configure_helper(TARGET ${target_ui} COPY_PROPERTIES)
     target_link_libraries(${target_ui} PUBLIC iPlug2_LV2_UI ${base_plugin} ${gui_libraries})
     set_target_properties(${target_ui} PROPERTIES
       OUTPUT_NAME "${plugin_name}_ui"
@@ -133,12 +133,13 @@ function(iplug_configure_lv2 base_plugin target)
     iplug_target_bundle_resources(${target_ui} "${resource_dir}")
     # All in one directory
     bn_set_output_directory(${target_ui} "${output_dir}")
+    iplug_configure_helper(TARGET ${target_ui} MAIN_RC)
   endif()
 
   # Remove configuration sub-directories.
   bn_set_output_directory(${target} "${output_dir}")
   # After building copy to the correct directory
-  iplug_add_post_build_copy(${target} "${output_dir}" "${install_dir}")
+  iplug_configure_helper(TARGET ${target} POST_BUILD_COPY "${install_dir}")
 endfunction()
 
 set(IPlugLV2_FOUND TRUE)

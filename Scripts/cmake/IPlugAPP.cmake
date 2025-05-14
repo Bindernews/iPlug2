@@ -70,42 +70,43 @@ function(iplug_configure_app base_plugin target)
   # Create target
   add_executable(${target} WIN32 MACOSX_BUNDLE)
   # setup
-  iplug_configure_helper(GET_VARS app COPY_PROPERTIES ${target})
+  iplug_configure_helper(TARGET ${target} GET_VARS app COPY_PROPERTIES)
   # Link
   iplug_target_add(${target} PUBLIC LINK iPlug2_APP ${base_plugin} ${gui_libraries})
 
-
   #--------------------------------------------------------
   # Windows
-  if (IPLUG_OS MATCHES "Windows")
-    set_target_properties(${target} PROPERTIES
-      OUTPUT_NAME "${plugin_name}"
-    )
+  if(IPLUG_OS MATCHES "Windows")
+    set_target_properties(${target} PROPERTIES OUTPUT_NAME "${plugin_name}")
 
   #--------------------------------------------------------
   # MacOS
-  elseif (CMAKE_SYSTEM_NAME MATCHES "Darwin")
+  elseif(CMAKE_SYSTEM_NAME MATCHES "Darwin")
+    # Configure the .xib file
     set(resource_dir "${CMAKE_BINARY_DIR}/${target}/${plugin_name}.app/Contents/Resources")
-    # Set the Info.plist file and add required resources
-    set(_res
-      "${CMAKE_SOURCE_DIR}/resources/${plugin_name}.icns"
-      "${CMAKE_SOURCE_DIR}/resources/${plugin_name}-macOS-MainMenu.xib")
-    source_group("Resources" FILES ${_res})
-    iplug_target_add(${target} PUBLIC SOURCE ${_res} RESOURCE ${_res})
-    set_target_properties(${target} PROPERTIES
-      MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/resources/${plugin_name}-macOS-Info.plist")
-    # Disable resource processing
-    set(resource_dir "")
+    set(config_in_dir ${IPLUG2_SDK_PATH}/IPlug/Resources)
+    iplug_configure_helper(TARGET ${target} CONVERT_XIB ${config_in_dir}/macOS-MainMenu.xib)
+
+    # Setup the .plist file
+    set(info_plist "${binary_subdir}/Info.plist")
+    iplug_configure_basic_plist(${base_plugin} FORMAT app OUTPUT "${info_plist}")
+    set_property(TARGET ${target} PROPERTY MACOSX_BUNDLE_INFO_PLIST "${info_plist}")
+
+    # Add the icon file
+    set(icon_file "${CMAKE_SOURCE_DIR}/resources/${plugin_name}.icns")
+    source_group("Resources" FILES ${icon_file})
+    iplug_target_add(${target} PUBLIC SOURCE ${icon_file})
+    set_property(TARGET ${target} APPEND PROPERTY RESOURCE "${icon_file}")
 
   #--------------------------------------------------------
   # Linux
   elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
-    set_target_properties(${target} PROPERTIES
-      OUTPUT_NAME "${plugin_name}"
-    )
+    set_target_properties(${target} PROPERTIES OUTPUT_NAME "${plugin_name}")
+
   endif()
 
   bn_set_output_directory(${target} "${output_dir}")
+  iplug_configure_helper(TARGET ${target} MAIN_RC PLATFORM_SETUP)
   iplug_target_bundle_resources(${target} "${resource_dir}")
 endfunction()
 

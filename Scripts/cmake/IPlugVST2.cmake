@@ -63,7 +63,7 @@ iplug_target_add(iPlug2_VST2 INTERFACE
 function(iplug_configure_vst2 base_plugin target)
   # Create module and link it to dependencies
   add_library(${target} MODULE)
-  iplug_configure_helper(GET_VARS vst2 COPY_PROPERTIES ${target})
+  iplug_configure_helper(TARGET ${target} GET_VARS vst2 COPY_PROPERTIES)
   iplug_target_add(${target} PUBLIC LINK iPlug2_VST2 ${base_plugin} ${gui_libraries})
   set(install_dir "${IPLUG_VST2_USER_INSTALL_PATH}/${plugin_name}.vst2")
   set(res_dir "${output_dir}/resources")
@@ -77,7 +77,7 @@ function(iplug_configure_vst2 base_plugin target)
     )
 
   elseif (IPLUG_OS MATCHES "Darwin")
-    iplug_file_in_binary_dir(${target} "Info.plist" info_plist)
+    set(info_plist "${binary_subdir}/Info.plist")
     iplug_configure_basic_plist(${base_plugin} FORMAT vst2 OUTPUT "${info_plist}")
 
     set_target_properties(${target} PROPERTIES
@@ -101,12 +101,9 @@ function(iplug_configure_vst2 base_plugin target)
   endif()
 
   # Handle resources
-  if (res_dir)
-    iplug_target_bundle_resources(${target} "${res_dir}")
-  endif()
-
+  iplug_target_bundle_resources(${target} "${res_dir}" PREFER_EMBED)
   bn_set_output_directory(${target} "${output_dir}")
-  iplug_add_post_build_copy(${target} "${output_dir}" "${install_dir}")
+  iplug_configure_helper(TARGET ${target} MAIN_RC POST_BUILD_COPY "${install_dir}")
 endfunction()
 
 set(IPlugVST2_FOUND TRUE)

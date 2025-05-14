@@ -57,7 +57,7 @@ bn_target_add(iPlug2_CLAP INTERFACE
 # configure function
 function(iplug_configure_clap base_plugin target)
   add_library(${target} MODULE)
-  iplug_configure_helper(GET_VARS clap COPY_PROPERTIES ${target})
+  iplug_configure_helper(TARGET ${target} GET_VARS clap COPY_PROPERTIES)
   iplug_target_add(${target} PUBLIC LINK iPlug2_CLAP ${base_plugin} ${gui_libraries})
   set(install_dir "${IPLUG_CLAP_USER_INSTALL_PATH}/${plugin_name}")
 
@@ -72,7 +72,7 @@ function(iplug_configure_clap base_plugin target)
   #--------------------------------------------------------
   # MacOS
   elseif (IPLUG_OS MATCHES "Darwin")
-    iplug_file_in_binary_dir(${target} "Info.plist" info_plist)
+    set(info_plist "${temporary_dir}/Info.plist")
     iplug_configure_basic_plist(${base_plugin} FORMAT clap OUTPUT "${info_plist}")
 
     set_target_properties(${target} PROPERTIES
@@ -94,8 +94,7 @@ function(iplug_configure_clap base_plugin target)
   iplug_target_bundle_resources(${target} "${resource_dir}")
   # Set the output directories to remove config sub-folders.
   bn_set_output_directory(${target} "${output_dir}")
-  # After building copy to the correct directory
-  iplug_add_post_build_copy(${target} "${output_dir}" "${install_dir}")
+  iplug_configure_helper(TARGET ${target} MAIN_RC POST_BUILD_COPY "${install_dir}")
 endfunction()
 
 set(IPlugCLAP_FOUND TRUE)

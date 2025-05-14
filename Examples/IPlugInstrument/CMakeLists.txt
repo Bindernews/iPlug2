@@ -61,4 +61,14 @@ iplug_setup_plugin(
   # The icon to use for the plugin
   # ICON resources/IPlugInstrument.ico
   COPY_AFTER_BUILD
+  # Metadata
+  YEAR 2025
+  AUTHOR "Acme Inc."
+  DESCRIPTION "iPlug2 instrument example"
+  MIDI_IN ON
+  MIDI_OUT ON
+  DOES_MPE ON
+  URL "https://iplug2.github.io"
+  SUPPORT_URL "https://github.com/iPlug2/iPlug2/wiki"
+  MANUAL_URL "https://iplug2.github.io/manuals/example_manual.pdf"
 )

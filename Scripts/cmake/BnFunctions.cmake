@@ -28,7 +28,7 @@ set(
   BN_RESOURCE_PROPERTY "RESOURCES" CACHE INTERNAL
   "Property to append to when calling bn_target_add with the RESOURCE option")
 
-#[===[
+#[===[.rst
 Evaluates extra arguments as a conditional and sets ``VAR`` to ``val_true`` or ``val_false`` accordingly.
 
 `VAR` - Output variable name
@@ -43,6 +43,32 @@ macro(bn_tern VAR val_true val_false)
     set(${VAR} ${val_false})
   endif()
 endmacro()
+
+#[===[.rst
+Sets `VAR` to the first argument that is not "NOTFOUND" or an empty string.
+Other falsy values ARE valid. If none of the arguments are valid, then `VAR`
+will be set to "NOTFOUND".
+
+If an option begins and ends with "@@" (e.g. "@@ @@") then it will match
+since it's not empty, but the "@@"s will be removed and the inner string will
+be stripped. This means that "@@ @@" will match as a fallback string, but
+the result will be an empty string.
+
+]===]
+function(bn_fallback VAR option1 option2...)
+  foreach(_index RANGE 1 ${ARGC})
+    set(opt "${ARGV${_index}}")
+    if(opt STREQUAL "" OR opt MATCHES "NOTFOUND$")
+      continue()
+    endif()
+    if(opt MATCHES "^@@(.+)@@$")
+      string(STRIP "${CMAKE_MATCH_1}" opt)
+    endif()
+    set(${VAR} "${opt}" PARENT_SCOPE)
+    return()
+  endforeach()
+  set(${VAR} "NOTFOUND" PARENT_SCOPE)
+endfunction()
 
 function(bn_case variable output_variable)
   set(${output_variable} "" PARENT_SCOPE)
@@ -61,19 +87,18 @@ endfunction(bn_case)
 
 #[===[.rst
 .. code-block:: cmake
-  bn_list_contains_any(<list> <item> [<items>...] <output-variable>)
+  bn_list_contains_any(<output-variable> <list> <item> [<items>...])
 
 Returns ``TRUE`` if the list contains any of the given items, ``FALSE`` otherwise.
 
 ]===]
-function(bn_list_contains_any list)
+function(bn_list_contains_any VAR list)
   set(items "${ARGN}")
-  list(POP_BACK items out_var)
   # Default to false, succeed on found item
-  set(${out_var} FALSE PARENT_SCOPE)
+  set(${VAR} FALSE PARENT_SCOPE)
   foreach (item IN LISTS items)
     if ("${item}" IN_LIST ${list})
-      set(${out_var} TRUE PARENT_SCOPE)
+      set(${VAR} TRUE PARENT_SCOPE)
       return()
     endif()
   endforeach()
@@ -81,19 +106,18 @@ endfunction()
 
 #[===[.rst
 .. code-block:: cmake
-  bn_list_contains_all(<list> <item> [<items>...] <output-variable>)
+  bn_list_contains_all(<output-variable> <list> <item> [<items>...])
 
 Returns ``TRUE`` if the list contains all the listed items, ``FALSE`` otherwise.
 
 ]===]
-function(bn_list_contains_all list)
+function(bn_list_contains_all VAR list)
   set(items "${ARGN}")
-  list(POP_BACK items out_var)
   # Default to true, fail if missing item
-  set(${out_var} TRUE PARENT_SCOPE)
+  set(${VAR} TRUE PARENT_SCOPE)
   foreach (item IN LISTS items)
     if (NOT "${item}" IN_LIST ${list})
-      set(${out_var} FALSE PARENT_SCOPE)
+      set(${VAR} FALSE PARENT_SCOPE)
       return()
     endif()
   endforeach()
@@ -115,9 +139,18 @@ function(bn_copy_properties target_dst target_src properties)
   endforeach()
 endfunction(bn_copy_properties)
 
-function(bn_make_absolute_paths list_ )
-  cmake_parse_arguments(PARSE_ARGV 1 arg "NORMALIZE" "BASE_DIRECTORY;OUTPUT_VARIABLE" "")
+#[===[.rst
 
+.. code-block:: cmake
+  bn_make_absolute_paths(VAR <list> [NORMALIZE] [BASE_DIRECTORY <base_dir>])
+
+Make all paths in `<list>` absolute, using either the provided `BASE_DIRECTORY`
+or `${CMAKE_CURRENT_SOURCE_DIR}`. The result will be written to `VAR`.
+
+]===]
+function(bn_make_absolute_paths VAR list_)
+  cmake_parse_arguments(PARSE_ARGV 2 arg "NORMALIZE" "BASE_DIRECTORY" "")
+  # Parse arguments into additional options that we can pass to cmake_path()
   set(_opts "")
   if (arg_NORMALIZE)
     list(APPEND _opts NORMALIZE)
@@ -125,18 +158,14 @@ function(bn_make_absolute_paths list_ )
   if (arg_BASE_DIRECTORY)
     list(APPEND _opts BASE_DIRECTORY "${arg_BASE_DIRECTORY}")
   endif()
-  if (NOT arg_OUTPUT_VARIABLE)
-    set(arg_OUTPUT_VARIABLE "${list_}")
-  endif()
-
+  # Loop and update
   set(result "")
   foreach (path IN LISTS ${list_})
     cmake_path(ABSOLUTE_PATH path ${_opts} OUTPUT_VARIABLE out_path)
     list(APPEND result "${out_path}")
   endforeach()
   # Update in parent scope
-  set(${arg_OUTPUT_VARIABLE} ${result} PARENT_SCOPE)
-
+  set(${VAR} "${result}" PARENT_SCOPE)
 endfunction()
 
 #[===[.rst
@@ -174,7 +203,7 @@ to various target properties.
 
 ]===]
 function(bn_target_add target set_type)
-  cmake_parse_arguments(PARSE_ARGV 2 cfg "" "" "INCLUDE;SOURCE;RESOURCE;DEFINE;OPTION;FEATURE;LINK;LINK_DIR;LINK_OPTION")
+  cmake_parse_arguments(PARSE_ARGV 2 cfg "" "" "INCLUDE;SOURCE;DEFINE;OPTION;FEATURE;LINK;LINK_DIR;LINK_OPTION;RESOURCE")
   if (cfg_UNUSED)
     message(FATAL_ERROR "Unused arguments ${cfg_UNUSED}")
   endif()
@@ -202,6 +231,8 @@ function(bn_target_add target set_type)
     # Append to list of resources.
     set_property(TARGET ${target} APPEND PROPERTY ${BN_RESOURCE_PROPERTY} ${resources_abs})
   endif()
+
+
   if (cfg_DEFINE)
     target_compile_definitions(${target} ${_set_type} ${cfg_DEFINE})
   endif()
@@ -249,3 +280,34 @@ function(bn_set_output_directory target output_directory)
     )
   endforeach()
 endfunction(bn_set_output_directory)
+
+#[===[.rst
+
+.. code-block:: cmake
+  bn_json_dict(VAR <key1> <value1> [<key2> <value2>] ...)
+
+Sets `VAR` to a json dictionary made of the key-value argument pairs.
+Values that are not valid json by themselves will be quoted as strings.
+
+]===]
+function(bn_json_dict VAR)
+  set(dict "{}")
+  math(EXPR _indexN "${ARGC} - 2")
+  # json types that we don't need to quote
+  set(quote_skip OBJECT ARRAY STRING)
+  foreach (_index0 RANGE 1 ${_indexN} 2)
+    math(EXPR _index1 "${_index0} + 1")
+    set(key "${ARGV${_index0}}")
+    set(value "${ARGV${_index1}}")
+    # Check if we should quote the value
+    string(JSON jtype ERROR_VARIABLE err TYPE "[ ${value} ]" 0)
+    if(NOT "${jtype}" IN_LIST quote_skip)
+      # Value is not valid json by itself, so quote it
+      string(CONFIGURE "\"@value@\"" value @ONLY ESCAPE_QUOTES)
+    endif()
+    # Update the dict
+    string(JSON dict SET "${dict}" "${key}" "${value}")
+  endforeach()
+  # Set VAR in parent scope
+  set(${VAR} "${dict}" PARENT_SCOPE)
+endfunction()

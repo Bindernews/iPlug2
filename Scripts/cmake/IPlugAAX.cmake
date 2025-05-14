@@ -101,7 +101,7 @@ function(iplug_configure_aax base_plugin target)
   # Create target
   add_library(${target} MODULE)
   # Common variables
-  iplug_configure_helper(GET_VARS aax COPY_PROPERTIES ${target})
+  iplug_configure_helper(TARGET ${target} GET_VARS aax COPY_PROPERTIES)
   # Link to interfaces and copy properties
   iplug_target_add(${target} PUBLIC LINK iPlug2_AAX ${base_plugin} ${gui_libraries})
 
