@@ -383,32 +383,6 @@ function(iplug_copy_properties target_dst target_src properties)
 endfunction(iplug_copy_properties)
 
 #[===[.rst:
-.. code-block:: cmake
-
-  iplug_add_post_build_copy(
-    <target>
-    <source_directory>
-    <destination_directory>
-    [FORCE])
-
-``FORCE``
-  If this is specified then the post-build command will be added regardless
-  of the state of the ``IPLUG_COPY_AFTER_BUILD`` property.
-
-#]===]
-function(iplug_add_post_build_copy target src_dir dest_dir)
-  cmake_parse_arguments(arg "FORCE" "" "" ${ARGN})
-  get_target_property(r ${target} IPLUG_COPY_AFTER_BUILD)
-  if (r OR arg_FORCE)
-    add_custom_command(TARGET ${target} POST_BUILD
-      COMMAND ${CMAKE_COMMAND} ARGS "-E" "remove_directory" "${dest_dir}"
-      COMMAND ${CMAKE_COMMAND} ARGS "-E" "copy_directory" "${src_dir}" "${dest_dir}"
-      COMMENT "Copied ${src_dir} to ${dest_dir}"
-    )
-  endif()
-endfunction(iplug_add_post_build_copy)
-
-#[===[.rst:
 
 .. code-block:: cmake
 
