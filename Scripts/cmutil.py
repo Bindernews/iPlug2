@@ -85,7 +85,9 @@ def main(argv):
   if args.hex_version:
     print(do_hex_version(args.hex_version))
   if args.guess_file_types:
-    guesses = [guess_file_type(Path(p)) + ',' for p in args.guess_file_types.split(';')]
+    guesses = [guess_file_type(Path(p)) for p in args.guess_file_types.split(';')]
+    # add commas before and after each entry for CMake
+    guesses = [f',{g},' for g in guesses]
     print(';'.join(guesses))
 
 if __name__ == '__main__':

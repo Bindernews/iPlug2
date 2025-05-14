@@ -181,45 +181,6 @@ function(iplug_configure_basic_plist base_target)
   )
 endfunction()
 
-#[===[.rst
-
-.. code-block::cmake
-  iplug_guess_file_type(VAR path_in)
-
-Guess the file type(s) of a file from its extension, and maybe additional data.
-`VAR` will be set to a list of guessed file types.
-
-]===]
-function(iplug_guess_file_type VAR path_in)
-  cmake_path(GET path_in EXTENSION LAST_ONLY f_ext)
-  if (f_ext STREQUAL ".ttf")
-    set(kind "font;ttf")
-  elseif (f_ext STREQUAL ".fon")
-    set(kind "font;fon")
-  elseif (f_ext MATCHES "\\.(png|gif|tiff)$")
-    set(kind "image;raster")
-  elseif (f_ext MATCHES "\\.(svg)$")
-    set(kind "image;vector")
-  elseif (f_ext STREQUAL ".ico")
-    set(kind "image;icon")
-  elseif (f_ext STREQUAL ".xib")
-    set(kind "xib;misc")
-  elseif (f_ext MATCHES "\\.(md)$")
-    set(kind "text;markdown;doc")
-  elseif (f_ext MATCHES "\\.(txt)$")
-    set(kind "text")
-  elseif (f_ext MATCHES "\\.(c|cpp|cxx|h|hpp|hxx|rs|lua|cmake|make|py|sh|bat|pl|php|rb)$")
-    set(kind "text;code")
-  elseif (f_ext MATCHES "\\.(xml|storyboard)$")
-    set(kind "text;xml")
-  elseif (f_ext STREQUAL ".plist")
-    set(kind "text;xml;plist")
-  else()
-    set(kind "misc")
-  endif()
-  set(${VAR} "${kind}" PARENT_SCOPE)
-endfunction()
-
 #! iplug_target_bundle_resource : Internal function to copy all resources to the output directory
 #
 # This pulls the list of resources from the target's RESOURCE property. Currently
@@ -262,7 +223,7 @@ function(iplug_target_bundle_resources target res_dir)
     foreach (res ${resources})
       get_filename_component(fn "${res}" NAME)
       set(file_type "file")
-      if (fn MATCHES ".*\\.xib")
+      if (fn MATCHES ".*\\.xib$")
         set(file_type "file.xib")
       endif()
       set_property(SOURCE ${res} PROPERTY XCODE_LAST_KNOWN_FILE_TYPE ${file_type})
@@ -276,18 +237,25 @@ function(iplug_target_bundle_resources target res_dir)
     set(rc_content "")
     # Auto-incrementing ID for resources that use integer IDs as keys
     set(next_id 39000)
+
+    # Guess file types for all files
+    execute_process(
+      COMMAND ${CALL_CMUTIL_PY} --guess-file-types "${resources}"
+      OUTPUT_VARIABLE file_types
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+
     # Process each resources
-    foreach (res ${resources})
+    foreach (res kind IN ZIP_LISTS resources file_types)
       # Get the filename for use in generating the .rc file
       cmake_path(GET res FILENAME fn)
 
-      iplug_guess_file_type(kind "${res}")
-      if("font" IN_LIST kind)
+      if(kind MATCHES ",font,")
         set(ln "\"${fn}\" TTF")
-      elseif("icon" IN_LIST kind)
+      elseif(kind MATCHES ",icon,")
         set(ln "${next_id} ICON")
         math(EXPR next_id "${next_id} + 1")
-      elseif("image" IN_LIST kind)
+      elseif(kind MATCHES ",image,")
         set(ln "\"${fn}\" IMAGE")
       else()
         set(ln "\"${fn}\" OCTET")
@@ -307,7 +275,14 @@ function(iplug_target_bundle_resources target res_dir)
   # Copy files into the resources/ directory relative to
   # the target's output.
   elseif (method STREQUAL "copy")
-    foreach (res ${resources})
+      # Guess file types for all
+      execute_process(
+        COMMAND ${CALL_CMUTIL_PY} --guess-file-types "${resources}"
+        OUTPUT_VARIABLE file_types
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+      )
+
+    foreach (res kind IN ZIP_LISTS resources file_types)
       # Get the filename so and file extension so we can pick the right destination.
       cmake_path(GET res FILENAME fn)
 
@@ -315,12 +290,11 @@ function(iplug_target_bundle_resources target res_dir)
       # handling in which case they set copy to FALSE.
       set(copy TRUE)
 
-      iplug_guess_file_type(kind "${res}")
-      if ("font" IN_LIST kind)
+      if (kind MATCHES ",font,")
         set(dst "${res_dir}/fonts/${fn}")
-      elseif ("image" IN_LIST kind)
+      elseif (kind MATCHES ",image,")
         set(dst "${res_dir}/img/${fn}")
-      elseif ("xib" IN_LIST kind)
+      elseif (kind MATCHES ",xib,")
         if (NOT IBTOOL)
           message(WARNING "ibtool not found, cannot compile .xib files")
           continue()
