@@ -2,16 +2,33 @@ cmake_minimum_required(VERSION 3.20)
 include_guard(GLOBAL)
 find_package(Embedc QUIET)
 
-find_program(IBTOOL "ibtool")
-find_package(Python 3.8 REQUIRED COMPONENTS Interpreter)
-find_file(
-  cmutil_PATH cmutil.py
-  PATHS
-    ${IPLUG2_SDK_PATH}/Scripts
-    ${CMAKE_CURRENT_LIST_DIR}/..
-  DOC "Path to cmutil.py"
+# Find ibtool on MacOS
+bn_tern(IBTOOL_REQUIRED "REQUIRED" "" CMAKE_HOST_SYSTEM_NAME MATCHES "Darwin")
+find_program(
+  IBTOOL
+  NAMES ibtool
+  HINTS "/usr/bin" "${OSX_DEVELOPER_ROOT}/usr/bin"
+  ${IBTOOL_REQUIRED}
 )
-set(CALL_CMUTIL_PY ${Python_EXECUTABLE} ${cmutil_PATH} CACHE INTERNAL "")
+
+# Python is required for everything, because we need to run cmutil.py
+find_package(Python 3.8 REQUIRED COMPONENTS Interpreter)
+# Find cmutil.py
+find_path(
+  cmutil_PATH
+  NAMES cmutil.py
+  PATHS ${IPLUG2_SDK_PATH}/Scripts ${CMAKE_CURRENT_LIST_DIR}/..
+  DOC "Directory containing cmutil.py"
+  REQUIRED
+)
+set(
+  CALL_CMUTIL_PY
+  WORKING_DIRECTORY "${cmutil_PATH}"
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+  COMMAND_ERROR_IS_FATAL ANY
+  COMMAND ${Python_EXECUTABLE} -c
+  CACHE INTERNAL ""
+)
 
 # Define iplug-specific properties
 define_property(TARGET PROPERTY IPLUG_PLUGIN_NAME
@@ -59,9 +76,8 @@ set(IPLUG_VALID_PLUGIN_CATEGORIES
   "utility" "pitch-correction" "restoration"
   "multi-effects"
   "mixing" "mastering"
-  # Remainder of set args
-  CACHE INTERNAL ""
 )
+set_property(GLOBAL PROPERTY IPLUG_VALID_PLUGIN_CATEGORIES "${IPLUG_VALID_PLUGIN_CATEGORIES}")
 
 #! iplug_target_add : Helper function to add sources, include directories, etc.
 #
@@ -181,6 +197,23 @@ function(iplug_configure_basic_plist base_target)
   )
 endfunction()
 
+
+function(iplug_guess_file_types VAR)
+  string(SHA1 argn_hash "${ARGN}")
+  set(cache_key file_types_${argn_hash})
+  if(NOT DEFINED ${cache_key})
+    # Guess file types for all files
+    execute_process(
+      ${CALL_CMUTIL_PY} "import cmutil; cmutil.do_guess_file_types('${ARGN}')"
+      OUTPUT_VARIABLE file_types
+    )
+    set(${cache_key} ${file_types} CACHE INTERNAL "")
+  endif()
+  set(${VAR} ${${cache_key}} PARENT_SCOPE)
+endfunction()
+
+
+
 #! iplug_target_bundle_resource : Internal function to copy all resources to the output directory
 #
 # This pulls the list of resources from the target's RESOURCE property. Currently
@@ -238,13 +271,7 @@ function(iplug_target_bundle_resources target res_dir)
     # Auto-incrementing ID for resources that use integer IDs as keys
     set(next_id 39000)
 
-    # Guess file types for all files
-    execute_process(
-      COMMAND ${CALL_CMUTIL_PY} --guess-file-types "${resources}"
-      OUTPUT_VARIABLE file_types
-      OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
-
+    iplug_guess_file_types(file_types ${resources})
     # Process each resources
     foreach (res kind IN ZIP_LISTS resources file_types)
       # Get the filename for use in generating the .rc file
@@ -275,12 +302,8 @@ function(iplug_target_bundle_resources target res_dir)
   # Copy files into the resources/ directory relative to
   # the target's output.
   elseif (method STREQUAL "copy")
-      # Guess file types for all
-      execute_process(
-        COMMAND ${CALL_CMUTIL_PY} --guess-file-types "${resources}"
-        OUTPUT_VARIABLE file_types
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-      )
+    # Guess file types for all
+    iplug_guess_file_types(file_types ${resources})
 
     foreach (res kind IN ZIP_LISTS resources file_types)
       # Get the filename so and file extension so we can pick the right destination.
@@ -423,6 +446,11 @@ exist, and what are safe to set so it shouldn't be used by external code.
 ``CONVERT_XIB``
   Configure a .xib file, and then convert it to a .nib file.
 
+``MAKE_BUNDLE``
+  :param: plist - Path to the .plist file
+  On Apple platforms, this sets the target as a bundle, and uses the given
+  .plist path for the bundle's plist. Does nothing on non-Apple platforms.
+
 #]===]
 function(iplug_configure_helper)
   if (NOT TARGET ${base_plugin})
@@ -432,7 +460,7 @@ function(iplug_configure_helper)
   cmake_parse_arguments(
     PARSE_ARGV 0 arg
     "PLATFORM_SETUP;COPY_PROPERTIES;MAIN_RC"
-    "TARGET;GET_VARS;POST_BUILD_COPY;CONVERT_XIB"
+    "TARGET;GET_VARS;POST_BUILD_COPY;CONVERT_XIB;MAKE_BUNDLE;SET_EXTENSION"
     ""
   )
 
@@ -519,6 +547,30 @@ function(iplug_configure_helper)
     endif()
   endif()
 
+  if(arg_MAKE_BUNDLE AND APPLE)
+    set_target_properties(${target} PROPERTIES
+      BUNDLE TRUE
+      MACOSX_BUNDLE TRUE
+      # Argument is the plist
+      MACOSX_BUNDLE_INFO_PLIST "${arg_MAKE_BUNDLE}"
+    )
+  endif()
+
+  if(arg_SET_EXTENSION)
+    get_property(is_bundle TARGET ${target} PROPERTY MACOSX_BUNDLE)
+    set(ext "${arg_SET_EXTENSION}")
+    set(bundle_ext "")
+    if(is_bundle)
+      set(bundle_ext "${ext}")
+      set(ext "")
+    endif()
+
+    set_target_properties(${target} PROPERTIES
+      BUNDLE_EXTENSION "${bundle_ext}"
+      PREFIX ""
+      SUFFIX "${ext}")
+  endif()
+
   if(arg_POST_BUILD_COPY)
     get_target_property(r ${target} IPLUG_COPY_AFTER_BUILD)
     # Assume ${output_dir} exists from previous call in parent function
@@ -534,72 +586,6 @@ function(iplug_configure_helper)
   endif()
 
 endfunction(iplug_configure_helper)
-
-
-# Clear the cache of loaded modules
-set(_iplug_load_module_seen "" CACHE INTERNAL "" FORCE)
-
-#[===[.rst
-
-Attempt to load a module, allowing the module to check if it can load successfully.
-This is similar to ``find_package()`` but it doesn't assume that ``${module_name}_FOUND``
-being set in the cache means there's no work to do. Modules may create new functions,
-targets, etc. It's safe to call the function multiple times, as it will only attempt
-to load a module once.
-
-#]===]
-function(iplug_load_module module_name)
-  cmake_parse_arguments(arg2 "" "OPTIONAL;ERROR_MESSAGE" "" ${ARGN})
-
-  set(known_modules $CACHE{_iplug_load_module_seen})
-
-  # Check if we've tried to load the module already. We specifically check
-  # our module list instead of a cache variable, since the cache variables persist
-  # through each re-build but the module list is explicity cleared.
-  if ("${module_name}" IN_LIST known_modules)
-    return()
-  endif()
-  # Update the module list so we know we've seen this module.
-  list(APPEND known_modules "${module_name}")
-  set(_iplug_load_module_seen ${known_modules} CACHE INTERNAL "" FORCE)
-
-  # Default error message
-  if (NOT arg2_ERROR_MESSAGE)
-    set(arg2_ERROR_MESSAGE "Failed to load module ${module_name}")
-  endif()
-  # Default OPTIONAL to false
-  if (NOT DEFINED arg2_OPTIONAL)
-    set(arg2_OPTIONAL FALSE)
-  endif()
-
-  set(extra_error "")
-
-  # Try to include the module
-  include(${module_name} OPTIONAL RESULT_VARIABLE mod_found)
-  # If we succeeded, but ${module_name}_FOUND is not set, then we still failed
-  if (NOT mod_found)
-    message(WARNING "Module ${module_name} not found; ${CMAKE_MODULE_PATH}")
-  endif()
-  if (mod_found AND NOT ${module_name}_FOUND)
-    set(mod_found FALSE)
-    # Allow modules to add an extra error message
-    if (DEFINED ${module_name}_ERROR)
-      set(extra_error ": ${${module_name}_ERROR}")
-    endif()
-  endif()
-
-  # Set the result in the cache, force-overriding exisitng values
-  set(${module_name}_FOUND ${mod_found} CACHE BOOL "" FORCE)
-
-  # Now this will trigger if we failed for any reason
-  if (NOT mod_found)
-    # If arg_OPTIONAL is set, then warn but don't fail the full build
-    bn_tern(msg_status NOTICE SEND_ERROR arg2_OPTIONAL)
-    message(${msg_status} "${arg2_ERROR_MESSAGE}${extra_error}")
-    return()
-  endif()
-endfunction(iplug_load_module)
-
 
 #[===[.rst:
 
@@ -830,7 +816,7 @@ function(iplug_setup_plugin base_target)
   bn_fallback(plug_year "${arg_YEAR}" "${current_year}")
   bn_fallback(plug_copyright "${arg_COPYRIGHT}" "@@ Copyright (c) ${plug_year} ${plug_author} @@")
   bn_fallback(plug_category "${arg_CATEGORY}" "@@ @@")
-  bn_fallback(plug_url "${arg_URL}" "@@ @@")
+  bn_fallback(plug_url "${arg_URL}" "${CMAKE_PROJECT_HOMEPAGE_URL}" "@@ @@")
   bn_fallback(plug_support_url "${arg_SUPPORT_URL}" "${plug_url}" "@@ @@")
   bn_fallback(plug_manual_url "${arg_MANUAL_URL}" "@@ @@")
 
@@ -857,12 +843,9 @@ function(iplug_setup_plugin base_target)
     set(plug_author_id "Test")
   endif()
 
-  # Convert version to hex string.
   execute_process(
-    COMMAND ${CALL_CMUTIL_PY} --hex-version "${plug_version}"
+    ${CALL_CMUTIL_PY} "import cmutil; cmutil.do_hex_version('${plug_version}')"
     OUTPUT_VARIABLE plug_version_hex
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    COMMAND_ERROR_IS_FATAL ANY
   )
 
   # Put them into a json dictionary
@@ -925,6 +908,9 @@ function(iplug_setup_plugin base_target)
     set(output_formats "${IPLUG_VALID_FORMATS}")
     set(all_formats TRUE)
   endif()
+
+  # Load global property
+  get_property(IPLUG_ALL_FORMATS GLOBAL PROPERTY IPLUG_ALL_FORMATS)
 
   foreach (format IN LISTS output_formats)
     # Check that the format is known, valid for this platform, and loaded successfully

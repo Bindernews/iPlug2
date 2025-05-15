@@ -5,7 +5,7 @@ set(VST2_SDK "${IPLUG2_SDK_PATH}/Dependencies/IPlug/VST2_SDK" CACHE PATH "VST2 S
 
 # Check to make sure we have at least one of the files we need.
 if (NOT EXISTS "${VST2_SDK}/aeffectx.h")
-  set(IPlugVST2_FOUND FALSE)
+  set(IPlugVST2_FOUND FALSE CACHE INTERNAL "")
   message(WARNING "VST2 SDK not found or missing files.")
   return()
 endif()

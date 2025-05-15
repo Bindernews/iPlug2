@@ -16,8 +16,6 @@ in Python than in CMake. The CMake code calls these via CLI, and the inputs
 and outputs are specifically formatted to make it easy for CMake.
 """
 
-import argparse
-import sys
 from pathlib import Path
 
 def parse_version(s: str) -> 'list[int]':
@@ -33,12 +31,6 @@ def parse_version(s: str) -> 'list[int]':
   while len(result) < 4:
     result.append(0)
   return result
-
-def do_hex_version(s: str) -> str:
-  ver = parse_version(s)
-  # Use two hex digits for major version, and ignore tweak.
-  # This is because many orgs are using the year as the major version now.
-  return f'0x{ver[0]:04x}{ver[1]:02x}{ver[2]:02x}'
 
 def guess_file_type(path: Path) -> str:
   ext = path.suffix
@@ -69,27 +61,16 @@ def guess_file_type(path: Path) -> str:
   else:
     return "misc"
   
+def do_hex_version(s: str):
+  ver = parse_version(s)
+  # Use two hex digits for major version, and ignore tweak.
+  # This is because many orgs are using the year as the major version now.
+  result = f'0x{ver[0]:04x}{ver[1]:02x}{ver[2]:02x}'
+  print(result)
 
-
-def make_parser(prog: str = 'cmutil.py'):
-  parser = argparse.ArgumentParser(prog=prog)
-  grp1 = parser.add_mutually_exclusive_group()
-  grp1.add_argument('--hex-version', type=str, help='Convert a version string into a hex number')
-  grp1.add_argument('--guess-file-types', type=str, help='Guess the file types of a list of files, semicolon-separated')
-  return parser
-
-def main(argv):
-  parser = make_parser()
-  args = parser.parse_args(argv)
-
-  if args.hex_version:
-    print(do_hex_version(args.hex_version))
-  if args.guess_file_types:
-    guesses = [guess_file_type(Path(p)) for p in args.guess_file_types.split(';')]
-    # add commas before and after each entry for CMake
-    guesses = [f',{g},' for g in guesses]
-    print(';'.join(guesses))
-
-if __name__ == '__main__':
-  main(sys.argv[1:])
+def do_guess_file_types(inp_list: str):
+  guesses = [guess_file_type(Path(p)) for p in inp_list.split(';')]
+  # add commas before and after each entry for CMake
+  guesses = [f',{g},' for g in guesses]
+  print(';'.join(guesses))
 

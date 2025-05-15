@@ -21,10 +21,6 @@ if (CMAKE_SYSTEM_NAME MATCHES "Windows")
   set(IPLUG_OS "Windows")
 
 elseif (CMAKE_SYSTEM_NAME MATCHES "Darwin")
-  find_program(IBTOOL ibtool HINTS "/usr/bin" "${OSX_DEVELOPER_ROOT}/usr/bin")
-  if (${IBTOOL} STREQUAL "IBTOOL-NOTFOUND" )
-    message(FATAL_ERROR "ibtool can not be found")
-  endif()
   set(IPLUG_OS "Darwin")
 
 elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
@@ -50,6 +46,14 @@ check_linker_flag(C "--error-unresolved-symbols" IPLUG_LINKER_FLAG_ERROR_UNRESOL
 
 # Add .gitignore to the build root
 write_file(${CMAKE_BINARY_DIR}/.gitignore "*\n")
+
+# Use advanced SIMD instructions when available.
+add_library(iplug2_opt_simd INTERFACE)
+if (COMPILER_OPT_ARCH_NATIVE_SUPPORTED)
+  target_compile_options(iplug2_opt_simd INTERFACE "-march=native")
+elseif(COMPILER_OPT_ARCH_AVX_SUPPORTED)
+  target_compile_options(iplug2_opt_simd INTERFACE "/arch:AVX")
+endif()
 
 #########################
 # iPlug2 Core Interface #
@@ -91,6 +95,8 @@ set(_src
   ${cwd}/IPlugPluginBase.cpp
 )
 
+# Parts of the iPlug source that (eventually) will be statically built,
+# as opposed to being re-compiled for each output format.
 set(_static_src
   ${cwd}/IPlugConstants.h
   ${cwd}/IPlugPlatform.h
@@ -114,16 +120,8 @@ if (IPLUG_OS MATCHES "Windows")
   list(APPEND _lib
     "Shlwapi.lib"
     "comctl32.lib"
-    "wininet.lib")
-  list(APPEND _inc
-    ${CMAKE_SOURCE_DIR}/resources/fonts
+    "wininet.lib"
   )
-
-  # postbuild-win.bat is used by VST2/VST3/AAX on Windows, so we just always configure it on Windows
-  # Note: For visual studio, we COULD use $(TargetPath) for the target, but for all other generators, no.
-  set(plugin_build_dir "${CMAKE_BINARY_DIR}/out")
-  set(create_bundle_script "${IPLUG2_SDK_PATH}/Scripts/create_bundle.bat")
-  configure_file("${IPLUG2_SDK_PATH}/Scripts/postbuild-win.bat.in" "${CMAKE_BINARY_DIR}/postbuild-win.bat")
 
 elseif (IPLUG_OS MATCHES "Linux")
   list(APPEND _inc ${WDL_DIR}/swell)
@@ -167,20 +165,13 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "(Clang)|(GNU)" AND NOT IPLUG_OS MATCHES "Emsc
   list(APPEND _opt "-Wl,--no-undefined")
 endif()
 
-# Use advanced SIMD instructions when available.
-if (COMPILER_OPT_ARCH_NATIVE_SUPPORTED)
-  list(APPEND _opt "-march=native")
-elseif(COMPILER_OPT_ARCH_AVX_SUPPORTED)
-  list(APPEND _opt "/arch:AVX")
-endif()
-
 # Add all the things we've setup
 iplug_target_add(iPlug2_Core INTERFACE
   DEFINE ${_def}
   INCLUDE ${_inc}
   SOURCE ${_src} ${_static_src}
   OPTION ${_opt}
-  LINK ${_lib}
+  LINK ${_lib} iplug2_opt_simd
   FEATURE cxx_std_17
 )
 

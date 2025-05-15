@@ -311,3 +311,13 @@ function(bn_json_dict VAR)
   # Set VAR in parent scope
   set(${VAR} "${dict}" PARENT_SCOPE)
 endfunction()
+
+function(bn_memoize VAR function_name)
+  string(SHA1 _bn_memoize_input_hash "${ARGN}")
+  set(_bn_memoize_key bn_memoize_${function_name}_${_bn_memoize_input_hash})
+  if(NOT DEFINED CACHE{${_bn_memoize_key}})
+    cmake_language(CALL ${function_name} ${ARGN})
+    set(${_bn_memoize_key} "${VAR}" CACHE INTERNAL "memoize")
+  endif()
+  set(${VAR} $CACHE{${_bn_memoize_key}} PARENT_SCOPE)
+endfunction()

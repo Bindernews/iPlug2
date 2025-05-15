@@ -1,5 +1,4 @@
 cmake_minimum_required(VERSION 3.20)
-include(FindPackageHandleStandardArgs)
 
 set(VST3_SDK "${IPLUG2_SDK_PATH}/Dependencies/IPlug/VST3_SDK" CACHE PATH "VST3 SDK directory.")
 set(vst3_target_arch "")
@@ -22,10 +21,9 @@ smtg_enable_vst3_sdk()
 
 # Set the MSVC static vs dll stdandard library mode for the VST3 sdk.
 # This MUST be consistent for all libraries that link together.
-target_compile_options(sdk PUBLIC ${IPLUG_MSVC_FLAGS})
-target_compile_options(sdk_common PUBLIC ${IPLUG_MSVC_FLAGS})
-target_compile_options(pluginterfaces PUBLIC ${IPLUG_MSVC_FLAGS})
-target_compile_options(base PUBLIC ${IPLUG_MSVC_FLAGS})
+set_property(
+  TARGET sdk sdk_common sdk_hosting pluginterfaces base moduleinfotool validator
+  APPEND PROPERTY COMPILE_OPTIONS ${IPLUG_MSVC_FLAGS})
 
 # Reference: https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical+Documentation/Locations+Format/Plugin+Locations.html
 if (IPLUG_OS MATCHES "Windows")
@@ -58,55 +56,73 @@ set(IPLUG_VST3_ICON "${VST3_SDK}/doc/artwork/VST_Logo_Steinberg.ico" CACHE FILEP
 # VST3 Interface Library #
 ##########################
 
-add_library(iPlug2_VST3 INTERFACE)
+
 set(sdk ${IPLUG2_SDK_PATH}/IPlug/VST3)
-set(_src
+set(common_source
   "${sdk}/IPlugVST3.h"
   "${sdk}/IPlugVST3.cpp"
   "${sdk}/IPlugVST3_Common.h"
+  "${sdk}/IPlugVST3_Defs.h"
+  "${sdk}/IPlugVST3_Parameter.h"
+  # Required "extras" from the VST3 sdk
+  ${VST3_SDK}/public.sdk/source/vst/vstsinglecomponenteffect.cpp
+  ${VST3_SDK}/public.sdk/source/vst/vstsinglecomponenteffect.h
+)
+set(ui_source
   "${sdk}/IPlugVST3_Controller.h"
   "${sdk}/IPlugVST3_Controller.cpp"
   "${sdk}/IPlugVST3_ControllerBase.h"
-  "${sdk}/IPlugVST3_Defs.h"
-  "${sdk}/IPlugVST3_Parameter.h"
+  "${sdk}/IPlugVST3_View.h"
+)
+set(dsp_source
   "${sdk}/IPlugVST3_Processor.h"
   #"${sdk}/IPlugVST3_Processor.cpp"
   "${sdk}/IPlugVST3_ProcessorBase.h"
   "${sdk}/IPlugVST3_ProcessorBase.cpp"
-  "${sdk}/IPlugVST3_View.h"
 )
-# Required "extras" from the VST3 sdk
-list(APPEND _src
-  ${VST3_SDK}/public.sdk/source/vst/vstsinglecomponenteffect.cpp
-  ${VST3_SDK}/public.sdk/source/vst/vstsinglecomponenteffect.h
-)
-
-if (IPLUG_OS MATCHES "Linux")
-  list(APPEND _src ${sdk}/IPlugVST3_RunLoop.cpp)
+if(IPLUG_OS MATCHES "Linux")
+  list(APPEND common_source ${sdk}/IPlugVST3_RunLoop.cpp)
 endif()
 
-iplug_target_add(iPlug2_VST3 INTERFACE
-  SOURCE
-    ${_src}
+set(_src ${common_source} ${ui_source} ${dsp_source})
 
-  INCLUDE
-    ${sdk}
-
+add_library(iPlug2_VST3_Common INTERFACE)
+iplug_target_add(
+  iPlug2_VST3_Common INTERFACE
+  INCLUDE ${sdk}
   DEFINE
     VST3_API
-    IPLUG_DSP=1
     # This define sets additional flags in VST3
     $<IF:$<CONFIG:Debug>,DEVELOPMENT,RELEASE>
-    # Need this on MacOS
-    $<$<PLATFORM_ID:Darwin>:"SWELL_CLEANUP_ON_UNLOAD">
-
   LINK
     iPlug2_Core
     # sdk is the vst3 SDK
     sdk
 )
 
-source_group(IPlug/VST3 FILES ${_src})
+add_library(iPlug2_VST3 INTERFACE)
+iplug_target_add(
+  iPlug2_VST3 INTERFACE
+  SOURCE ${_src}
+  DEFINE IPLUG_DSP=1
+  LINK   iPlug2_VST3_Common
+)
+
+add_library(iPlug2_VST3_UI INTERFACE)
+bn_target_add(
+  iPlug2_VST3_UI INTERFACE
+  SOURCE ${ui_source}
+  DEFINE VST3C_API IPLUG_EDITOR=1
+  LINK   iPlug2_VST3_Common
+)
+
+add_library(iPlug2_VST3_DSP INTERFACE)
+bn_target_add(
+  iPlug2_VST3_DSP INTERFACE
+  SOURCE ${dsp_source}
+  DEFINE VST3P_API IPLUG_DSP=1
+  LINK   iPlug2_VST3_Common
+)
 
 function(iplug_configure_vst3 base_plugin target)
   # Create target
@@ -114,47 +130,25 @@ function(iplug_configure_vst3 base_plugin target)
   # Grab some variables and copy props
   iplug_configure_helper(TARGET ${target} GET_VARS vst3 COPY_PROPERTIES)
   # Link to iPlug library and GUI libraries
-  target_link_libraries(${target} PUBLIC iPlug2_VST3 ${base_plugin} ${gui_libraries})
+  target_link_libraries(${target} PUBLIC iPlug2_VST3 ${base_plugin} ${gui_libraries} iPlug2_Plugin)
 
   # Add the entry point
   set(public_sdk_SOURCE_DIR ${smtg_public_sdk_SOURCE_DIR})
   smtg_target_add_library_main(${target})
 
-  if (IPLUG_VST3_USER_INSTALL_PATH)
-    set(install_dir "${IPLUG_VST3_USER_INSTALL_PATH}/${plugin_name}.vst3")
-  else()
-    set(install_dir "")
-  endif()
+  bn_tern(install_dir "${IPLUG_VST3_USER_INSTALL_PATH}/${plugin_name}.vst3" "" IPLUG_VST3_USER_INSTALL_PATH)
   set(res_dir "${output_dir}/Contents/Resources")
 
-  if (IPLUG_OS MATCHES "Windows")
-    # Use .vst3 as the extension instead of .dll
-    set_target_properties(${target} PROPERTIES
-      OUTPUT_NAME "${plugin_name}"
-      PREFIX ""
-      SUFFIX ".vst3")
-
-  elseif (IPLUG_OS MATCHES "Darwin")
+  if(IPLUG_OS MATCHES "Darwin")
     # Configure the .plist file
     set(info_plist "${binary_subdir}/Info.plist")
     iplug_configure_basic_plist(${base_plugin} FORMAT vst3 OUTPUT "${info_plist}")
-
-    # Set bundle settings
-    set_target_properties(${target} PROPERTIES
-      BUNDLE TRUE
-      MACOSX_BUNDLE TRUE
-      MACOSX_BUNDLE_INFO_PLIST "${info_plist}"
-      BUNDLE_EXTENSION "vst3"
-      PREFIX ""
-      SUFFIX "")
-
-  elseif (IPLUG_OS MATCHES "Linux")
-    set_target_properties(${target} PROPERTIES
-      OUTPUT_NAME "${IPLUG_APP_NAME}"
-      PREFIX ""
-      SUFFIX ".so")
-
+    iplug_configure_helper(TARGET ${target} MAKE_BUNDLE "${info_plist}")
   endif()
+  # Use the plugin name instead of the target name
+  set_target_properties(${target} PROPERTIES OUTPUT_NAME "${plugin_name}")
+  # Set the extension/bundle extension to be .vst3
+  iplug_configure_helper(TARGET ${target} SET_EXTENSION ".vst3")
 
   iplug_target_bundle_resources(${target} "${res_dir}")
   bn_set_output_directory(${target} "${output_dir}/Contents/${IPLUG_VST3_TARGET_ARCH}")
