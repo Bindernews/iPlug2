@@ -180,8 +180,8 @@ iplug_target_add(iPlug2_CustomGraphics
 )
 
 # Use CPU rendering for the IGraphics backend. Currently only supported on Skia.
-add_library(iPlug2_CPU INTERFACE)
-iplug_target_add(iPlug2_CPU INTERFACE
+add_library(iPlug2_cpu INTERFACE)
+iplug_target_add(iPlug2_cpu INTERFACE
   DEFINE "IGRAPHICS_CPU"
 )
 
@@ -213,16 +213,16 @@ elseif (IPLUG_OS MATCHES "Linux")
 endif()
 
 # Target for using desktop OpenGL 2.1 as the graphics backend.
-set(tgt iPlug2_GL2)
-add_library(iPlug2_GL2 INTERFACE)
+set(tgt iPlug2_gl2)
+add_library(iPlug2_gl2 INTERFACE)
 target_sources(${tgt} INTERFACE ${deps_dir}/glad_GL2/src/glad.c)
 target_include_directories(${tgt} INTERFACE ${deps_dir}/glad_GL2/include)
 target_link_libraries(${tgt} INTERFACE iPlug2_DesktopGL_Base)
 target_compile_definitions(${tgt} INTERFACE "IGRAPHICS_GL2")
 
 # Target for using desktop OpenGL 3.0/3.3 or higher as the graphics backend.
-set(tgt iPlug2_GL3)
-add_library(iPlug2_GL3 INTERFACE)
+set(tgt iPlug2_gl3)
+add_library(iPlug2_gl3 INTERFACE)
 target_sources(${tgt} INTERFACE ${deps_dir}/glad_GL3/src/glad.c)
 target_include_directories(${tgt} INTERFACE ${deps_dir}/glad_GL3/include)
 target_link_libraries(${tgt} INTERFACE iPlug2_DesktopGL_Base)
@@ -232,8 +232,8 @@ target_compile_definitions(${tgt} INTERFACE "IGRAPHICS_GL3")
 # NanoVG #
 ##########
 
-set(tgt iPlug2_NanoVG)
-add_library(iPlug2_NanoVG INTERFACE)
+set(tgt iPlug2_nanovg)
+add_library(iPlug2_nanovg INTERFACE)
 set(_def "IGRAPHICS_NANOVG")
 set(_lib iPlug2_IGraphicsCore)
 set(_src)
@@ -265,7 +265,7 @@ else()
   )
 endif()
 
-iplug_target_add(iPlug2_NanoVG INTERFACE
+iplug_target_add(iPlug2_nanovg INTERFACE
   SOURCE ${_src}
   INCLUDE ${_inc}
   DEFINE ${_def}

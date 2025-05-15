@@ -51,11 +51,12 @@ iplug_target_add(plugin_base INTERFACE
     ${CMAKE_CURRENT_LIST_DIR}
 )
 
+
 # Configure the plugin with the default name and version
 # from the project, using NanoVG with OpenGL 3 as the backend.
 iplug_setup_plugin(
   plugin_base
-  GRAPHICS NanoVG GL3
+  GRAPHICS NanoVG+GL3
   # List of plugin formats to export, or ALL for all supported formats on this platform.
   FORMATS ALL
   # The icon to use for the plugin

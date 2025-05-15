@@ -595,7 +595,7 @@ Setup the base INTERFACE target for an iPlug2 plugin with required options.
   iplug_setup_plugin(
     <base_target>
     FORMATS [``ALL`` | formats...]
-    [GRAPHICS <backend> [api]]
+    [GRAPHICS backend[+api]]
     [COPY_AFTER_BUILD]
 
     [NAME <name>]
@@ -638,11 +638,10 @@ Main Arguments
   Some formats may generate more than one target, depending on the requirements.
 
 ``GRAPHICS``
-  The ``GRAPHICS`` option selects the graphics backend. The options for
-  `backend` are ``NanoVG``, ``Skia``, ``Custom``, or ``None``. NanoVG and Skia
-  will use those libraries to implement the `IGraphics` backend. ``None``
-  indicates the plugin has no custom UI, while ``Custom`` means the plugin has
-  a GUI, but the developer will provide the implementation.
+  Select the graphics backend. Arguments are formatted `<backend>+<api>` where `+api` is optional.
+  The backend options are `NanoVG`, `Skia`, `Custom`, or `None`. NanoVG and Skia will use those
+  libraries to implement the `IGraphics` backend. ``None`` indicates the plugin has no custom UI,
+  while ``Custom`` means the plugin has a GUI, but the developer will provide the implementation.
 
   For extra control the ``api`` option may be given as ``GL2``, ``GL3``, or ``CPU``.
   These extra options control specifically which rendering API the backend uses.
@@ -743,51 +742,44 @@ function(iplug_setup_plugin base_target)
   #========================================================
   # Parse graphics options
 
-  # Default to NanoVG
-  if (NOT arg_GRAPHICS)
-    set(arg_GRAPHICS "NanoVG")
+  # Use the global/cli flag, then the argument, then the default.
+  bn_fallback(graphics_api "${IPLUG_FORCE_GRAPHICS}" "${arg_GRAPHICS}" "nanovg+gl2")
+  string(TOLOWER "${graphics_api}" graphics_api)
+  if(NOT "${graphics_api}" MATCHES "(nanovg|skia|custom|none)([+](gl2|gl3|cpu|auto))?")
+    message(FATAL_ERROR "Invalid IGraphics backend ${arg_GRAPHICS} - choices are NanoVG, Skia, Custom, None")
   endif()
-  # Append NOTFOUND value to make sure we have at least 2 items so getting
-  # items 1 and 2 always works.
-  list(APPEND arg_GRAPHICS NOTFOUND)
-
-  set(GUI0_OPTIONS NanoVG Skia Custom None)
-  set(NANOVG_API_OPTIONS GL2 GL3)
-  set(SKIA_API_OPTIONS GL2 GL3 CPU)
-  list(GET arg_GRAPHICS 0 gui0)
-  list(GET arg_GRAPHICS 1 gui_api)
-
-  if (NOT gui0 IN_LIST GUI0_OPTIONS)
-    message(FATAL_ERROR "Invalid IGraphics backend ${gui0} - choices are ${GUI0_OPTIONS}")
+  set(gui0 "${CMAKE_MATCH_1}")
+  set(gui_api "${CMAKE_MATCH_3}")
+  # Auto defaults to empty string so bn_fallback works
+  if(gui_api STREQUAL "auto")
+    set(gui_api "")
   endif()
 
-  # Checks for NanoVG
-  if (gui0 STREQUAL "NanoVG")
-    # Default api for NanoVG is GL2
-    bn_fallback(gui_api "${gui_api}" "GL2")
-    if (NOT gui_api IN_LIST NANOVG_API_OPTIONS)
-      message(FATAL_ERROR "Invalid api for NanoVG ${gui_api} - choices are \"\";${NANOVG_API_OPTIONS}")
+  # Check NanoVG options
+  if(gui0 STREQUAL "nanovg")
+    bn_fallback(gui_api "${gui_api}" "gl2")
+    if(NOT "${gui_api}" MATCHES "gl2|gl3")
+      message(FATAL_ERROR "Invalid api for NanoVG ${gui_api} - choices are auto, GL2, GL3")
     endif()
   endif()
 
-  # Checks for Skia
-  if (gui0 STREQUAL "Skia")
+  # Check Skia options
+  if(gui0 STREQUAL "skia")
+    bn_fallback(gui_api "${gui_api}" "cpu")
+    if(NOT "${gui_api}" MATCHES "gl2|gl3|cpu")
+      message(FATAL_ERROR "Invalid api for Skia ${gui_api} - choices are auto, GL2, GL3, CPU")
+    endif()
     # Try to find Skia package
     find_package(Skia REQUIRED)
-    # Default api for Skia is CPU
-    bn_fallback(gui_api "${gui_api}" "CPU")
-    if (NOT gui_api IN_LIST SKIA_API_OPTIONS)
-      message(FATAL_ERROR "Invalid api for Skia ${gui_api} - choices are \"\";${SKIA_API_OPTIONS}")
-    endif()
   endif()
 
-  # Determine libraries to link to.
-  # Also, set plug_has_ui for the configure_file later.
+  # Set plug_has_ui for the configure_file later.
   set(plug_has_ui 1)
-  if (gui0 STREQUAL "None")
+  # Determine libraries to link to.
+  if (gui0 STREQUAL "none")
     set(gui_libs iPlug2_NoGraphics)
     set(plug_has_ui 0)
-  elseif (gui0 STREQUAL "Custom")
+  elseif (gui0 STREQUAL "custom")
     set(gui_libs iPlug2_CustomGraphics)
   else()
     set(gui_libs iPlug2_${gui0} iPlug2_${gui_api})
