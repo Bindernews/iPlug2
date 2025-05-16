@@ -125,78 +125,303 @@ function(iplug_source_tree target)
   endif()
 endfunction()
 
-function(iplug_set_install_paths format user_path system_path)
-  set(IPLUG_${format}_USER_INSTALL_PATH "${user_path}" CACHE PATH
-  "User-writeable path to install ${format} plugins for local development")
-  set(IPLUG_${format}_SYSTEM_INSTALL_PATH "${system_path}" CACHE PATH
-  "Path to install ${format} plugins to the system, potentially requiring administrator permissions")
-endfunction()
+#[=[.rst
+.. code-block:: cmake
+  iplug_format_helper(SETUP FORMAT <format> ...)
+  iplug_format_helper(FORMAT <format> TARGET <target> ...)
 
-function(iplug_configure_basic_plist base_target)
-  cmake_parse_arguments(PARSE_ARGV 1 arg "" "FORMAT;CUSTOM_XML;OUTPUT" "")
+Combines several pieces of helper code for the ``iplug_configure_*`` functions
+into one place. This function makes certain assumptions about what variables
+exist, and what are safe to set so it shouldn't be used by external code.
 
-  # Check required arguments
-  if (NOT arg_OUTPUT)
-    message(SEND_ERROR "Argument OUTPUT is required")
-  endif()
-  if (NOT arg_FORMAT)
-    message(SEND_ERROR "Argument FORMAT is required")
-  endif()
+``FORMAT``
+  Lowercase format name.
 
-  get_target_property(PLUGIN_NAME ${base_target} IPLUG_PLUGIN_NAME)
-  get_target_property(PLUGIN_META ${base_target} IPLUG_PLUGIN_METADATA)
-  set(PLUGIN_FORMAT "${arg_FORMAT}")
-  string(JSON PLUGIN_COPYRIGHT GET "${PLUGIN_META}" copyright)
-  string(JSON PLUGIN_VERSION GET "${PLUGIN_META}" version)
-  # Defaults to English
-  string(JSON DEVELOPMENT_LANGUAGE GET "${PLUGIN_META}" dev_language)
+Setup Options
+^^^^^^^^^^^^^
 
-  set(BUNDLE_PACKAGE_TYPE "BNDL")
-  set(BUNDLE_SIGNATURE "PmBl")
+``SETUP``
+  Setup cache variables and global properties.
+``USER_INSTALL_PATH``
+  bn_case() list of arguments for selecting the user install path.
+``SYSTEM_INSTALL_PATH``
+  bn_case() list of arguments for selecting the system install path.
+``SUFFIX``
+  bn_case() list of arguments for selecting the library or bundle suffix.
+``RESOURCE_METHOD``
+  bn_cast() list of resource bundling methods.
+``CUSTOM_XML``
+  Custom XML to be included in the generated .plist.
+``PLIST_VARIABLES``
+  List of <key>=<value> items that will set/override variables when
+  configuring the .plist file.
+``INSTALL_SUBDIR``
+  The directory inside either `USER_INSTALL_PATH` where the plugin should
+  be copied to. Defaults to `${plugin_name}.${format}`.
 
-  # List of additional XML lines to put in the file
-  set(custom "")
+Target Options
+^^^^^^^^^^^^^^
 
-  # Format specific custom XML
-  set(FORMAT_CUSTOM_XML "")
-  if (arg_CUSTOM_XML)
-    string(CONFIGURE "${arg_CUSTOM_XML}" FORMAT_CUSTOM_XML @ONLY)
-  endif()
+``TARGET``
+  The target to apply options on, required argument for the following options.
+``COPY_PROPERTIES``
+  Copies `IPLUG_RESOURCES, IPLUG_COPY_AFTER_BUILD` from the base plugin target to <target>.
+``GENERATE_PLIST``
+  If on MacOS/iOS, generate a .plist file for this target.
+``MAKE_BUNDLE``
+  If on MacOS/iOS, make this target into a bundle.
+``SET_NAME``
+  Set the output name, prefix, and suffix for the target.
+``MAIN_RC``
+  On Windows, this will configure main.rc and resource.h for the named target, copying them to the
+  correct directory and linking them to the target. Does nothing on other platforms.
+``CONVERT_XIB``
+  Configure a .xib file, and then convert it to a .nib file.
+``POST_BUILD_COPY``
+  Add a post-build command to copy the target's output directory (with resources)
+  into `${USER_INSTALL_PATH}/${INSTALL_SUBDIR}`.
+``TARGET_COMMON``
+  Implies `COPY_PROPERTIES, GENERATE_PLIST, MAKE_BUNDLE, SET_NAME, MAIN_RC, POST_BUILD_COPY`.
+  Useful for non-split builds.
 
-  if (arg_FORMAT STREQUAL "aax")
-    list(APPEND custom
-      "<key>LSMultipleInstancesProhibited</key> <string>true</string>"
-      "<key>LSPrefersCarbon</key> <false/>"
-      "<key>NSAppleScriptEnabled</key> <string>No</string>"
-    )
-    set(BUNDLE_PACKAGE_TYPE "TDMw")
-    # Not sure if this is required
-    set(BUNDLE_SIGNATURE "PTul")
-  endif()
+Misc Options
+^^^^^^^^^^^^
 
-  if (arg_FORMAT STREQUAL "au3")
-    set(BUNDLE_PACKAGE_TYPE "XPC!")
-  endif()
+``GET_VARS``
+  Sets `plugin_name`, `gui_libraries`, `output_dir`, and ``resource_dir`` in
+  the parent scope. These are common variables used by most/all output formats.
 
-  if (arg_FORMAT STREQUAL "app")
-    list(APPEND custom
-      "<key>LSApplicationCategoryType</key> <string>public.app-category.music</string>"
-      "<key>NSMainNibFile</key> <string>${PLUGIN_NAME}-macOS-MainMenu</string>"
-      "<key>NSPrincipalClass</key> <string>SWELLApplication</string>"
-      "<key>CFBundleIconFile</key> <string>${PLUGIN_NAME}.icns</string>"
-    )
-  endif()
-
-  list(JOIN custom "\n" CUSTOM_XML)
-
-  configure_file(
-    ${IPLUG2_SDK_PATH}/IPlug/resource/Basic-Info.plist.in
-    ${arg_OUTPUT}
-    NEWLINE_STYLE UNIX
-    @ONLY
+]=]
+function(iplug_format_helper)
+  cmake_parse_arguments(
+    PARSE_ARGV 0 a13
+    "SETUP;APPLY;MAKE_BUNDLE;GENERATE_PLIST;MAIN_RC;POST_BUILD_COPY;GET_VARS;COPY_PROPERTIES;TARGET_COMMON"
+    "FORMAT;TARGET;CUSTOM_XML;INSTALL_SUBDIR;CONVERT_XIB"
+    "USER_INSTALL_PATH;SYSTEM_INSTALL_PATH;SUFFIX;RESOURCE_METHOD;PLIST_VARIABLES"
   )
-endfunction()
 
+  string(TOUPPER "${a13_FORMAT}" format_cap)
+  set(prop_key "iplug_${a13_FORMAT}")
+
+  # Set global and cache variables based on the arguments and system settings.
+  if(a13_SETUP)
+    # Determine user install path, always set a cache value even if empty
+    if(a13_USER_INSTALL_PATH)
+      bn_case(tmp "${IPLUG_OS}" ${a13_USER_INSTALL_PATH})
+    else()
+      set(tmp "")
+    endif()
+    set(
+      IPLUG_${format_cap}_USER_INSTALL_PATH "${tmp}" CACHE PATH
+      "User-writeable path to install ${format_cap} plugins for local development")
+
+    # Determine the system install path, even if empty
+    if(a13_SYSTEM_INSTALL_PATH)
+      bn_case(tmp "${IPLUG_OS}" ${a13_SYSTEM_INSTALL_PATH})
+    else()
+      set(tmp "")
+    endif()
+    set(
+      IPLUG_${format_cap}_SYSTEM_INSTALL_PATH "${tmp}" CACHE PATH
+      "Path to install ${format_cap} plugins to the system,
+      potentially requiring administrator permissions")
+
+    # Determine the suffix
+    if(a13_SUFFIX)
+      bn_case(tmp "${IPLUG_OS}" ${a13_SUFFIX})
+      set_property(GLOBAL PROPERTY ${prop_key}_suffix "${tmp}")
+    endif()
+
+    # Determine the resource method, default to "auto"
+    if(a13_RESOURCE_METHOD)
+      bn_case(tmp "${IPLUG_OS}" ${a13_RESOURCE_METHOD})
+    else()
+      set(tmp "auto")
+    endif()
+    set_property(GLOBAL PROPERTY ${prop_key}_resource_method "${tmp}")
+
+    # Record any custom XML to add to the .plist before formatting.
+    bn_tern(tmp "${a13_CUSTOM_XML}" "" a13_CUSTOM_XML)
+    set_property(GLOBAL PROPERTY ${prop_key}_custom_xml "${tmp}")
+
+    # Record plist variables
+    bn_fallback(tmp "${a13_PLIST_VARIABLES}" "@@ @@")
+    set_property(GLOBAL PROPERTY ${prop_key}_plist_variables "${tmp}")
+
+    #
+    bn_fallback(tmp "${a13_INSTALL_SUBDIR}" "\${plugin_name}.${format}")
+    set_property(GLOBAL PROPERTY ${prop_key}_install_subdir "${tmp}")
+  endif()
+
+  if (a13_GET_VARS)
+    set(format ${a13_FORMAT})
+    get_target_property(plugin_name ${base_plugin} IPLUG_PLUGIN_NAME)
+    get_target_property(gui_libraries ${base_plugin} IPLUG_PLUGIN_GRAPHICS)
+    set(output_dir "${CMAKE_BINARY_DIR}/${plugin_name}/${format}")
+    set(binary_subdir "${CMAKE_CURRENT_BINARY_DIR}/${target}.dir")
+    set(resource_dir "${output_dir}/resources")
+    if(IPLUG_OS MATCHES "Darwin|iOS")
+      # Bundle mode for resources
+      set(resource_dir "${output_dir}/Contents/Resources")
+    endif()
+
+    # Set these in the parent scope
+    set(output_dir "${output_dir}" PARENT_SCOPE)
+    set(resource_dir "${resource_dir}" PARENT_SCOPE)
+    set(plugin_name ${plugin_name} PARENT_SCOPE)
+    set(gui_libraries ${gui_libraries} PARENT_SCOPE)
+    set(binary_subdir "${binary_subdir}" PARENT_SCOPE)
+    # Exit early
+    return()
+  endif()
+
+  # Early exit if TARGET option isn't given
+  if(NOT a13_TARGET)
+    return()
+  endif()
+  # Make sure we have required variables defined
+  if(NOT (DEFINED base_plugin AND DEFINED binary_subdir AND DEFINED resource_dir))
+    message(SEND_ERROR "iplug_format_helper() called in invalid context")
+  endif()
+
+  # Variables for when we have TARGET
+  set(target "${a13_TARGET}")
+  set(a13_plist_output ${binary_subdir}/Info.plist)
+  get_target_property(PLUGIN_NAME ${base_plugin} IPLUG_PLUGIN_NAME)
+
+  # Enable common options for non-split target builds
+  if(a13_TARGET_COMMON)
+    set(a13_COPY_PROPERTIES ON)
+    set(a13_GENERATE_PLIST ON)
+    set(a13_MAKE_BUNDLE ON)
+    set(a13_SET_NAME ON)
+    set(a13_POST_BUILD ON)
+    set(a13_MAIN_RC ON)
+  endif()
+
+  if (a13_COPY_PROPERTIES)
+    iplug_copy_properties(${target} ${base_plugin} "IPLUG_COPY_AFTER_BUILD;IPLUG_RESOURCES")
+  endif()
+
+  # Generate .plist
+  if(a13_GENERATE_PLIST AND APPLE)
+    get_property(a13_custom_xml GLOBAL PROPERTY ${prop_key}_custom_xml)
+    get_property(a13_plist_variables GLOBAL PROPERTY ${prop_key}_plist_variables)
+
+    get_target_property(PLUGIN_META ${base_plugin} IPLUG_PLUGIN_METADATA)
+    set(PLUGIN_FORMAT "${a13_FORMAT}")
+    string(JSON PLUGIN_COPYRIGHT GET "${PLUGIN_META}" copyright)
+    string(JSON PLUGIN_VERSION GET "${PLUGIN_META}" version)
+    string(JSON DEVELOPMENT_LANGUAGE GET "${PLUGIN_META}" dev_language)
+    set(BUNDLE_PACKAGE_TYPE "BNDL")
+    set(BUNDLE_SIGNATURE "PmBl")
+
+    # Load plist variable overrides
+    foreach(entry IN_LIST a13_plist_variables)
+      if("${entry}" MATCHES "^([A-Za-z0-9_])=(.+)$")
+        set(${CMAKE_MATCH_1} "${CMAKE_MATCH_2}")
+      else()
+        message(FATAL_ERROR "Invalid plist variable '${entry}'")
+      endif()
+    endforeach()
+
+    # Interpolate custom XML
+    string(CONFIGURE "${a13_custom_xml}" FORMAT_CUSTOM_XML @ONLY)
+
+    # Configure the file
+    set(plist_input ${IPLUG2_SDK_PATH}/IPlug/resource/Basic-Info.plist.in)
+    configure_file(${plist_input} ${a13_plist_output} @ONLY NEWLINE_STYLE UNIX)
+    # Return early
+    return()
+  endif()
+
+  if(a13_MAKE_BUNDLE AND APPLE)
+    set_target_properties(${target} PROPERTIES
+      BUNDLE TRUE
+      MACOSX_BUNDLE TRUE
+      MACOSX_BUNDLE_INFO_PLIST "${a13_plist_output}"
+    )
+  endif()
+
+  if(a13_SET_NAME)
+    get_property(a13_suffix GLOBAL PROPERTY ${prop_key}_suffix)
+    get_property(a13_is_bundle TARGET ${target} PROPERTY MACOSX_BUNDLE)
+    bn_tern(suffix_property "BUNDLE_EXTENSION" "SUFFIX" a13_is_bundle)
+
+    set_target_properties(${target} PROPERTIES
+      # Make sure the output name is the same as the app name.
+      # This is basically required for bundles, but good for all formats.
+      OUTPUT_NAME "${PLUGIN_NAME}"
+      PREFIX ""
+      # Set either the bundle extension or the file suffix
+      ${suffix_property} "${a13_suffix}"
+    )
+  endif()
+
+  if(a13_MAIN_RC AND IPLUG_OS MATCHES "Windows")
+    # Configure main.rc and resource.h
+    # N.B. Assumes ${binary_subdir}, ${base_plugin}, ${plugin_name} are already set in parent scope.
+    set(app_main_rc ${binary_subdir}/main.rc)
+    set(app_resource_h ${binary_subdir}/resource.h)
+    set(config_in_dir ${IPLUG2_SDK_PATH}/IPlug/Resources)
+    set(icon_in_file ${CMAKE_CURRENT_SOURCE_DIR}/resources/${PLUGIN_NAME}.ico)
+
+    # Copy .ico to temp dir
+    file(MAKE_DIRECTORY ${binary_subdir})
+    file(COPY_FILE ${icon_in_file} ${binary_subdir}/${PLUGIN_NAME}.ico ONLY_IF_DIFFERENT)
+    # Config variables
+    get_target_property(PLUGIN_META ${base_plugin} IPLUG_PLUGIN_METADATA)
+    get_target_property(PLUGIN_VERSION ${base_plugin} VERSION)
+    string(REPLACE "." "," PLUGIN_VERSION_COMMAS "${PLUGIN_VERSION}")
+
+    string(JSON PLUGIN_COPYRIGHT GET "${PLUGIN_META}" copyright)
+
+    # Do the configure
+    configure_file(${config_in_dir}/main.rc.in ${app_main_rc} @ONLY)
+    configure_file(${config_in_dir}/resource.h ${app_resource_h} COPYONLY)
+    # Add as sources
+    target_sources(${target} PRIVATE ${app_main_rc} ${app_resource_h})
+    target_include_directories(${target} PRIVATE ${binary_subdir})
+    source_group("IPlug" FILES ${app_main_rc} ${app_resource_h})
+  endif()
+
+  if(a13_CONVERT_XIB AND IPLUG_OS MATCHES "(Darwin)|(IOS)")
+    # Do some path operations
+    list(GET a13_CONVERT_XIB 0 xib_in_path)
+    cmake_path(GET xib_in_path FILENAME xib_fn)
+    cmake_path(SET xib_bin_path NORMALIZE "${resource_dir}/${xib_fn}")
+    cmake_path(REPLACE_EXTENSION xib_bin_path ".xib")
+    cmake_path(GET xib_path STEM LAST_ONLY stem)
+    set(nib_path "${resource_dir}/${stem}.nib")
+    # Configure
+    get_target_property(PLUGIN_NAME ${base_plugin} IPLUG_PLUGIN_NAME)
+    configure_file(${xib_in_path} ${xib_bin_path} @ONLY NEWLINE_STYLE UNIX)
+    # Compile .xib to .nib
+    add_custom_command(
+      OUTPUT ${nib_path}
+      COMMAND ${IBTOOL} "--errors" "--warnings" "--notices" "--compile" "${nib_path}" "${xib_bin_path}"
+      MAIN_DEPENDENCY "${xib_bin_path}"
+      VERBATIM
+    )
+    set_property(TARGET ${target} APPEND PROPERTY RESOURCE ${nib_path})
+  endif()
+
+  if(a13_POST_BUILD_COPY)
+    get_property(a13_do_copy TARGET ${target} PROPERTY IPLUG_COPY_AFTER_BUILD)
+    get_property(a13_install_subdir GLOBAL PROPERTY ${prop_key}_install_subdir)
+    set(a13_install_superdir "${IPLUG_${format_cap}_USER_INSTALL_PATH}")
+    if("${a13_do_copy}" AND "${a13_install_superdir}" AND "${a13_install_subdir}")
+      # Assume ${output_dir} exists from parent function
+      set(dest_dir "${a13_install_superdir}/${a13_install_subdir}")
+      add_custom_command(
+        TARGET ${target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} "-E" "remove_directory" "${dest_dir}"
+        COMMAND ${CMAKE_COMMAND} "-E" "copy_directory" "${output_dir}" "${dest_dir}"
+        COMMENT "Copied ${output_dir} to ${dest_dir}"
+      )
+    endif()
+  endif()
+endfunction(iplug_format_helper)
 
 function(iplug_guess_file_types VAR)
   string(SHA1 argn_hash "${ARGN}")
@@ -402,190 +627,6 @@ function(iplug_list_to_js_list dst_var)
   list(JOIN tmp_list "','" tmp)
   set(${dst_var} "['${tmp}']" PARENT_SCOPE)
 endfunction(iplug_list_to_js_list)
-
-#[===[.rst:
-
-.. code-block:: cmake
-  iplug_configure_helper(
-    TARGET <target>
-    [GET_VARS <format>]
-    [PLATFORM_SETUP]
-    [MAIN_RC]
-    [COPY_PROPERTIES <target>]
-    [POST_BUILD_COPY <destination>]
-  )
-
-Combines several pieces of helper code for the ``iplug_configure_*`` functions
-into one place. This function makes certain assumptions about what variables
-exist, and what are safe to set so it shouldn't be used by external code.
-
-``TARGET``
-  The target to operate on for various actions. Mostly required.
-
-``GET_VARS``
-  Sets `plugin_name`, `gui_libraries`, `output_dir`, and ``resource_dir`` in
-  the parent scope. These are common variables used by most/all output formats.
-  The ``<format>`` argument is the lowercased format name.
-
-``COPY_PROPERTIES``
-  Copies ``IPLUG_RESOURCES`` and ``IPLUG_COPY_AFTER_BUILD`` from the base plugin
-  target to ``<target>``.
-
-``PLATFORM_SETUP``
-  Does platform/OS specific setup.
-
-``MAIN_RC``
-  On Windows, this will configure main.rc and resource.h for the named target, copying
-  them to the correct directory and linking them to the target. Does nothing on other
-  platforms.
-
-``POST_BUILD_COPY``
-  If given, this will setup a copy of the target's output directory (with resources)
-  into the given destination. This is usually for debugging.
-
-``CONVERT_XIB``
-  Configure a .xib file, and then convert it to a .nib file.
-
-``MAKE_BUNDLE``
-  :param: plist - Path to the .plist file
-  On Apple platforms, this sets the target as a bundle, and uses the given
-  .plist path for the bundle's plist. Does nothing on non-Apple platforms.
-
-#]===]
-function(iplug_configure_helper)
-  if (NOT TARGET ${base_plugin})
-    message(FATAL_ERROR "iplug_configure_util called but 'base_plugin' not defined.\n
-    This is an error in the format's configure function.")
-  endif()
-  cmake_parse_arguments(
-    PARSE_ARGV 0 arg
-    "PLATFORM_SETUP;COPY_PROPERTIES;MAIN_RC"
-    "TARGET;GET_VARS;POST_BUILD_COPY;CONVERT_XIB;MAKE_BUNDLE;SET_EXTENSION"
-    ""
-  )
-
-  set(target "${arg_TARGET}")
-
-  if (arg_GET_VARS)
-    set(format ${arg_GET_VARS})
-    get_target_property(plugin_name ${base_plugin} IPLUG_PLUGIN_NAME)
-    get_target_property(gui_libraries ${base_plugin} IPLUG_PLUGIN_GRAPHICS)
-    set(output_dir "${CMAKE_BINARY_DIR}/${plugin_name}/${format}")
-    set(resource_dir "${output_dir}/resources")
-    set(binary_subdir "${CMAKE_CURRENT_BINARY_DIR}/${target}.dir")
-
-    # Set these in the parent scope
-    set(output_dir "${output_dir}" PARENT_SCOPE)
-    set(resource_dir "${resource_dir}" PARENT_SCOPE)
-    set(plugin_name ${plugin_name} PARENT_SCOPE)
-    set(gui_libraries ${gui_libraries} PARENT_SCOPE)
-    set(binary_subdir "${binary_subdir}" PARENT_SCOPE)
-  endif()
-
-  if (arg_COPY_PROPERTIES)
-    iplug_copy_properties(${target} ${base_plugin} "IPLUG_COPY_AFTER_BUILD;IPLUG_RESOURCES")
-  endif()
-
-  #--------------------------------------------------------
-  # OS specific setup
-  if(arg_MAIN_RC AND IPLUG_OS MATCHES "Windows")
-    # Configure main.rc and resource.h
-    # N.B. Assumes ${binary_subdir} is already set in parent scope.
-    set(app_main_rc ${binary_subdir}/main.rc)
-    set(app_resource_h ${binary_subdir}/resource.h)
-    set(config_in_dir ${IPLUG2_SDK_PATH}/IPlug/Resources)
-    set(icon_in_file ${CMAKE_CURRENT_SOURCE_DIR}/resources/${plugin_name}.ico)
-
-    # Copy .ico to temp dir
-    file(MAKE_DIRECTORY ${binary_subdir})
-    file(COPY_FILE ${icon_in_file} ${binary_subdir}/${plugin_name}.ico ONLY_IF_DIFFERENT)
-    # Config variables
-    get_target_property(PLUGIN_META ${base_target} IPLUG_PLUGIN_METADATA)
-    get_target_property(PLUGIN_VERSION ${base_target} VERSION)
-    string(REPLACE "." "," PLUGIN_VERSION_COMMAS "${PLUGIN_VERSION}")
-    get_target_property(PLUGIN_NAME ${base_target} IPLUG_PLUGIN_NAME)
-    string(JSON PLUGIN_COPYRIGHT GET "${PLUGIN_META}" copyright)
-
-    # Do the configure
-    configure_file(${config_in_dir}/main.rc.in ${app_main_rc} @ONLY)
-    configure_file(${config_in_dir}/resource.h ${app_resource_h} COPYONLY)
-    # Add as sources
-    target_sources(${target} PRIVATE ${app_main_rc} ${app_resource_h})
-    target_include_directories(${target} PRIVATE ${binary_subdir})
-    source_group("IPlug" FILES ${app_main_rc} ${app_resource_h})
-  endif()
-
-  if(arg_CONVERT_XIB AND IPLUG_OS MATCHES "(Darwin)|(IOS)")
-    # Do some path operations
-    list(GET arg_CONVERT_XIB 0 xib_in_path)
-    cmake_path(GET xib_in_path FILENAME xib_fn)
-    cmake_path(SET xib_bin_path NORMALIZE "${resource_dir}/${xib_fn}")
-    cmake_path(REPLACE_EXTENSION xib_bin_path ".xib")
-    cmake_path(GET xib_path STEM LAST_ONLY stem)
-    set(nib_path "${resource_dir}/${stem}.nib")
-    # Configure
-    get_target_property(PLUGIN_NAME ${base_target} IPLUG_PLUGIN_NAME)
-    configure_file(${xib_in_path} ${xib_bin_path} @ONLY NEWLINE_STYLE UNIX)
-    # Compile .xib to .nib
-    add_custom_command(
-      OUTPUT ${nib_path}
-      COMMAND ${IBTOOL} "--errors" "--warnings" "--notices" "--compile" "${nib_path}" "${xib_bin_path}"
-      MAIN_DEPENDENCY "${xib_bin_path}"
-      VERBATIM
-    )
-    set_property(TARGET ${target} APPEND PROPERTY RESOURCE ${nib_path})
-  endif()
-
-  if(arg_PLATFORM_SETUP)
-    if(IPLUG_OS MATCHES "Darwin")
-      # For MacOS we make sure the output name is the same as the app name.
-      # This is basically required for bundles.
-      set_property(TARGET ${target} PROPERTY OUTPUT_NAME "${plugin_name}")
-
-    else()
-      # Nothing for other platforms yet
-    endif()
-  endif()
-
-  if(arg_MAKE_BUNDLE AND APPLE)
-    set_target_properties(${target} PROPERTIES
-      BUNDLE TRUE
-      MACOSX_BUNDLE TRUE
-      # Argument is the plist
-      MACOSX_BUNDLE_INFO_PLIST "${arg_MAKE_BUNDLE}"
-    )
-  endif()
-
-  if(arg_SET_EXTENSION)
-    get_property(is_bundle TARGET ${target} PROPERTY MACOSX_BUNDLE)
-    set(ext "${arg_SET_EXTENSION}")
-    set(bundle_ext "")
-    if(is_bundle)
-      set(bundle_ext "${ext}")
-      set(ext "")
-    endif()
-
-    set_target_properties(${target} PROPERTIES
-      BUNDLE_EXTENSION "${bundle_ext}"
-      PREFIX ""
-      SUFFIX "${ext}")
-  endif()
-
-  if(arg_POST_BUILD_COPY)
-    get_target_property(r ${target} IPLUG_COPY_AFTER_BUILD)
-    # Assume ${output_dir} exists from previous call in parent function
-    if(r)
-      set(dest_dir "${arg_POST_BUILD_COPY}")
-      add_custom_command(
-        TARGET ${target} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} ARGS "-E" "remove_directory" "${dest_dir}"
-        COMMAND ${CMAKE_COMMAND} ARGS "-E" "copy_directory" "${output_dir}" "${dest_dir}"
-        COMMENT "Copied ${output_dir} to ${dest_dir}"
-      )
-    endif()
-  endif()
-
-endfunction(iplug_configure_helper)
 
 #[===[.rst:
 
@@ -903,6 +944,8 @@ function(iplug_setup_plugin base_target)
 
   # Load global property
   get_property(IPLUG_ALL_FORMATS GLOBAL PROPERTY IPLUG_ALL_FORMATS)
+  set(IPLUG_LOADED_FORMATS "$CACHE{IPLUG_LOADED_FORMATS}")
+  set(IPLUG_VALID_FORMATS "$CACHE{IPLUG_VALID_FORMATS}")
 
   foreach (format IN LISTS output_formats)
     # Check that the format is known, valid for this platform, and loaded successfully

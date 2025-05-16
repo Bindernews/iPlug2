@@ -17,21 +17,26 @@ endif()
 # Put the 'clap-tests' in a folder to keep the top level clean.
 set_target_properties(clap-tests PROPERTIES FOLDER "Libraries")
 
-# Find the install path for clap plugins based on OS.
-# Generally we prefer user-writable values in index 0 for faster iteration.
-# Source: https://github.com/free-audio/clap/blob/main/include/clap/entry.h
-if (IPLUG_OS MATCHES "Windows")
-  set(_user_install_path "$ENV{LOCALAPPDATA}/Programs/Common/CLAP")
-  set(_system_install_path "$ENV{COMMONPROGRAMFILES}/CLAP")
-elseif (IPLUG_OS MATCHES "Darwin")
-  set(_user_install_path "$ENV{HOME}/Library/Audio/Plug-Ins/CLAP")
-  set(_system_install_path "/Library/Audio/Plug-Ins/CLAP")
-elseif (IPLUG_OS MATCHES "Linux")
-  set(_user_install_path "$ENV{HOME}/.clap")
-  set(_system_install_path "/usr/local/lib/clap") # Or /usr/lib/clap
-endif()
-
-iplug_set_install_paths(CLAP "${_user_install_path}" "${_system_install_path}")
+iplug_format_helper(
+  SETUP
+  FORMAT clap
+  # Find the install path for clap plugins based on OS.
+  # Source: https://github.com/free-audio/clap/blob/main/include/clap/entry.h
+  USER_INSTALL_PATH
+    "Windows" "$ENV{LOCALAPPDATA}/Programs/Common/CLAP"
+    "Darwin"  "$ENV{HOME}/Library/Audio/Plug-Ins/CLAP"
+    "Linux"   "$ENV{HOME}/.clap"
+  SYSTEM_INSTALL_PATH
+    "Windows" "$ENV{COMMONPROGRAMFILES}/CLAP"
+    "Darwin"  "/Library/Audio/Plug-Ins/CLAP"
+    "Linux"   "/usr/local/lib/clap" # Or /usr/lib/clap
+  SUFFIX
+    "Windows" ".clap"
+    "Darwin"  ".clap"
+    "Linux"   ".clap"
+  CUSTOM_XML ""
+  INSTALL_SUBDIR "\${plugin_name}"
+)
 
 # Core LV2 interface library.
 add_library(iPlug2_CLAP INTERFACE)
@@ -56,45 +61,23 @@ bn_target_add(iPlug2_CLAP INTERFACE
 #--------------------------------------------------------------------
 # configure function
 function(iplug_configure_clap base_plugin target)
+  iplug_format_helper(FORMAT clap GET_VARS)
+
   add_library(${target} MODULE)
-  iplug_configure_helper(TARGET ${target} GET_VARS clap COPY_PROPERTIES)
-  iplug_target_add(${target} PUBLIC LINK iPlug2_CLAP ${base_plugin} ${gui_libraries})
-  set(install_dir "${IPLUG_CLAP_USER_INSTALL_PATH}/${plugin_name}")
-
-  #--------------------------------------------------------
-  # Windows
-  if (IPLUG_OS MATCHES "Windows")
-    set_target_properties(${target} PROPERTIES
-      OUTPUT_NAME "${plugin_name}"
-      SUFFIX ".clap"
-    )
-
-  #--------------------------------------------------------
-  # MacOS
-  elseif (IPLUG_OS MATCHES "Darwin")
-    set(info_plist "${temporary_dir}/Info.plist")
-    iplug_configure_basic_plist(${base_plugin} FORMAT clap OUTPUT "${info_plist}")
-
-    set_target_properties(${target} PROPERTIES
-      BUNDLE TRUE
-      BUNDLE_EXTENSION clap
-      MACOSX_BUNDLE_INFO_PLIST "${info_plist}"
-    )
-
-  #--------------------------------------------------------
-  # Linux
-  elseif (IPLUG_OS MATCHES "Linux")
-    set_target_properties(${target} PROPERTIES
-      OUTPUT_NAME "${plugin_name}"
-      SUFFIX ".clap"
-    )
-  endif()
-
+  iplug_target_add(
+    ${target} PUBLIC
+    LINK iPlug2_CLAP ${base_plugin} ${gui_libraries}
+  )
+  iplug_format_helper(
+    FORMAT clap TARGET ${target}
+    COPY_PROPERTIES GENERATE_PLIST MAKE_BUNDLE SET_NAME MAIN_RC
+    # After building copy to the correct directory
+    POST_BUILD_COPY
+  )
   # Handle resources
   iplug_target_bundle_resources(${target} "${resource_dir}")
   # Set the output directories to remove config sub-folders.
   bn_set_output_directory(${target} "${output_dir}")
-  iplug_configure_helper(TARGET ${target} MAIN_RC POST_BUILD_COPY "${install_dir}")
 endfunction()
 
 set(IPlugCLAP_FOUND TRUE)

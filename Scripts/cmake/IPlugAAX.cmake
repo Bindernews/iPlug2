@@ -9,6 +9,20 @@ if (NOT EXISTS "${AAX_SDK_PATH}/Interfaces/AAX.h")
   return()
 endif()
 
+iplug_format_helper(
+  SETUP
+  FORMAT aax
+  CUSTOM_XML [[
+  <key>LSMultipleInstancesProhibited</key> <string>true</string>
+  <key>LSPrefersCarbon</key> <false/>
+  <key>NSAppleScriptEnabled</key> <string>No</string>
+  ]]
+  PLIST_VARIABLES
+    "BUNDLE_PACKAGE_TYPE=TDMw"
+    "BUNDLE_SIGNATURE=PTul"
+)
+
+
 # Decide on the install directory
 if (WIN32)
   if (CMAKE_SYSTEM_PROCESSOR MATCHES "X86")

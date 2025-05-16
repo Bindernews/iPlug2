@@ -14,7 +14,6 @@
 	<key>CFBundleVersion</key> <string>@PLUGIN_VERSION@</string>
 	<key>CSResourcesFileMapped</key> <true/>
 	<key>LSMinimumSystemVersion</key> <string>10.13.0</string>
-  @CUSTOM_XML@
   @FORMAT_CUSTOM_XML@
 </dict>
 </plist>

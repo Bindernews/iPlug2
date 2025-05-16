@@ -102,7 +102,7 @@ foreach (format format_subdir IN ZIP_LISTS IPLUG_ALL_FORMATS IPLUG_FORMAT_MOD_NA
   else()
     # Allow modules to add an extra error message
     bn_tern(extra_error "${${module_name}_ERROR}" "error" DEFINED ${module_name}_ERROR)
-    message(NOTICE "Failed to load plugin format ${format_subdir}:` ${extra_error}")
+    message(NOTICE "Failed to load plugin format ${format_subdir}: ${extra_error}")
   endif()
 endforeach()
 

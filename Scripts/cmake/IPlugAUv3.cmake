@@ -1,5 +1,13 @@
 cmake_minimum_required(VERSION 3.20)
 
+
+iplug_format_helper(
+  SETUP
+  FORMAT au3
+  PLIST_VARIABLES
+    "BUNDLE_PACKAGE_TYPE=XPC!"
+)
+
 set(_sdk ${IPLUG2_SDK_PATH}/IPlug/AUv3)
 add_library(iPlug2_AUv3 INTERFACE)
 iplug_target_add(iPlug2_AUv3 INTERFACE

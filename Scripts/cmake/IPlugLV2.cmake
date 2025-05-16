@@ -19,19 +19,30 @@ if (NOT LV2_SDK_PATH)
   return()
 endif()
 
-# Find the install path for lv2 plugins based on OS.
-if (IPLUG_OS MATCHES "Windows")
-  set(_user_install_path "$ENV{APPDATA}/LV2")
-  set(_system_install_path "$ENV{COMMONPROGRAMFILES}/LV2")
-elseif (IPLUG_OS MATCHES "Darwin")
-  set(_user_install_path "$ENV{HOME}/Library/Audio/Plug-Ins/LV2")
-  set(_system_install_path "/Library/Audio/Plug-Ins/LV2")
-elseif (IPLUG_OS MATCHES "Linux")
-  set(_user_install_path "$ENV{HOME}/.lv2")
-  set(_system_install_path "/usr/local/lib/lv2") # Or /usr/lib/lv2
-endif()
+iplug_format_helper(
+  SETUP
+  FORMAT lv2
+  # Determine VST2 directories
+  USER_INSTALL_PATH
+    # For Windows, install locally to the VST3 directory, since most hosts will find it there as well
+    "Windows" "$ENV{APPDATA}/LV2"
+    "Darwin"  "$ENV{HOME}/Library/Audio/Plug-Ins/LV2"
+    "Linux"   "$ENV{HOME}/.lv2"
+  SYSTEM_INSTALL_PATH
+    # Technically we should use $ENV{ProgramFiles\(x86\)} for Win32 on Win64, but since Win32
+    # is deprecated as of Windows 11, and it's much more work, just ignore that issue.
+    "Windows" "$ENV{COMMONPROGRAMFILES}/LV2"
+    "Darwin"  "/Library/Audio/Plug-Ins/LV2"
+    "Linux"   "/usr/local/lib/lv2" # Or /usr/lib/lv2
+  SUFFIX
+    "Windows" ".dll"
+    "Darwin"  ".dylib"
+    "Linux"   ".so"
+  RESOURCE_METHOD
+    "Windows" "embed"
 
-iplug_set_install_paths(LV2 "${_user_install_path}" "${_system_install_path}")
+  CUSTOM_XML ""
+)
 
 # Core LV2 interface library.
 add_library(iPlug2_LV2 INTERFACE)
@@ -86,25 +97,14 @@ iplug_target_add(iPlug2_LV2_UI INTERFACE
 function(iplug_configure_lv2 base_plugin target)
   # DSP target first
   add_library(${target} MODULE)
-  iplug_configure_helper(TARGET ${target} GET_VARS lv2 COPY_PROPERTIES)
-  set(install_dir "${IPLUG_LV2_USER_INSTALL_PATH}/${plugin_name}.lv2")
-  iplug_target_add(${target} PUBLIC LINK iPlug2_LV2_DSP iPlug2_NoGraphics ${base_plugin})
-
-  if (IPLUG_OS MATCHES "Windows")
-    set(suffix ".dll")
-  elseif (IPLUG_OS MATCHES "Darwin")
-    set(suffix ".dylib")
-  elseif (IPLUG_OS MATCHES "Linux")
-    set(suffix ".so")
-  endif()
-
-  # Set dependencies for our target
-  set_target_properties(
-    ${target} PROPERTIES
-    OUTPUT_NAME "${plugin_name}"
-    PREFIX ""
-    SUFFIX ${suffix}
+  iplug_format_helper(FORMAT lv2 GET_VARS)
+  iplug_format_helper(
+    FORMAT lv2 TARGET ${target}
+    COPY_PROPERTIES GENERATE_PLIST MAKE_BUNDLE SET_NAME
+    # After building copy to the correct directory
+    POST_BUILD_COPY
   )
+  iplug_target_add(${target} PUBLIC LINK iPlug2_LV2_DSP iPlug2_NoGraphics ${base_plugin})
 
   # Add TTL generator command
   add_custom_command(
@@ -118,14 +118,14 @@ function(iplug_configure_lv2 base_plugin target)
   if (NOT gui_libraries STREQUAL iPlug2_NoGraphics)
     set(target_ui ${target}_ui)
     add_library(${target_ui} MODULE)
-    iplug_configure_helper(TARGET ${target_ui} COPY_PROPERTIES)
     target_link_libraries(${target_ui} PUBLIC iPlug2_LV2_UI ${base_plugin} ${gui_libraries})
-    set_target_properties(${target_ui} PROPERTIES
-      OUTPUT_NAME "${plugin_name}_ui"
-      PREFIX ""
-      SUFFIX ${suffix}
+    # Copy properties, set prefix and suffix, and bundle main.rc for the UI target instead of the DSP target.
+    iplug_format_helper(
+      FORMAT lv2 TARGET ${target_ui}
+      COPY_PROPERTIES SET_NAME MAIN_RC
     )
-
+    # Override output name
+    set_target_properties(${target_ui} PROPERTIES OUTPUT_NAME "${plugin_name}_ui")
     # Ensure that building the main LV2 target will also build the UI
     add_dependencies(${target} ${target_ui})
 
@@ -133,13 +133,10 @@ function(iplug_configure_lv2 base_plugin target)
     iplug_target_bundle_resources(${target_ui} "${resource_dir}")
     # All in one directory
     bn_set_output_directory(${target_ui} "${output_dir}")
-    iplug_configure_helper(TARGET ${target_ui} MAIN_RC)
   endif()
 
   # Remove configuration sub-directories.
   bn_set_output_directory(${target} "${output_dir}")
-  # After building copy to the correct directory
-  iplug_configure_helper(TARGET ${target} POST_BUILD_COPY "${install_dir}")
 endfunction()
 
 set(IPlugLV2_FOUND TRUE)

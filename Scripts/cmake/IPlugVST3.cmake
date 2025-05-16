@@ -9,6 +9,10 @@ if (NOT EXISTS ${VST3_SDK}/CMakeLists.txt)
   return()
 endif()
 
+#
+set(IPLUG_VST3_ICON "${VST3_SDK}/doc/artwork/VST_Logo_Steinberg.ico"
+  CACHE FILEPATH "Path to VST3 plugin icon")
+
 # Disable VST3 extras that we're not using
 set(SMTG_ENABLE_VST3_PLUGIN_EXAMPLES OFF CACHE BOOL "")
 set(SMTG_ENABLE_VST3_HOSTING_EXAMPLES OFF CACHE BOOL "")
@@ -26,31 +30,44 @@ set_property(
   APPEND PROPERTY COMPILE_OPTIONS ${IPLUG_MSVC_FLAGS})
 
 # Reference: https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical+Documentation/Locations+Format/Plugin+Locations.html
-if (IPLUG_OS MATCHES "Windows")
-  set(_user_install_path "$ENV{LOCALAPPDATA}/Programs/Common/VST3")
-  set(_system_install_path $ENV{CommonProgramFiles}/VST3)
-  # Tehcnically we should install to "$ENV{CommonProgramFiles\(x86\)}/VST3"
-  # of the host is x64 but the plugin is x32. For now, this is good enough.
-  if (CMAKE_SYSTEM_PROCESSOR MATCHES "X86")
-    set(vst3_target_arch "x86-win")
-  elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "(AMD64)|(IA64)")
-    set(vst3_target_arch "x86_64-win")
+iplug_format_helper(
+  SETUP
+  FORMAT vst3
+  # Determine VST2 directories
+  USER_INSTALL_PATH
+    # For Windows, install locally to the VST3 directory, since most hosts will find it there as well
+    "Windows" "$ENV{LOCALAPPDATA}/Programs/Common/VST3"
+    "Darwin"  "$ENV{HOME}/Library/Audio/Plug-Ins/VST3"
+    "Linux"   "$ENV{HOME}/.vst3"
+  SYSTEM_INSTALL_PATH
+    # Tehcnically we should install to "$ENV{CommonProgramFiles\(x86\)}/VST3"
+    # if the host is x64 but the plugin is x32. For now, this is good enough.
+    "Windows" "$ENV{CommonProgramFiles}/VST3"
+    "Darwin"  "/Library/Audio/Plug-Ins/VST3"
+    "Linux"   "/usr/local/lib/vst3"
+  SUFFIX
+    "Windows" ".vst3"
+    "Darwin"  ".vst3"
+    "Linux"   ".vst3"
+  CUSTOM_XML ""
+)
+
+# Determine the VST3 target architecture
+if(IPLUG_OS MATCHES "Windows")
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "X86")
+    set(tmp "x86-win")
+  elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "(AMD64)|(IA64)")
+    set(tmp "x86_64-win")
   endif()
-elseif (IPLUG_OS MATCHES "Darwin")
-  set(_user_install_path "$ENV{HOME}/Library/Audio/Plug-Ins/VST3")
-  set(_system_install_path "/Library/Audio/Plug-Ins/VST3")
-  set(vst3_target_arch "MacOS")
-elseif (IPLUG_OS MATCHES "Linux")
-  set(_user_install_path "$ENV{HOME}/.vst3")
-  set(_system_install_path "/usr/local/lib/vst3")
-  set(vst3_target_arch "${CMAKE_SYSTEM_PROCESSOR}-linux")
+elseif(IPLUG_OS MATCHES "Darwin")
+  set(tmp "MacOS")
+elseif(IPLUG_OS MATCHES "Linux")
+  set(tmp "${CMAKE_SYSTEM_PROCESSOR}-linux")
+else()
+  set(tmp "${CMAKE_SYSTEM_PROCESSOR}-unknown")
 endif()
+set(IPLUG_VST3_TARGET_ARCH "${tmp}" CACHE INTERNAL "")
 
-iplug_set_install_paths(VST3 "${_user_install_path}" "${_system_install_path}")
-set(IPLUG_VST3_TARGET_ARCH "${vst3_target_arch}" CACHE INTERNAL "")
-
-set(IPLUG_VST3_ICON "${VST3_SDK}/doc/artwork/VST_Logo_Steinberg.ico" CACHE FILEPATH
-  "Path to VST3 plugin icon")
 
 ##########################
 # VST3 Interface Library #
@@ -125,10 +142,15 @@ bn_target_add(
 )
 
 function(iplug_configure_vst3 base_plugin target)
+
+  # Grab some variables and copy props
+  iplug_format_helper(FORMAT vst3 GET_VARS)
+  # vst3 outputs are formatted like MacOS bundles on all platforms
+  set(resource_dir "${output_dir}/Contents/Resources")
+
   # Create target
   add_library(${target} MODULE)
-  # Grab some variables and copy props
-  iplug_configure_helper(TARGET ${target} GET_VARS vst3 COPY_PROPERTIES)
+  iplug_format_helper(FORMAT vst3 TARGET ${target} TARGET_COMMON)
   # Link to iPlug library and GUI libraries
   target_link_libraries(${target} PUBLIC iPlug2_VST3 ${base_plugin} ${gui_libraries} iPlug2_Plugin)
 
@@ -136,23 +158,9 @@ function(iplug_configure_vst3 base_plugin target)
   set(public_sdk_SOURCE_DIR ${smtg_public_sdk_SOURCE_DIR})
   smtg_target_add_library_main(${target})
 
-  bn_tern(install_dir "${IPLUG_VST3_USER_INSTALL_PATH}/${plugin_name}.vst3" "" IPLUG_VST3_USER_INSTALL_PATH)
-  set(res_dir "${output_dir}/Contents/Resources")
-
-  if(IPLUG_OS MATCHES "Darwin")
-    # Configure the .plist file
-    set(info_plist "${binary_subdir}/Info.plist")
-    iplug_configure_basic_plist(${base_plugin} FORMAT vst3 OUTPUT "${info_plist}")
-    iplug_configure_helper(TARGET ${target} MAKE_BUNDLE "${info_plist}")
-  endif()
-  # Use the plugin name instead of the target name
-  set_target_properties(${target} PROPERTIES OUTPUT_NAME "${plugin_name}")
-  # Set the extension/bundle extension to be .vst3
-  iplug_configure_helper(TARGET ${target} SET_EXTENSION ".vst3")
-
-  iplug_target_bundle_resources(${target} "${res_dir}")
+  # Bundle resources
+  iplug_target_bundle_resources(${target} "${resource_dir}")
   bn_set_output_directory(${target} "${output_dir}/Contents/${IPLUG_VST3_TARGET_ARCH}")
-  iplug_configure_helper(TARGET ${target} MAIN_RC POST_BUILD_COPY "${install_dir}")
 endfunction()
 
 set(IPlugVST3_FOUND TRUE)

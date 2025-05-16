@@ -1,13 +1,41 @@
 cmake_minimum_required(VERSION 3.20)
 
-set(AUv2_INSTALL_PATH "$ENV{HOME}/Library/Audio/Plug-Ins/Components")
-
 #################
 # Audio Unit v2 #
 #################
 
 find_library(AUDIOUNIT_LIB AudioUnit)
 find_library(COREAUDIO_LIB CoreAudio)
+
+iplug_format_helper(
+  SETUP
+  FORMAT au2
+  USER_INSTALL_PATH
+    ".+" "$ENV{HOME}/Library/Audio/Plug-Ins/Components"
+  SYSTEM_INSTALL_PATH
+    ".+" "/Library/Audio/Plug-Ins/Components"
+  SUFFIX
+    ".+" ".component"
+  INSTALL_SUBDIR "\${plugin_name}.component"
+  CUSTOM_XML [=[
+  <key>AudioUnit Version</key> <string>0x00010000</string>
+  <key>NSPrincipalClass</key> <string>@PLUGIN_NAME@_View</string>
+  <key>AudioComponents</key>
+  <array>
+    <dict>
+      <key>description</key> <string>@PLUGIN_NAME</string>
+      <key>factoryFunction</key> <string>@PLUGIN_NAME@_Factory</string>
+      <key>manufacturer</key> <string>Acme</string>
+      <key>name</key> <string>AcmeInc: @PLUGIN_NAME</string>
+      <key>sandboxSafe</key> <true/>
+      <key>subtype</key> <string>@BUNDLE_SIGNATURE@</string>
+      <key>type</key> <string>aumu</string>
+      <key>version</key> <integer>65536</integer>
+    </dict>
+  </array>
+  ]=]
+)
+
 
 # AU_PATH = $(HOME)/Library/Audio/Plug-Ins/Components
 
@@ -34,23 +62,7 @@ iplug_target_add(iPlug2_AUv2 INTERFACE
     ${cwd}/IPlugAU_view_factory.mm
 )
 
-set(IPLUG_AU2_CUSTOM_XML [=[
-  <key>AudioUnit Version</key> <string>0x00010000</string>
-  <key>NSPrincipalClass</key> <string>@PLUGIN_NAME@_View</string>
-  <key>AudioComponents</key>
-  <array>
-    <dict>
-      <key>description</key> <string>@PLUGIN_NAME</string>
-      <key>factoryFunction</key> <string>@PLUGIN_NAME@_Factory</string>
-      <key>manufacturer</key> <string>Acme</string>
-      <key>name</key> <string>AcmeInc: @PLUGIN_NAME</string>
-      <key>sandboxSafe</key> <true/>
-      <key>subtype</key> <string>@BUNDLE_SIGNATURE@</string>
-      <key>type</key> <string>aumu</string>
-      <key>version</key> <integer>65536</integer>
-    </dict>
-  </array>
-]=] CACHE INTERNAL "")
+set(IPLUG_AU2_CUSTOM_XML  CACHE INTERNAL "")
 
 function(iplug_configure_au2 base_plugin target)
   # Create target

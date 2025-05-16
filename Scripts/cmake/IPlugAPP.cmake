@@ -3,6 +3,21 @@ cmake_minimum_required(VERSION 3.20)
 set(cwd ${IPLUG2_SDK_PATH}/IPlug/APP)
 add_subdirectory(${cwd}/RTLibs ${CMAKE_BINARY_DIR}/IPlug/RTLibs)
 
+iplug_format_helper(
+  SETUP
+  FORMAT app
+  SUFFIX
+    "Windows" ".exe"
+    "Darwin"  ""
+    "Linux"   ""
+  CUSTOM_XML [[
+  <key>LSApplicationCategoryType</key> <string>public.app-category.music</string>
+  <key>NSMainNibFile</key> <string>${PLUGIN_NAME}-macOS-MainMenu</string>
+  <key>NSPrincipalClass</key> <string>SWELLApplication</string>
+  <key>CFBundleIconFile</key> <string>${PLUGIN_NAME}.icns</string>
+  ]]
+)
+
 ##############
 # iPlug2_APP #
 ##############
@@ -67,46 +82,29 @@ iplug_target_add(iPlug2_APP INTERFACE
 #--------------------------------------------------------------------
 # configure function
 function(iplug_configure_app base_plugin target)
+  iplug_format_helper(FORMAT app GET_VARS)
+
   # Create target
   add_executable(${target} WIN32 MACOSX_BUNDLE)
-  # setup
-  iplug_configure_helper(TARGET ${target} GET_VARS app COPY_PROPERTIES)
-  # Link
+  # Setup and link
+  iplug_format_helper(FORMAT app TARGET ${target} TARGET_COMMON)
   iplug_target_add(${target} PUBLIC LINK iPlug2_APP ${base_plugin} ${gui_libraries})
 
   #--------------------------------------------------------
-  # Windows
-  if(IPLUG_OS MATCHES "Windows")
-    set_target_properties(${target} PROPERTIES OUTPUT_NAME "${plugin_name}")
-
-  #--------------------------------------------------------
   # MacOS
-  elseif(CMAKE_SYSTEM_NAME MATCHES "Darwin")
+  if(IPLUG_OS MATCHES "Darwin")
     # Configure the .xib file
-    set(resource_dir "${CMAKE_BINARY_DIR}/${target}/${plugin_name}.app/Contents/Resources")
     set(config_in_dir ${IPLUG2_SDK_PATH}/IPlug/Resources)
-    iplug_configure_helper(TARGET ${target} CONVERT_XIB ${config_in_dir}/macOS-MainMenu.xib)
-
-    # Setup the .plist file
-    set(info_plist "${binary_subdir}/Info.plist")
-    iplug_configure_basic_plist(${base_plugin} FORMAT app OUTPUT "${info_plist}")
-    set_property(TARGET ${target} PROPERTY MACOSX_BUNDLE_INFO_PLIST "${info_plist}")
+    iplug_format_helper(FORMAT app TARGET ${target} CONVERT_XIB ${config_in_dir}/macOS-MainMenu.xib)
 
     # Add the icon file
     set(icon_file "${CMAKE_SOURCE_DIR}/resources/${plugin_name}.icns")
     source_group("Resources" FILES ${icon_file})
     iplug_target_add(${target} PUBLIC SOURCE ${icon_file})
     set_property(TARGET ${target} APPEND PROPERTY RESOURCE "${icon_file}")
-
-  #--------------------------------------------------------
-  # Linux
-  elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
-    set_target_properties(${target} PROPERTIES OUTPUT_NAME "${plugin_name}")
-
   endif()
 
   bn_set_output_directory(${target} "${output_dir}")
-  iplug_configure_helper(TARGET ${target} MAIN_RC PLATFORM_SETUP)
   iplug_target_bundle_resources(${target} "${resource_dir}")
 endfunction()
 
