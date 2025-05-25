@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# Copyright (c) 2025 Andrew "bindernews" Heintz
+# Copyright (c) 2025 Andrew Heintz
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated 
 # documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -140,7 +140,7 @@ class FileEmbed:
   """ Size of the data """
   data_name: str
   """ Name of the byte array containing the data """
-  data: bytes|None = None
+  data: 'bytes|None' = None
   """ The actual file contents (optional) """
 
   def write_data_c(self, fd: 'TextIO') -> None:
@@ -550,8 +550,8 @@ class HelperCliArgs:
   into: 'str|None' = None
   type: 'str|None' = None
   verbose: int = 0
-  output: 'TextIO' = None
-  inputs: 'list[str]' = None
+  output: 'TextIO' = None # type: ignore
+  inputs: 'list[str]' = None # type: ignore
 
 def make_parser(prog: str = 'embedc.py') -> argparse.ArgumentParser:
   parser = argparse.ArgumentParser(prog=prog)

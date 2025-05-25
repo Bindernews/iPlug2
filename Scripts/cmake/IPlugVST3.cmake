@@ -17,6 +17,7 @@ set(IPLUG_VST3_ICON "${VST3_SDK}/doc/artwork/VST_Logo_Steinberg.ico"
 set(SMTG_ENABLE_VST3_PLUGIN_EXAMPLES OFF CACHE BOOL "")
 set(SMTG_ENABLE_VST3_HOSTING_EXAMPLES OFF CACHE BOOL "")
 set(SMTG_ENABLE_VSTGUI_SUPPORT OFF CACHE BOOL "")
+set(SMTG_USE_STATIC_CRT ON CACHE BOOL "")
 
 # Add vst3 sdk as subdirectory
 add_subdirectory(${VST3_SDK} ${CMAKE_CURRENT_BINARY_DIR}/VST3_SDK)
@@ -25,9 +26,9 @@ smtg_enable_vst3_sdk()
 
 # Set the MSVC static vs dll stdandard library mode for the VST3 sdk.
 # This MUST be consistent for all libraries that link together.
-set_property(
-  TARGET sdk sdk_common sdk_hosting pluginterfaces base moduleinfotool validator
-  APPEND PROPERTY COMPILE_OPTIONS ${IPLUG_MSVC_FLAGS})
+set(vst3_targets sdk sdk_common sdk_hosting pluginterfaces base moduleinfotool validator)
+set_property(TARGET ${vst3_targets} APPEND PROPERTY COMPILE_OPTIONS ${IPLUG_MSVC_FLAGS})
+# set_property(TARGET ${vst3_targets} PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 # Reference: https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical+Documentation/Locations+Format/Plugin+Locations.html
 iplug_format_helper(

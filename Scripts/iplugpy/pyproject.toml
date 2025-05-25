@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools >= 60.0", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "iplugpy"
+version = "0.0.2"
+requires-python = ">= 3.8"
+dependencies = [
+  "pyyaml>=6.0",
+  "requests>=2.26",
+  "packaging>=21.0",
+  # So we can do image manipulation
+  "pillow",
+]
+
+[project.scripts]
+embedc = "iplug.embedc:main"
+bin2c = "iplug.bin2c:main"
+wam_server = "iplug.wam_server:main"
+iplug_parse_config = "iplug.parse_config:main"
+iplug_parse_iostr = "iplug.parse_iostr:main"
+
+[tool.setuptools]
+packages = ["iplug"]

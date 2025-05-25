@@ -1,4 +1,4 @@
-from parse_config import parse_config
+from Scripts.iplugpy.iplug.parse_config_h import parse_config
 import sys, pprint
 
 def main():

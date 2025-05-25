@@ -70,6 +70,14 @@ function(bn_fallback VAR option1 option2...)
   set(${VAR} "NOTFOUND" PARENT_SCOPE)
 endfunction()
 
+#[===[.rst
+.. code-block:: cmake
+  bn_case(<output-variable> <input> <pattern1> <value1> <pattern2> <value2>...)
+
+Tries to match `<input`> against each "pattern" argument in order, where patterns are regexes.
+When a match is found, `<output_variable>` is set to the corresponding value. If no match is
+found, the output is set to the empty string.
+]===]
 function(bn_case output_variable input)
   set(${output_variable} "" PARENT_SCOPE)
 
@@ -83,7 +91,45 @@ function(bn_case output_variable input)
   endforeach()
 endfunction(bn_case)
 
+#[===[.rst
+.. code-block:: cmake
+  bn_unzip(<count> <list1> <list2>... <listN> <item1> <item2>... <itemN>)
 
+  # Equivalent to: set(a "name" "age") set(b "John" "25")
+  bn_unzip(
+    2 a b
+    "name" "John"
+    "age"  "25"
+  )
+
+Unzip the listed arguments into multiple output lists. This is intended
+to make it easier to handle key-value pairs of arguments.
+
+``count``
+  The number of lists to split the input into.
+``lists``
+  ${count} names which are the output lists.
+``items...``
+  Items to be split into the output lists.
+]===]
+function(bn_unzip count lists items...)
+  # Clear lists
+  math(EXPR countN1 "${count} - 1")
+  foreach(bn6140_ix RANGE 0 ${countN1})
+    set(bn6140_list_${bn6140_ix} "")
+  endforeach()
+  # Set items
+  math(EXPR bn6140_start_ix "${count} + 1")
+  foreach(bn6140_ix RANGE ${bn6140_start_ix} ${ARGC})
+    math(EXPR bn6140_list_id "(${bn6140_ix} - ${bn6140_start_ix}) % ${count}")
+    list(APPEND bn6140_list_${bn6140_list_id} "${ARGV${bn6140_ix}}")
+  endforeach()
+  # Set lists in parent scope
+  foreach(bn6140_ix RANGE 0 ${countN1})
+    math(EXPR bn6140_argn "${bn6140_ix} + 1")
+    set(${ARGV${bn6140_argn}} "${bn6140_list_${bn6140_ix}}" PARENT_SCOPE)
+  endforeach()
+endfunction()
 
 #[===[.rst
 .. code-block:: cmake
@@ -254,6 +300,135 @@ function(bn_target_add target set_type)
 endfunction()
 
 #[===[.rst
+.. cmake:signature::
+  bn_make_python_venv(
+    <OUTPUT_VARIABLE>
+    [VERSION <python-version>]
+    [DIRECTORY <venv directory>]
+    [PROMPT <venv prompt>]
+    [ADD_TO_PATH]
+  )
+
+``VAR``
+  Output variable where the path to the venv'd Python executable will
+  be stored. This is a cache variable.
+``VERSION``
+  Minimum Python version required.
+``DIRECTORY``
+  Specify an alternate directory for the venv. The default is "${CMAKE_SOURCE_DIR}/.venv".
+``PROMPT``
+  Specify an alternate CLI prompt for users who activate the venv. The default
+  is the project name.
+``ADD_TO_PATH``
+  If given, this will add the binary directory containing the python executable
+  into `CMAKE_PROGRAM_PATH`, so that other scripts may find programs installed there.
+``PACKAGES``
+  List of packages to install using pip. This is a convenient way to ensure that one
+  or more packages are installed.
+]===]
+function(bn_make_python_venv VAR)
+  cmake_parse_arguments(PARSE_ARGV 1 bn950 "ADD_TO_PATH" "VERSION;DIRECTORY;PROMPT" "PACKAGES")
+
+  # Do nothing if the cached variable is already set
+  set(bn950_py_exe "$CACHE{${VAR}}")
+  if(bn950_py_exe)
+    return()
+  endif()
+  unset(bn950_py_exe)
+
+  # Default values
+  if(NOT bn950_VERSION)
+    set(bn950_VERSION "3.8")
+  endif()
+  if(NOT bn950_DIRECTORY)
+    set(bn950_DIRECTORY "${CMAKE_SOURCE_DIR}/.venv")
+  endif()
+  if(NOT bn950_PROMPT)
+    set(bn950_PROMPT "${CMAKE_PROJECT_NAME}")
+  endif()
+
+  # find_program arguments, on Unix/Linux systems python will be <venv>/bin/python
+  # while on Windows it's normally <venv>/Scripts/python.exe
+
+  set(bn950_find_py_args
+    bn950_py_exe
+    NAMES python python3 python.exe
+    PATHS "${bn950_DIRECTORY}/bin" "${bn950_DIRECTORY}/Scripts"
+    NO_SYSTEM_ENVIRONMENT_PATH
+    NO_CACHE
+  )
+
+  # What if the venv exists but it's not in the cache?
+  find_program(${bn950_find_py_args})
+  if(NOT bn950_py_exe)
+    # Okay, try to create it
+
+    # Find python version 3.8 or higher
+    find_package(Python ${bn950_VERSION} REQUIRED COMPONENTS Interpreter)
+
+    # Create a virtual environment in <project source directory>/.venv
+    # This is safe to do multiple times, as it won't delete packages from an existing venv.
+    message(STATUS "Creating Python venv in ${bn950_DIRECTORY}")
+    execute_process(
+      COMMAND ${Python_EXECUTABLE} -m venv --prompt "${bn950_PROMPT}" "${bn950_DIRECTORY}"
+      COMMAND_ERROR_IS_FATAL ANY
+    )
+
+    # Call find_program again
+    unset(bn950_py_exe)
+    find_program(${bn950_find_py_args})
+  endif()
+  if(NOT bn950_py_exe)
+    message(FATAL_ERROR "Unable to create virtual environment at ${bn950_DIRECTORY}")
+  endif()
+
+  set(${VAR} "${bn950_py_exe}" CACHE PATH "Python executable in venv" FORCE)
+
+  # Optionally, add to the path
+  if(bn950_ADD_TO_PATH)
+    cmake_path(GET bn950_py_exe PARENT_PATH bn950_bin_dir)
+    list(APPEND CMAKE_PROGRAM_PATH "${bn950_bin_dir}")
+    set(CMAKE_PROGRAM_PATH "${CMAKE_PROGRAM_PATH}" PARENT_SCOPE)
+  endif()
+
+  if(bn950_PACKAGES)
+    execute_process(
+      COMMAND ${bn950_py_exe} -m pip -q --disable-pip-version-check install ${bn950_PACKAGES}
+      OUTPUT_QUIET
+      COMMAND_ERROR_IS_FATAL LAST
+    )
+  endif()
+endfunction()
+
+
+function(bn_cache_call)
+  cmake_parse_arguments(PARSE_ARGV 0 bn961 "" "CACHE_VARIABLE;OUTPUT_VARIABLE;DID_RERUN" "CALL")
+  if(NOT bn961_CACHE_VARIABLE OR NOT bn961_OUTPUT_VARIABLE OR NOT bn961_CALL)
+    message(FATAL_ERROR "Arguments CACHE_VARIABLE, OUTPUT_VARIABLE, CALL are required")
+  endif()
+  # Separate the function name from the arguments
+  list(POP_FRONT bn961_CALL bn961_func)
+  # Hash the arguments and get the current hash
+  string(SHA1 bn961_args_hash "${bn961_CALL}")
+  set(bn961_hash_var "${bn961_CACHE_VARIABLE}_BN_SHA1")
+  set(bn961_current_hash "$CACHE{${bn961_hash_var}}")
+  # Only recompute if necessary
+  if(NOT bn961_args_hash STREQUAL "${bn961_current_hash}")
+    cmake_language(CALL ${bn961_func} ${bn961_CALL})
+    set(${bn961_CACHE_VARIABLE} "${${bn961_OUTPUT_VARIABLE}}" CACHE INTERNAL "" FORCE)
+    set(${bn961_hash_var} "${bn961_args_hash}" CACHE INTERNAL "" FORCE)
+    set(bn961_rerun ON)
+  else()
+    set(bn961_rerun OFF)
+  endif()
+  # Return results
+  set(${bn961_OUTPUT_VARIABLE} "$CACHE{${bn961_CACHE_VARIABLE}}" PARENT_SCOPE)
+  if(bn961_DID_RERUN)
+    set(${bn961_DID_RERUN} ${bn961_rerun} PARENT_SCOPE)
+  endif()
+endfunction()
+
+#[===[.rst
 
 .. code-block:: cmake
   bn_set_output_directory(<target> <output-directory>)
@@ -312,12 +487,67 @@ function(bn_json_dict VAR)
   set(${VAR} "${dict}" PARENT_SCOPE)
 endfunction()
 
-function(bn_memoize VAR function_name)
-  string(SHA1 _bn_memoize_input_hash "${ARGN}")
-  set(_bn_memoize_key bn_memoize_${function_name}_${_bn_memoize_input_hash})
-  if(NOT DEFINED CACHE{${_bn_memoize_key}})
-    cmake_language(CALL ${function_name} ${ARGN})
-    set(${_bn_memoize_key} "${VAR}" CACHE INTERNAL "memoize")
+function(bn_json_set dict key)
+  # Sanitize and quote the value
+  set(bn5470_value "${ARGN}")
+  string(REPLACE "\n" "\\n" bn5470_value "${bn5470_value}")
+  string(CONFIGURE "\"@bn5470_value@\"" bn5470_value @ONLY ESCAPE_QUOTES)
+  # Update the dict
+  string(JSON bn5470_dict SET "${${dict}}" "${key}" "${bn5470_value}")
+  # Update parent scope
+  set(${dict} "${bn5470_dict}" PARENT_SCOPE)
+endfunction()
+
+function(bn_json_get VAR dict key)
+  string(JSON bn5470_value ERROR_VARIABLE bn5470_err GET "${${dict}}" "${key}")
+  if(bn5470_err)
+    set(${VAR} "${VAR}-NOTFOUND" PARENT_SCOPE)
+  else()
+    set(${VAR} "${bn5470_value}" PARENT_SCOPE)
   endif()
-  set(${VAR} $CACHE{${_bn_memoize_key}} PARENT_SCOPE)
+endfunction()
+
+function(bn_json_minify VAR input)
+  # Remove newlines
+  string(REGEX REPLACE "\n *" "" bn5470_value "${input}")
+  # Replace " : " with ":"
+  string(REPLACE "\" : \"" "\":\"" bn5470_value "${bn5470_value}")
+  # Set in parent
+  set(${VAR} "${bn5470_value}" PARENT_SCOPE)
+endfunction()
+
+#[===[.rst
+.. cmake:signature::
+  bn_json_to_varaibles(<prefix> JSON <json> [KEYS <specific keys>...])
+
+Load keys from the json dictionary as variables in the local scope.
+
+``prefix``
+  The prefix for variable names. For example if the prefix is "foo" and the
+  json key is "bar" the variable will be "foo_bar".
+``JSON``
+  The input json string.
+``KEYS``
+  If given, load this specific list of keys instead of all keys.
+
+#]===]
+function(bn_json_to_variables prefix)
+  cmake_parse_arguments(PARSE_ARGV 1 bn5470 "" "JSON" "KEYS")
+  if(NOT bn5470_JSON)
+    message(FATAL_ERROR "Argument JSON is required")
+  endif()
+  if(bn547_KEYS)
+    foreach(key IN LISTS bn5470_KEYS)
+      string(JSON bn5470_val GET "${bn5470_JSON}" "${bn5470_key}")
+      set(${prefix}_${bn5470_key} "${bn5470_val}" PARENT_SCOPE)
+    endforeach()
+  else()
+    string(JSON bn5470_count LENGTH "${bn5470_JSON}")
+    math(EXPR bn5470_count "${bn5470_count} - 1")
+    foreach(ix RANGE ${bn5470_count})
+      string(JSON bn5470_key MEMBER "${bn5470_JSON}" ${ix})
+      string(JSON bn5470_val GET "${bn5470_JSON}" "${bn5470_key}")
+      set(${prefix}_${bn5470_key} "${bn5470_val}" PARENT_SCOPE)
+    endforeach()
+  endif()
 endfunction()

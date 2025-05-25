@@ -63,13 +63,19 @@ iplug_setup_plugin(
   # ICON resources/IPlugInstrument.ico
   COPY_AFTER_BUILD
   # Metadata
-  YEAR 2025
-  AUTHOR "Acme Inc."
-  DESCRIPTION "iPlug2 instrument example"
-  MIDI_IN ON
-  MIDI_OUT ON
-  DOES_MPE ON
-  URL "https://iplug2.github.io"
-  SUPPORT_URL "https://github.com/iPlug2/iPlug2/wiki"
-  MANUAL_URL "https://iplug2.github.io/manuals/example_manual.pdf"
+  CONFIG [[
+  channel_io: 0-2
+  year: 2025
+  author: "Acme Inc."
+  description: "iPlug2 instrument example"
+  midi_in: true
+  midi_out: true
+  does_mpe: true
+  ui_width: 1024
+  ui_height: 670
+  url: "https://iplug2.github.io"
+  support_url: "https://github.com/iPlug2/iPlug2/wiki"
+  manual_url: "https://iplug2.github.io/manuals/example_manual.pdf"
+  category: "synthesizer"
+  ]]
 )

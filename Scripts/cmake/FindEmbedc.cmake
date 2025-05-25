@@ -3,18 +3,25 @@ include_guard(GLOBAL)
 include(FindPackageHandleStandardArgs)
 
 include(BnFunctions OPTIONAL RESULT_VARIABLE BnFunctions_FOUND)
-find_package(Python 3.8 COMPONENTS Interpreter)
-find_file(
-  embedc_py_PATH embedc.py
-  PATHS
-    ${IPLUG2_SDK_PATH}/Scripts
-    ${CMAKE_CURRENT_LIST_DIR}/..
-  DOC "Path to embedc.py"
-)
+
+if(NOT EMBEDC_COMMAND)
+  find_program(EMBEDC_COMMAND NAMES embedc)
+endif()
+if(NOT EMBEDC_COMMAND)
+  find_package(Python 3.8 COMPONENTS Interpreter)
+  find_file(
+    EMBEDC_PY_PATH embedc.py
+    PATHS
+      ${CMAKE_CURRENT_LIST_DIR}
+      ${CMAKE_CURRENT_LIST_DIR}/..
+    DOC "Path to embedc.py"
+  )
+  set(EMBEDC_COMMAND "${Python_EXECUTABLE} ${EMBEDC_PY_PATH}" CACHE STRING "")
+endif()
 
 find_package_handle_standard_args(
   Embedc # Package name
-  REQUIRED_VARS Python_FOUND BnFunctions_FOUND embedc_py_PATH
+  REQUIRED_VARS Python_FOUND BnFunctions_FOUND EMBEDC_COMMAND
 )
 
 # Exit early if we don't have all dependencies
@@ -85,7 +92,6 @@ function(embedc_add_files target)
 
   # Setup some paths
   get_target_property(binary_dir ${target} BINARY_DIR)
-  set(embedc_cmd "${Python_EXECUTABLE}" "${embedc_py_PATH}")
   set(bundle_c ${binary_dir}/${target}_bundle.c)
   set(bundle_h ${binary_dir}/${target}_bundle.h)
 
@@ -100,7 +106,7 @@ function(embedc_add_files target)
     set(bundle_depends $<TARGET_PROPERTY:${target},EMBEDC_FILES>)
     add_custom_command(
       OUTPUT ${bundle_c} ${bundle_h}
-      COMMAND ${embedc_cmd} --bundle -o "${bundle_c}" --header "${bundle_h}" ${bundle_depends}
+      COMMAND ${EMBEDC_COMMAND} --bundle -o "${bundle_c}" --header "${bundle_h}" ${bundle_depends}
       DEPENDS ${bundle_depends}
       COMMAND_EXPAND_LISTS
       VERBATIM
@@ -120,7 +126,7 @@ function(embedc_add_files target)
   bn_tern(into_option "--into=${arg_DIR}" "" arg_DIR)
   execute_process(
     COMMAND
-      ${embedc_cmd} --show -o -
+      ${EMBEDC_COMMAND} --show -o -
       -C "${CMAKE_CURRENT_SOURCE_DIR}" ${into_option}
       ${arg_FILES}
     OUTPUT_VARIABLE convert_input
@@ -134,7 +140,7 @@ function(embedc_add_files target)
   # Custom command to generate the embed file
   add_custom_command(
     OUTPUT ${convert_c}
-    COMMAND ${embedc_cmd} --convert -o "${convert_c}" ${resource_input}
+    COMMAND ${EMBEDC_COMMAND} --convert -o "${convert_c}" ${resource_input}
     DEPENDS ${resource_files}
     COMMAND_EXPAND_LISTS
     VERBATIM

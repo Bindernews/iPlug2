@@ -178,7 +178,9 @@ def compress(method, data_in):
   return data
 # END compress
 
-def main(argv):
+def main(argv = None):
+  if argv is None:
+    argv = sys.argv[1:]
   parser = argparse.ArgumentParser()
   # parser.add_argument('-g', '--header', type=str, default=None,
   #   help='Output header file (default: none)')
@@ -238,4 +240,4 @@ def main(argv):
   process(entries, args.output_file, args.output_header, args.array)
 
 if __name__ == '__main__':
-  main(sys.argv[1:])
+  main()

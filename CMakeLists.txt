@@ -19,7 +19,7 @@ set(IPLUG2_SDK_PATH ${CMAKE_CURRENT_LIST_DIR} CACHE PATH "Path to the iPlug2 SDK
 
 # Make sure MSVC uses static linking for compatibility with Skia libraries and easier distribution.
 # Note that settings CMAKE_MSVC_RUNTIME_LIBRARY doesn't seem to work consistently, so we set the flags directly.
-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>" CACHE STRING "")
+# set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>" CACHE STRING "")
 set(IPLUG_MSVC_FLAGS "")
 if (MSVC)
   set(IPLUG_MSVC_FLAGS "/MT$<$<CONFIG:Debug>:d>")

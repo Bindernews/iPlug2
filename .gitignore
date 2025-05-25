@@ -23,7 +23,6 @@ _*
 *.db-shm
 *.db-wal
 *.opendb
-*.pyc
 *.aps
 *.RPP-bak
 Icon?
@@ -51,3 +50,9 @@ Examples/IPlugConvoEngine/r8brain
 */*/.vscode/launch.json
 Examples/Build
 **/node_modules
+
+# Python
+.venv/
+*.egg-info
+*.pyc
+!__init__.py

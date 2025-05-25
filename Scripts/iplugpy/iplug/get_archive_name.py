@@ -1,5 +1,5 @@
 import fileinput, sys
-from parse_config import parse_config
+from Scripts.iplugpy.iplug.parse_config_h import parse_config
 
 def get_archive_name(projectpath, platform, demo):
   config = parse_config(projectpath)

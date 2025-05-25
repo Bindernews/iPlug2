@@ -1,5 +1,15 @@
 cmake_minimum_required(VERSION 3.20)
 include_guard(GLOBAL)
+
+bn_make_python_venv(
+  IPLUG_PYENV_EXECUTABLE
+  VERSION 3.8
+  DIRECTORY "${IPLUG2_SDK_PATH}/.venv"
+  PROMPT "iplug"
+  ADD_TO_PATH
+  PACKAGES "${CMAKE_CURRENT_LIST_DIR}/../pyplug"
+)
+
 find_package(Embedc QUIET)
 
 # Find ibtool on MacOS
@@ -11,46 +21,13 @@ find_program(
   ${IBTOOL_REQUIRED}
 )
 
-# Python is required for everything, because we need to run cmutil.py
-find_package(Python 3.8 REQUIRED COMPONENTS Interpreter)
-# Find cmutil.py
-find_path(
-  cmutil_PATH
-  NAMES cmutil.py
-  PATHS ${IPLUG2_SDK_PATH}/Scripts ${CMAKE_CURRENT_LIST_DIR}/..
-  DOC "Directory containing cmutil.py"
-  REQUIRED
-)
-set(
-  CALL_CMUTIL_PY
-  WORKING_DIRECTORY "${cmutil_PATH}"
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-  COMMAND_ERROR_IS_FATAL ANY
-  COMMAND ${Python_EXECUTABLE} -c
-  CACHE INTERNAL ""
-)
-
 # Define iplug-specific properties
 define_property(TARGET PROPERTY IPLUG_PLUGIN_NAME
   BRIEF_DOCS "The name of the plugin/app"
   FULL_DOCS "The name of the plugin/app. If not specified it will default to the project name.")
 define_property(TARGET PROPERTY IPLUG_PLUGIN_METADATA
   BRIEF_DOCS "Metadata about the plugin, stored as a json string"
-  FULL_DOCS "
-  This property exists both to make it easier to externally define metadata,
-  as well as to consolidate what would otherwise be a large number of CMake properties.
-
-  The following fields are available:
-  - description: a description of the plugin
-  - year: the copyright year
-  - author: the author or manufacturer
-  - copyright: the full copyright string, defaults to \"Copyright (c) <year> <author>\"
-  - category: The plugin category/categories, used by hosts for organization.
-    This uses values from CLAP (https://github.com/free-audio/clap/blob/main/include/clap/plugin-features.h)
-    and converts them to other formats as appropriate.
-  - url: The home page URL for the plugin
-  - support_url: The support URL for the plugin, defaults to the home page URL
-  ")
+  FULL_DOCS  "This combines an otherwise-large set of different properties into one, and it can be cached.")
 define_property(TARGET PROPERTY IPLUG_PLUGIN_GRAPHICS
   BRIEF_DOCS "The IGraphics backend API."
   FULL_DOCS "See iplug_setup_plugin.")
@@ -61,23 +38,6 @@ define_property(TARGET PROPERTY IPLUG_COPY_AFTER_BUILD
 define_property(TARGET PROPERTY IPLUG_RESOURCES
   BRIEF_DOCS "List of resource files to be copied or loaded into the plugin's resource directory"
   FULL_DOCS "See brief doc")
-
-# List of valid plugin categories, sourced from plugin-features.h
-set(IPLUG_VALID_PLUGIN_CATEGORIES
-  # Main categories
-  "instrument" "audio-effect" "note-effect" "note-detector" "analyzer"
-  # Sub-categories - instrument
-  "synthesizer" "sampler" "drum" "drum-machine"
-  # Sub-categories - audio effect
-  "filter" "phaser" "equalizer" "de-esser" "phase-vocoder" "granular" "frequency-shifter" "pitch-shifter"
-  "distortion" "transient-shaper" "compressor" "expander" "gate" "limiter"
-  "flanger" "chorus" "delay" "reverb" "tremolo" "glitch"
-  # Sub-categories - misc
-  "utility" "pitch-correction" "restoration"
-  "multi-effects"
-  "mixing" "mastering"
-)
-set_property(GLOBAL PROPERTY IPLUG_VALID_PLUGIN_CATEGORIES "${IPLUG_VALID_PLUGIN_CATEGORIES}")
 
 #! iplug_target_add : Helper function to add sources, include directories, etc.
 #
@@ -149,7 +109,7 @@ Setup Options
 ``SUFFIX``
   bn_case() list of arguments for selecting the library or bundle suffix.
 ``RESOURCE_METHOD``
-  bn_cast() list of resource bundling methods.
+  bn_case() list of resource bundling methods.
 ``CUSTOM_XML``
   Custom XML to be included in the generated .plist.
 ``PLIST_VARIABLES``
@@ -201,6 +161,7 @@ function(iplug_format_helper)
   )
 
   string(TOUPPER "${a13_FORMAT}" format_cap)
+  set(format ${a13_FORMAT})
   set(prop_key "iplug_${a13_FORMAT}")
 
   # Set global and cache variables based on the arguments and system settings.
@@ -254,22 +215,36 @@ function(iplug_format_helper)
   endif()
 
   if (a13_GET_VARS)
-    set(format ${a13_FORMAT})
     get_target_property(plugin_name ${base_plugin} IPLUG_PLUGIN_NAME)
     get_target_property(gui_libraries ${base_plugin} IPLUG_PLUGIN_GRAPHICS)
     set(output_dir "${CMAKE_BINARY_DIR}/${plugin_name}/${format}")
-    set(binary_subdir "${CMAKE_CURRENT_BINARY_DIR}/${target}.dir")
+    if(CMAKE_GENERATOR MATCHES "Visual Studio")
+      set(binary_subdir "${CMAKE_CURRENT_BINARY_DIR}/${target}.dir")
+    else()
+      set(binary_subdir "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${target}.dir")
+    endif()
     set(resource_dir "${output_dir}/resources")
     if(IPLUG_OS MATCHES "Darwin|iOS")
       # Bundle mode for resources
       set(resource_dir "${output_dir}/Contents/Resources")
     endif()
 
+    # Convert clap category to the appropriate category for the format
+    get_target_property(meta ${base_plugin} IPLUG_PLUGIN_METADATA)
+    string(JSON plug_category ERROR_VARIABLE err GET "${meta}" "category")
+    string(JSON plug_format_category ERROR_VARIABLE err GET "${meta}" "category_${format}")
+    if(err)
+      set(tmp "${plug_category}")
+    else()
+      set(tmp "${plug_format_category}")
+    endif()
+    set(plugin_sub_category "${tmp}" PARENT_SCOPE)
+
     # Set these in the parent scope
     set(output_dir "${output_dir}" PARENT_SCOPE)
     set(resource_dir "${resource_dir}" PARENT_SCOPE)
-    set(plugin_name ${plugin_name} PARENT_SCOPE)
-    set(gui_libraries ${gui_libraries} PARENT_SCOPE)
+    set(plugin_name "${plugin_name}" PARENT_SCOPE)
+    set(gui_libraries "${gui_libraries}" PARENT_SCOPE)
     set(binary_subdir "${binary_subdir}" PARENT_SCOPE)
     # Exit early
     return()
@@ -329,8 +304,11 @@ function(iplug_format_helper)
     string(CONFIGURE "${a13_custom_xml}" FORMAT_CUSTOM_XML @ONLY)
 
     # Configure the file
-    set(plist_input ${IPLUG2_SDK_PATH}/IPlug/resource/Basic-Info.plist.in)
-    configure_file(${plist_input} ${a13_plist_output} @ONLY NEWLINE_STYLE UNIX)
+    configure_file(
+      ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/Basic-Info.plist.in
+      ${a13_plist_output}
+      @ONLY NEWLINE_STYLE UNIX
+    )
     # Return early
     return()
   endif()
@@ -363,7 +341,6 @@ function(iplug_format_helper)
     # N.B. Assumes ${binary_subdir}, ${base_plugin}, ${plugin_name} are already set in parent scope.
     set(app_main_rc ${binary_subdir}/main.rc)
     set(app_resource_h ${binary_subdir}/resource.h)
-    set(config_in_dir ${IPLUG2_SDK_PATH}/IPlug/Resources)
     set(icon_in_file ${CMAKE_CURRENT_SOURCE_DIR}/resources/${PLUGIN_NAME}.ico)
 
     # Copy .ico to temp dir
@@ -377,8 +354,8 @@ function(iplug_format_helper)
     string(JSON PLUGIN_COPYRIGHT GET "${PLUGIN_META}" copyright)
 
     # Do the configure
-    configure_file(${config_in_dir}/main.rc.in ${app_main_rc} @ONLY)
-    configure_file(${config_in_dir}/resource.h ${app_resource_h} COPYONLY)
+    configure_file(${CMAKE_CURRENT_FUNCTION_LIST_DIR}/main.rc.in ${app_main_rc} @ONLY)
+    configure_file(${CMAKE_CURRENT_FUNCTION_LIST_DIR}/resource.h ${app_resource_h} COPYONLY)
     # Add as sources
     target_sources(${target} PRIVATE ${app_main_rc} ${app_resource_h})
     target_include_directories(${target} PRIVATE ${binary_subdir})
@@ -429,8 +406,10 @@ function(iplug_guess_file_types VAR)
   if(NOT DEFINED ${cache_key})
     # Guess file types for all files
     execute_process(
-      ${CALL_CMUTIL_PY} "import cmutil; cmutil.do_guess_file_types('${ARGN}')"
+      COMMAND ${IPLUG_PYENV_EXECUTABLE} -c "import iplug; iplug.do_guess_file_types('${ARGN}')"
+      OUTPUT_STRIP_TRAILING_WHITESPACE
       OUTPUT_VARIABLE file_types
+      COMMAND_ERROR_IS_FATAL ANY
     )
     set(${cache_key} ${file_types} CACHE INTERNAL "")
   endif()
@@ -465,7 +444,7 @@ function(iplug_target_bundle_resources target res_dir)
       set(method "copy")
     endif()
   endif()
-  if (NOT "${method}" MATCHES "(rc)|(xcode)|(embedc)|(copy)")
+  if (NOT "${method}" MATCHES "rc|xcode|embedc|copy")
     message(FATAL_ERROR "Parameter METHOD has invalid value ${arg_METHOD}")
   endif()
 
@@ -503,14 +482,14 @@ function(iplug_target_bundle_resources target res_dir)
       cmake_path(GET res FILENAME fn)
 
       if(kind MATCHES ",font,")
-        set(ln "\"${fn}\" TTF")
+        set(ln "\"${fn}\" FONT")
       elseif(kind MATCHES ",icon,")
         set(ln "${next_id} ICON")
         math(EXPR next_id "${next_id} + 1")
       elseif(kind MATCHES ",image,")
         set(ln "\"${fn}\" IMAGE")
       else()
-        set(ln "\"${fn}\" OCTET")
+        set(ln "\"${fn}\" RCDATA")
       endif()
       string(APPEND rc_content "${ln} \"${res}\"\n")
     endforeach()
@@ -638,24 +617,7 @@ Setup the base INTERFACE target for an iPlug2 plugin with required options.
     FORMATS [``ALL`` | formats...]
     [GRAPHICS backend[+api]]
     [COPY_AFTER_BUILD]
-
-    [NAME <name>]
-    [VERSION <version>]
-    [CLASS_NAME <cxx class>]
-    [DESCRIPTION <description>]
-    [EMAIL <support email>]
-    [AUTHOR <author>]
-    [AUTHOR_ID <author id>]
-    [YEAR <year>]
-    [COPYRIGHT <copyright>]
-    [CATEGORY category1,category2,...]
-    [URL <home page url>]
-    [SUPPORT_URL <support page url>]
-    [MANUAL_URL <manual url>]
-    [MIDI_IN <bool>]
-    [MIDI_OUT <bool>]
-    [DOES_MPE <bool>]
-    [EXTRA_METADATA <key1> <value1> <key2> <value2> ...]
+    CONFIG <yaml>
   )
 
 Main Arguments
@@ -693,84 +655,83 @@ Main Arguments
   user-writable location where DAWs and other tools will search for plugins of
   that format.
 
+``CONFIG``
+  A set of "key: value" pairs, one per line. See the `Config Options`_ section for a list
+  of valid options. Using CMake's literal strings (e.g. [[my text]]) is recommended.
+  Technically, this is a yaml dictionary, so indentation does matter slightly.
 
-Metadata Options
-^^^^^^^^^^^^^^^^
+Config Options
+^^^^^^^^^^^^^^
 
-``NAME``
+``name``
   The name of the plugin. If unspecified, this defaults to the project name.
 
-``VERSION``
+``version``
   The plugin version. If unspecified, this defaults to the project version.
 
-``CLASS_NAME``
+``class_name``
   The C++ class name of the main plugin class. This will override the default, which is the same
   as the project name.
 
-``DESCRIPTION``
+``description``
   A description of the plugin. If unspecified, defaults to the project description, or an empty string.
 
-``AUTHOR``
+``author``
   The plugin author, or the company who makes it. Defaults to an empty string.
 
-``AUTHOR_ID``
+``author_id``
   The plugin manufacturer's ID. This must be a 4 character ASCII string. If not provided,
   it will default to the first 4 characters of `AUTHOR`_. If ``AUTHOR`` is an empty string,
   an error will be reported.
 
-``YEAR``
+``year``
   The year the plugin was released. Defaults to the current year.
 
-``COPYRIGHT``
+``copyright``
   A custom copyright string. The default is "Copyright (c) <year> <author>".
 
-``CATEGORY``
+``category``
   The plugin category/categories, used by hosts for organization.
   This uses values from CLAP (https://github.com/free-audio/clap/blob/main/include/clap/plugin-features.h).
 
-``EMAIL``
+``email``
   The support email for the plugin.
 
-``URL``
+``url``
   The primary URL for information about the plugin.
 
-``SUPPORT_URL``
+``support_url``
   The URL for getting support for the plugin. Defaults to the primary URL.
 
-``MANUAL_URL``
+``manual_url``
   The URL of a manual (usually .pdf) for the plugin.
 
-``MIDI_IN``
+``midi_in``
   Boolean (default FALSE) which controls if this plugin has MIDI input.
 
-``MIDI_OUT``
+``midi_out``
   Boolean (default FALSE) which controls if this plugin has MIDI output.
 
-``DOES_MPE``
+``does_mpe``
   Boolean (default FALSE) which controls if the plugin does MPE or not.
 
-``ALLOW_HOST_RESIZE``
+``allow_host_resize``
   Boolean (default FALSE), allow the host to resize the plugin's GUI.
 
-``EXTRA_METADATA``
-  Additional key-value pairs of metadata options to be added to the metadata json.
+``ui_width``
+  The default width of the UI.
+``ui_height``
+  The default height of the UI.
+``ui_fps``
+  The target FPS for the UI.
 
 #]===]
 function(iplug_setup_plugin base_target)
-  set(one_value_args
-    # Main options, with defaults pulled from the project.
-    # These MUST have non-empty valid values
-    VERSION NAME CLASS_NAME AUTHOR_ID
-    # These options are basically pure metadata, and don't change how the plugin works at all
-    DESCRIPTION AUTHOR YEAR COPYRIGHT EMAIL URL SUPPORT_URL MANUAL_URL
-    # These options change how the plugin functions, but have reasonable defaults.
-    CATEGORY MIDI_IN MIDI_OUT DOES_MPE ALLOW_HOST_RESIZE
-  )
   cmake_parse_arguments(
     PARSE_ARGV 1 arg
     "COPY_AFTER_BUILD"
-    "${one_value_args}"
-    "GRAPHICS;FORMATS;EXTRA_METADATA"
+    "CONFIG"
+    "GRAPHICS;FORMATS"
   )
 
   if (NOT arg_FORMATS)
@@ -831,92 +792,25 @@ function(iplug_setup_plugin base_target)
   # End parse graphics options
   #========================================================
 
-  #========================================================
-  # Parse metadata options, with defaults.
+  # Parse config options
+  bn_cache_call(
+    CACHE_VARIABLE "${base_target}_metadata"
+    OUTPUT_VARIABLE "meta"
+    DID_RERUN meta_changed
+    CALL iplug_build_config meta "${arg_CONFIG}"
+  )
 
-  # Build up plugin metadata options, with fallbacks and default values.
-  string(TIMESTAMP current_year "%Y" UTC)
-  bn_fallback(plugin_name "${arg_NAME}" "${CMAKE_PROJECT_NAME}")
-  bn_fallback(plug_version "${arg_VERSION}" "${CMAKE_PROJECT_VERSION}" "0.0.1")
-  bn_fallback(plug_class_name "${arg_CLASS_NAME}" "${CMAKE_PROJECT_NAME}")
-  bn_fallback(plug_description "${arg_DESCRIPTION}" "${CMAKE_PROJECT_DESCRIPTION}" "@@ @@")
-  bn_fallback(plug_email "${arg_EMAIL}" "spam@me.com")
-  bn_fallback(plug_author "${arg_AUTHOR}" "@@ @@")
-  # Author ID falls-back to first 4 characters of author, or an empty string.
-  # If it's an empty string, we'll check for that later.
-  string(SUBSTRING "${plug_author}" 0 4 plug_author_4)
-  bn_fallback(plug_author_id "${arg_AUTHOR_ID}" "${plug_author_4}" "@@ @@")
-  bn_fallback(plug_year "${arg_YEAR}" "${current_year}")
-  bn_fallback(plug_copyright "${arg_COPYRIGHT}" "@@ Copyright (c) ${plug_year} ${plug_author} @@")
-  bn_fallback(plug_category "${arg_CATEGORY}" "@@ @@")
-  bn_fallback(plug_url "${arg_URL}" "${CMAKE_PROJECT_HOMEPAGE_URL}" "@@ @@")
-  bn_fallback(plug_support_url "${arg_SUPPORT_URL}" "${plug_url}" "@@ @@")
-  bn_fallback(plug_manual_url "${arg_MANUAL_URL}" "@@ @@")
+  # Load all config variables from the json with a plug_ prefix
+  bn_json_to_variables(plug JSON "${meta}")
+  set(plugin_name "${plug_name}")
 
-  # Parse boolean options with defaults
-  set(bool_option_vars plug_midi_in plug_midi_out plug_does_mpe plug_allow_host_resize)
-  set(bool_option_defaults FALSE FALSE FALSE FALSE)
-  foreach(out_var default_val IN ZIP_LISTS bool_option_vars bool_option_defaults)
-    # Convert local variable name into argument name
-    string(TOUPPER "${out_var}" arg_var)
-    string(REPLACE "PLUG_" "arg_" arg_var "${arg_var}")
-    # Parse option from argument or fallback
-    bn_fallback(${out_var} "${${arg_var}}" "${default_val}")
-  endforeach()
-
-  # Convert the booleans to 1/0 strings so we can #define them easier
-  foreach(out_var IN LISTS bool_option_vars)
-    bn_tern(${out_var} "1" "0" "${${out_var}}")
-  endforeach()
-
-  # Verify author id
-  string(LENGTH "${plug_author_id}" author_id_len)
-  if(NOT ${author_id_len} EQUAL 4)
-    message(WARNING "The author_id must be a 4-character ASCII string. Using 'Test' as the fallback.")
-    set(plug_author_id "Test")
+  if(meta_changed)
+    configure_file(
+      ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/config.h.in
+      ${CMAKE_CURRENT_BINARY_DIR}/${plug_name}.bin/config.h
+      @ONLY
+    )
   endif()
-
-  execute_process(
-    ${CALL_CMUTIL_PY} "import cmutil; cmutil.do_hex_version('${plug_version}')"
-    OUTPUT_VARIABLE plug_version_hex
-  )
-
-  # Put them into a json dictionary
-  bn_json_dict(
-    meta
-    "name" "${plugin_name}"
-    version "${plug_version}"
-    version_hex "${plug_version_hex}"
-    class_name "${plug_class_name}"
-    author "${plug_author}"
-    author_id "${plug_author_id}"
-    category "${plug_category}"
-    copyright "${plug_copyright}"
-    description "${plug_description}"
-    year "${plug_year}"
-    dev_language "English"
-    email "${plug_email}"
-    url "${plug_url}"
-    support_url "${plug_support_url}"
-    midi_in "${plug_midi_in}"
-    midi_out "${plug_midi_out}"
-    does_mpe "${plug_does_mpe}"
-    allow_host_resize "${plug_allow_host_resize}"
-    # By being last, values from EXTRA_METADATA can override values we set
-    ${arg_EXTRA_METADATA}
-  )
-  string(REPLACE "\n" "" meta "${meta}")
-  # Set it in the cache for debugging, and maybe later we can use it without re-computing?
-  set(${base_target}_metadata "${meta}" CACHE INTERNAL "" FORCE)
-
-  set(plug_unique_id "PmBl")
-  string(MAKE_C_IDENTIFIER "${plug_author}" plug_author_csafe)
-
-  configure_file(
-    ${IPLUG2_SDK_PATH}/IPlug/Resources/config.h.in
-    ${CMAKE_CURRENT_BINARY_DIR}/${plugin_name}.bin/config.h
-    @ONLY
-  )
 
   # End parse metadata options
   #=========================================================
@@ -927,7 +821,7 @@ function(iplug_setup_plugin base_target)
     PROPERTIES
     VERSION ${plug_version}
     IPLUG_PLUGIN_METADATA "${meta}"
-    IPLUG_PLUGIN_NAME "${plugin_name}"
+    IPLUG_PLUGIN_NAME "${plug_name}"
     IPLUG_PLUGIN_GRAPHICS "${gui_libs}"
     IPLUG_COPY_AFTER_BUILD ${arg_COPY_AFTER_BUILD}
   )
@@ -990,3 +884,21 @@ function(iplug_setup_plugin base_target)
   iplug_source_tree(iPlug2_VST3 PREFIX "IPlug/VST3")
 
 endfunction(iplug_setup_plugin)
+
+function(iplug_build_config VAR config_in)
+  set(build_config_cmd "
+import iplug; iplug.cm_build_config(\"\"\"${arg_CONFIG}\"\"\", {
+  'name': '''${CMAKE_PROJECT_NAME}''',
+  'version': '''${CMAKE_PROJECT_VERSION}''',
+  'description': '''${CMAKE_PROJECT_DESCRIPTION}''',
+  'url': '''${CMAKE_PROJECT_HOMEPAGE_URL}''',
+  'has_ui': '${plug_has_ui}',
+})")
+  execute_process(
+    COMMAND ${IPLUG_PYENV_EXECUTABLE} -c "${build_config_cmd}"
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    COMMAND_ERROR_IS_FATAL ANY
+    OUTPUT_VARIABLE meta
+  )
+  set(${VAR} "${meta}" PARENT_SCOPE)
+endfunction()

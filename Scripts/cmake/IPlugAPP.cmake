@@ -36,16 +36,12 @@ set(_lib
   iPlug2_IGraphicsCore
   RTAudioMidi
 )
-set(_inc
-  ${cwd}
-)
 set(_def
   APP_API
   IPLUG_EDITOR=1
   IPLUG_DSP=1
   BUILT_WITH_CMAKE
 )
-
 if (MSVC)
   # Not set charset for MSVC
   list(APPEND _def _SBCS)
@@ -71,9 +67,10 @@ else()
   message(FATAL_ERROR "APP not supported on platform ${CMAKE_SYSTEM_NAME}")
 endif()
 
-iplug_target_add(iPlug2_APP INTERFACE
+iplug_target_add(
+  iPlug2_APP INTERFACE
   SOURCE ${_src}
-  INCLUDE ${_inc}
+  INCLUDE ${cwd}
   DEFINE ${_def}
   LINK ${_lib}
   OPTION ${IPLUG_MSVC_FLAGS}
@@ -94,8 +91,11 @@ function(iplug_configure_app base_plugin target)
   # MacOS
   if(IPLUG_OS MATCHES "Darwin")
     # Configure the .xib file
-    set(config_in_dir ${IPLUG2_SDK_PATH}/IPlug/Resources)
-    iplug_format_helper(FORMAT app TARGET ${target} CONVERT_XIB ${config_in_dir}/macOS-MainMenu.xib)
+    iplug_format_helper(
+      FORMAT app
+      TARGET ${target}
+      CONVERT_XIB ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/macOS-MainMenu.xib
+    )
 
     # Add the icon file
     set(icon_file "${CMAKE_SOURCE_DIR}/resources/${plugin_name}.icns")
