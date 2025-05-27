@@ -20,7 +20,7 @@ set(_src
   ${IPLUG_DEPS}
   ${RTA_DIR}/RtAudio.h
   ${RTA_DIR}/RtAudio.cpp
-  ${RTM_DIR}/RTMidi.h
+  ${RTM_DIR}/RtMidi.h
   ${RTM_DIR}/RtMidi.cpp
 )
 set(_inc
@@ -87,6 +87,11 @@ elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
     list(APPEND _def "__LINUX_PULSE__")
     list(APPEND _lib PkgConfig::PulseAudio PkgConfig::PulseAudioSimple)
   endif()
+
+  if (CMAKE_COMPILER_IS_GNUCXX)
+    target_compile_options(iPlug2_RTAudioMidi PRIVATE -Wno-suggest-override)
+  endif()
+
 endif()
 
 

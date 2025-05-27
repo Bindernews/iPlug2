@@ -214,12 +214,6 @@ private:
   bool mGUIOpen = false;
 
   void* mWindow = nullptr;
-
-#if defined(OS_LINUX)
-  /** @brief Used on Linux to have a gui update task on the secondary thread. */
-  uint32_t mGuiTaskId = 0;
-  void* mEmbed = nullptr;
-#endif
 };
 
 IPlugCLAP* MakePlug(const InstanceInfo& info);

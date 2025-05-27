@@ -22,7 +22,6 @@
 #endif
 
 #if defined(OS_LINUX)
-#include "xcbt.h"
 #include "IPlugTaskThread.h"
 #endif
 
@@ -959,33 +958,11 @@ bool IPlugCLAP::implementsGui() const noexcept
 
 bool IPlugCLAP::guiCreate(const char* api, bool isFloating) noexcept
 {
-#if defined(OS_LINUX)
-  // gui update function
-  auto updateCb = [this](uint64_t) -> bool {
-    if (this->mEmbed) {
-      xcbt_embed_idle_cb((xcbt_embed*)this->mEmbed);
-      return true;
-    }
-    return false;
-  };
-
-  mEmbed = xcbt_embed_idle();
-  this->SetIntegration((xcbt_embed*)mEmbed);
-  mGuiTaskId = IPlugTaskThread::instance()->Push(Task::FromSec(0.0, 1.0 / PLUG_FPS, updateCb));
-#endif
-
   return HasUI();
 }
 
 void IPlugCLAP::guiDestroy() noexcept
 {
-#if defined(OS_LINUX)
-  // Cancel gui loop callbacks
-  IPlugTaskThread::instance()->Cancel(mGuiTaskId);
-  mEmbed = nullptr;
-  mGuiTaskId = 0;
-#endif
-
   CloseWindow();
   mGUIOpen = false;
   mWindow = nullptr;

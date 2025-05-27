@@ -42,20 +42,19 @@ iplug_format_helper(
 add_library(iPlug2_CLAP INTERFACE)
 bn_target_add(iPlug2_CLAP INTERFACE
   DEFINE
-  "CLAP_API"
-  "BUILT_WITH_CMAKE"
-  "IPLUG_DSP=1"
-  # "SAMPLE_TYPE_FLOAT=1"
-
+    "CLAP_API"
+    "BUILT_WITH_CMAKE"
+    "IPLUG_DSP=1"
+    # "SAMPLE_TYPE_FLOAT=1"
   SOURCE
-  ${cwd}/IPlugCLAP.h
-  ${cwd}/IPlugCLAP.cpp
-
-  INCLUDE ${cwd}
-
+    ${cwd}/IPlugCLAP.h
+    ${cwd}/IPlugCLAP.cpp
+  INCLUDE
+    ${cwd}
   LINK
-  clap
-  clap-helpers
+    clap
+    clap-helpers
+    iPlug2_Core
 )
 
 #--------------------------------------------------------------------

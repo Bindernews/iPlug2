@@ -135,7 +135,7 @@ Timer_impl::Timer_impl(ITimerFunction func, uint32_t intervalMs)
 {
   auto cb = [&](uint64_t time) -> bool { mTimerFunc(*this); return true; };
   Task task = Task::FromMs(intervalMs, intervalMs, cb);
-  mID = IPlugTaskThread::instance()->Push(task);
+  mID = IPlugTaskThread::instance()->Push(std::move(task));
 }
 
 Timer_impl::~Timer_impl()

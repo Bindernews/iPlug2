@@ -21,10 +21,6 @@
 #include "IPlugAPIBase.h"
 #include "IPlugProcessor.h"
 
-#if defined OS_LINUX
-#include "xcbt.h"
-#endif
-
 BEGIN_IPLUG_NAMESPACE
 
 /** Used to pass various instance info to the API class */
@@ -90,10 +86,7 @@ private:
 
   IByteChunk mState;     // Persistent storage if the host asks for plugin state.
   IByteChunk mBankState; // Persistent storage if the host asks for bank state.
-  
-#ifdef OS_LINUX
-  xcbt_embed* mEmbed;
-#endif
+
 protected:
   AEffect mAEffect;
   audioMasterCallback mHostCallback;

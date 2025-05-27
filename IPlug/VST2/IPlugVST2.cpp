@@ -171,9 +171,6 @@ IPlugVST2::IPlugVST2(const InstanceInfo& info, const Config& config)
   {
     mAEffect.flags |= effFlagsHasEditor;
     UpdateEditRect();
-#ifdef OS_LINUX
-    mEmbed = xcbt_embed_idle();
-#endif
   }
 
   CreateTimer();
@@ -465,8 +462,7 @@ VstIntPtr VSTCALLBACK IPlugVST2::VSTDispatcher(AEffect *pEffect, VstInt32 opCode
     }
     case effEditOpen:
     {
-#if defined OS_LINUX
-      _this->SetIntegration(_this->mEmbed);
+#if defined(OS_LINUX)
       if (_this->OpenWindow(ptr))
       {
         return 1;
@@ -498,10 +494,6 @@ VstIntPtr VSTCALLBACK IPlugVST2::VSTDispatcher(AEffect *pEffect, VstInt32 opCode
     case effEditIdle:
     case __effIdleDeprecated:
     {
-      if (_this->HasUI())
-      {
-        xcbt_embed_idle_cb(_this->mEmbed);
-      }
 //    #ifdef USE_IDLE_CALLS
     _this->OnIdle();
 //    #endif

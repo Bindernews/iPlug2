@@ -61,6 +61,15 @@
   #define DEFAULT_OUTPUT_DEV "Built-in Output"
 #endif
 
+#if defined(OS_MAC) || defined(OS_LINUX)
+// Since we're using explicit -A calls on Windows, we need to #define them
+// when we're on Linux or Mac.
+#define MessageBoxA(...) MessageBox(__VA_ARGS__)
+#define WritePrivateProfileStringA(...) WritePrivateProfileString(__VA_ARGS__)
+#define GetPrivateProfileStringA(...) GetPrivateProfileString(__VA_ARGS__)
+#define GetPrivateProfileIntA(...) GetPrivateProfileInt(__VA_ARGS__)
+#endif
+
 #include "RtAudio.h"
 #include "RtMidi.h"
 

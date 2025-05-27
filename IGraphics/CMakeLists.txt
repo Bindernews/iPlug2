@@ -97,7 +97,7 @@ elseif (IPLUG_OS MATCHES "Linux")
         libxcb-util-dev
         libxcb-icccm4-dev
         libxcb-xfixes0-dev
-        libglx-dev
+        libglx-dev # only required for APP
       )
     else()
       set(apt_prog "<package_manager install>")
@@ -109,18 +109,19 @@ elseif (IPLUG_OS MATCHES "Linux")
   endif()
 
   list(APPEND _src
+    ${cwd}/Platforms/SDL_events.hpp
     ${cwd}/Platforms/IGraphicsLinux.cpp
-    ${deps_dir}/xcbt/xcbt.c
+    ${cwd}/Platforms/IGraphicsLinux.h
+    ${cwd}/Platforms/PlatformX11.cpp
+    ${cwd}/Platforms/PlatformX11.hpp
   )
   list(APPEND _inc
-    ${deps_dir}/xcbt
     ${WDL_DIR}
   )
   list(APPEND _lib
     PkgConfig::X11Libraries
     "dl"
   )
-  set_property(SOURCE ${deps_dir}/xcbt/xcbt.c PROPERTY LANGUAGE C)
 
 elseif (IPLUG_OS MATCHES "Darwin")
   list(APPEND _src
@@ -172,8 +173,8 @@ iplug_target_add(iPlug2_NoGraphics INTERFACE
 )
 
 # Custom graphics
-add_library(iPlug2_gui_custom INTERFACE)
-iplug_target_add(iPlug2_gui_custom
+add_library(iPlug2_CustomGraphics INTERFACE)
+iplug_target_add(iPlug2_CustomGraphics
   DEFINE "IGRAPHICS_CUSTOM=1"
 )
 

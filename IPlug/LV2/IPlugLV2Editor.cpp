@@ -16,10 +16,6 @@ IPlugLV2Editor::IPlugLV2Editor(const InstanceInfo &info, const Config& config) :
 
   mParameterPortOffset = totalNInChans + totalNOutChans;
 
-#ifdef OS_LINUX
-  mEmbed = xcbt_embed_idle();
-#endif
-
   mHostWrite      = info.write_function;
   mHostController = info.controller;
 
@@ -58,11 +54,6 @@ IPlugLV2Editor::IPlugLV2Editor(const InstanceInfo &info, const Config& config) :
 
 LV2UI_Widget IPlugLV2Editor::CreateUI()
 {
-  // we can not do this in constructor, user code is not yet executed and so graphics can not be created
-#ifdef OS_LINUX
-  SetIntegration(mEmbed);
-#endif
-
   auto widget = reinterpret_cast<LV2UI_Widget>(OpenWindow(mHostWidget));
   return widget;
 }
@@ -70,10 +61,6 @@ LV2UI_Widget IPlugLV2Editor::CreateUI()
 IPlugLV2Editor::~IPlugLV2Editor()
 {
   CloseWindow();
-
-#ifdef OS_LINUX
-  //xcbt_embed_dtor(mEmbed);
-#endif
 }
 
 void IPlugLV2Editor::InformHostOfParamChange(int idx, double normalizedValue)
@@ -159,9 +146,6 @@ void IPlugLV2Editor::port_event(uint32_t port_index, uint32_t buffer_size, uint3
 int IPlugLV2Editor::ui_idle()
 {
   OnIdle();
-#ifdef OS_LINUX
-  xcbt_embed_idle_cb(mEmbed);
-#endif
 
   // Return 0 if the UI is still open
   if (GetUI() != nullptr) {
@@ -185,7 +169,6 @@ bool IPlugLV2Editor::EditorResizeFromUI(int viewWidth, int viewHeight, bool need
   }
   return false;
 }
-
 
 static LV2UI_Handle ui_instantiate(
   const LV2UI_Descriptor*   descriptor,
