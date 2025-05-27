@@ -45,6 +45,10 @@
                 "OS_WIN",
                 "IGRAPHICS_GL2"
             ]
+        },
+        {
+          "name": "Win32-alt",
+          "compileCommands": "${workspaceFolder}/Examples/IPlugInstrument/build-default/compile_commands.json"
         }
     ],
     "version": 4
