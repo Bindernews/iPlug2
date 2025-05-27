@@ -42,7 +42,7 @@
   #pragma comment(lib, "skshaper.lib")
   #pragma comment(lib, "skunicode_core.lib")
   #pragma comment(lib, "skunicode_icu.lib")
-#else
+#elif !defined(NO_IGRAPHICS)
   #include "nanosvg.h"
 #endif
 
@@ -471,7 +471,7 @@ struct SVGHolder
   
   sk_sp<SkSVGDOM> mSVGDom;
 };
-#else
+#elif !defined(NO_IGRAPHICS)
 /** Used internally to manage SVG data*/
 struct SVGHolder
 {

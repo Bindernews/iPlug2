@@ -189,7 +189,7 @@ struct ISVG
   
   sk_sp<SkSVGDOM> mSVGDom;
 };
-#else
+#elif !defined(NO_IGRAPHICS)
 struct ISVG
 {  
   ISVG(NSVGimage* pImage)
@@ -215,6 +215,12 @@ struct ISVG
   inline bool IsValid() const { return mImage != nullptr; }
   
   NSVGimage* mImage = nullptr;
+};
+#else
+struct ISVG
+{
+  float W() const { return 0; }
+  float H() const { return 0; }
 };
 #endif
 

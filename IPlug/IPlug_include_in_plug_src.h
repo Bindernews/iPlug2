@@ -429,7 +429,7 @@ END_IPLUG_NAMESPACE
  #endif
  */
 
-#if !defined NO_IGRAPHICS && !defined VST3P_API
+#if !defined NO_IGRAPHICS && !defined VST3P_API && !defined(LV2P_API)
 #include "IGraphics_include_in_plug_src.h"
 #endif
 
