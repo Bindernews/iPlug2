@@ -1,0 +1,1 @@
+python -m pip install --upgrade --no-deps --force-reinstall ./iplugpy

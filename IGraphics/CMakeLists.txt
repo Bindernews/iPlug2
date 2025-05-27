@@ -164,8 +164,6 @@ iplug_target_add(iPlug2_NoGraphics INTERFACE
   ${cwd}/Drawing
   ${cwd}/Platforms
   ${cwd}/Extras
-  ${deps_dir}/NanoSVG/src
-  ${deps_dir}/NanoVG/src
   ${deps_dir}/STB
   ${deps_dir}/imgui
   ${deps_dir}/imgui/examples
@@ -174,8 +172,8 @@ iplug_target_add(iPlug2_NoGraphics INTERFACE
 )
 
 # Custom graphics
-add_library(iPlug2_CustomGraphics INTERFACE)
-iplug_target_add(iPlug2_CustomGraphics
+add_library(iPlug2_gui_custom INTERFACE)
+iplug_target_add(iPlug2_gui_custom
   DEFINE "IGRAPHICS_CUSTOM=1"
 )
 
@@ -232,45 +230,44 @@ target_compile_definitions(${tgt} INTERFACE "IGRAPHICS_GL3")
 # NanoVG #
 ##########
 
-set(tgt iPlug2_nanovg)
-add_library(iPlug2_nanovg INTERFACE)
-set(_def "IGRAPHICS_NANOVG")
-set(_lib iPlug2_IGraphicsCore)
-set(_src)
-set(_inc)
+set(tgt iPlug2_gui_nanovg)
+add_library(${tgt} INTERFACE)
+bn_target_add(
+  ${tgt} INTERFACE
+  DEFINE
+    "IGRAPHICS_NANOVG"
+  LINK
+    iPlug2_IGraphicsCore
+)
 
 if (IPLUG_OS MATCHES "Darwin")
   # Prefer MetalNanoVG on macOS/iOS
   set(nvg_dir ${deps_dir}/MetalNanoVG)
-  list(APPEND _inc ${nvg_dir}/src)
-  list(APPEND _def "IGRAPHICS_METAL")
-  list(APPEND _lib iPlug2_DesktopGL_Base)
+  bn_target_add(
+    ${tgt} INTERFACE
+    INCLUDE ${nvg_dir}/src
+    DEFINE "IGRAPHICS_METAL"
+    LINK iPlug2_DesktopGL_Base
+  )
 else()
   # Link to normal NanoVG
-  set(nvg_dir ${deps_dir}/NanoVG)
-  set(sdk ${nvg_dir}/src)
-  # list(APPEND _src
-  #   ${sdk}/nanovg.c
-  #   ${sdk}/fontstash.h
-  #   ${sdk}/nanovg_gl_utils.h
-  #   ${sdk}/nanovg_gl.h
-  #   ${sdk}/nanovg.h
-  #   ${sdk}/stb_image.h
-  #   ${sdk}/stb_truetype.h
-  #   ${cwd}/Drawing/IGraphicsNanoVG.cpp
-  # )
-  list(APPEND _inc
-    ${deps_dir}/NanoVG/src
-    ${deps_dir}/NanoSVG/src
-  )
+  set(sdk ${deps_dir}/NanoVG/src)
+  bn_target_add(
+    ${tgt} INTERFACE
+    INCLUDE
+      ${deps_dir}/NanoVG/src
+      ${deps_dir}/NanoSVG/src
+    # SOURCE
+      # ${sdk}/nanovg.c
+      # ${sdk}/fontstash.h
+      # ${sdk}/nanovg_gl_utils.h
+      # ${sdk}/nanovg_gl.h
+      # ${sdk}/nanovg.h
+      # ${sdk}/stb_image.h
+      # ${sdk}/stb_truetype.h
+      # ${cwd}/Drawing/IGraphicsNanoVG.cpp
+    )
 endif()
-
-iplug_target_add(iPlug2_nanovg INTERFACE
-  SOURCE ${_src}
-  INCLUDE ${_inc}
-  DEFINE ${_def}
-  LINK ${_lib}
-)
 
 #######################
 # Canvas Graphics API #

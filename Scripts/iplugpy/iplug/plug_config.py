@@ -163,19 +163,49 @@ def normalize_channel_io(inp: 'list[str]|str') -> 'list[str]':
     result.append(io_setup)
   return result
 
+def check_gui_backend(g_back:str, name: str, auto_val: str, choices: 'list[str]') -> str:
+  """Check that the selections for the GUI backend are a valid configuration.
+
+  :param g_back: User-input backend
+  :param name: Library name (e.g. Skia, NanoVG)
+  :param auto_val: Backend to use if ``g_back`` is "auto"
+  :param choices: List of valid backends
+  :returns: A valid ``g_back``
+  """
+  if g_back == 'auto':
+    g_back = auto_val
+  if not g_back in choices:
+    choices_str = ', '.join(choices)
+    raise ValueError(f'Invalid backend for {name} "{g_back}" - choices are {choices_str}')
+  return g_back
+
+def parse_graphics_api(api: str) -> 'tuple[str, str]':
+  # Parse UI backend options
+  m = re.match(r"([a-z]+)([+](gl2|gl3|cpu|auto))?", api.lower())
+  if m:
+    g_lib = m.group(1)
+    g_back = m.group(3) or 'auto'
+  else:
+    g_lib = ''
+    g_back = ''
+    
+  if g_lib == 'nanovg':
+    g_back = check_gui_backend(g_back, 'NanoVG', 'gl2', ['auto', 'gl2', 'gl3'])
+  elif g_lib == 'skia':
+    g_back = check_gui_backend(g_back, 'Skia', 'cpu', ['auto', 'gl2', 'gl3', 'cpu'])
+  elif g_lib == 'custom':
+    g_back = check_gui_backend(g_back, 'Custom', 'auto', ['auto'])
+  elif g_lib == 'none':
+    g_back = 'cpu'
+  else:
+    raise ValueError(f"Invalid IGraphics library {g_lib} - choices are NanoVG, Skia, Custom, None")
+  
+  return (g_lib, g_back)
+
+
 def build_full_config(config_in: dict, defaults: dict) -> dict:
   """Build a fully valid dictionary containing config fields.
-
-  The following fields are available:
-  - description: a description of the plugin
-  - year: the copyright year
-  - author: the author or manufacturer
-  - copyright: the full copyright string, defaults to \"Copyright (c) <year> <author>\"
-  - category: The plugin category/categories, used by hosts for organization.
-    This uses values from CLAP (https://github.com/free-audio/clap/blob/main/include/clap/plugin-features.h)
-    and converts them to other formats as appropriate.
-  - url: The home page URL for the plugin
-  - support_url: The support URL for the plugin, defaults to the home page URL
+  See IPlugFunctions.cmake for details on the config fields.
   """
   meta = dict()
   # Helper function to determine the final value for a key
@@ -194,6 +224,15 @@ def build_full_config(config_in: dict, defaults: dict) -> dict:
         raise ValueError(f"Config key \"{k}\" must be an integer")
     # Update meta
     meta[k] = v
+
+  # Parse graphics options. 
+  graphics_api = defaults.get("graphics") or meta.get("graphics") or "nanovg+gl2"
+  gui_library, gui_backend = parse_graphics_api(graphics_api)
+  # Set these directly, user cannot override them
+  meta["gui_library"] = gui_library
+  meta["gui_backend"] = gui_backend
+  has_ui = gui_library != 'none'
+  meta["has_ui"] = int(has_ui)
 
   update_key("name", defaults["name"], None)
   update_key("class_name", defaults["name"], None)
@@ -224,7 +263,6 @@ def build_full_config(config_in: dict, defaults: dict) -> dict:
   update_key("manual_url", "")
   update_key("dev_language", "English")
   update_key("latency", 0, as_int=True)
-  update_key("has_ui", False, as_bool=True)
   update_key("midi_in", False, as_bool=True)
   update_key("midi_out", False, as_bool=True)
   update_key("does_mpe", False, as_bool=True)
@@ -241,7 +279,6 @@ def build_full_config(config_in: dict, defaults: dict) -> dict:
   update_key("category_vst3", VST3_CATEGORY_MAPPING.get(plug_category), "")
   update_key("category_lv2", LV2_CATEGORY_MAPPING.get(plug_category), "")
   update_key("unique_id", "PmBl")
-  has_ui = meta["has_ui"]
   update_key("ui_width", 800 if has_ui else 0, as_int=True)
   update_key("ui_height", 600 if has_ui else 0, as_int=True)
   update_key("ui_fps", 60 if has_ui else 0, as_int=True)

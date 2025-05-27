@@ -32,7 +32,7 @@ find_package_handle_standard_args(
     SKIA_LIBRARY_DIR
 )
 
-add_library(iPlug2_skia INTERFACE)
+add_library(iPlug2_gui_skia INTERFACE)
 
 set(skia_libs
   skia
@@ -52,7 +52,7 @@ else()
 endif()
 
 bn_target_add(
-  iPlug2_skia INTERFACE
+  iPlug2_gui_skia INTERFACE
   DEFINE
     IGRAPHICS_SKIA
   LINK_DIR

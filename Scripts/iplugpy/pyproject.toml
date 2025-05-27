@@ -12,6 +12,7 @@ dependencies = [
   "packaging>=21.0",
   # So we can do image manipulation
   "pillow",
+  "cairosvg",
 ]
 
 [project.scripts]
@@ -20,6 +21,7 @@ bin2c = "iplug.bin2c:main"
 wam_server = "iplug.wam_server:main"
 iplug_parse_config = "iplug.parse_config:main"
 iplug_parse_iostr = "iplug.parse_iostr:main"
+imconvert = "iplug.imconvert:main"
 
 [tool.setuptools]
 packages = ["iplug"]

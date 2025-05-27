@@ -32,9 +32,6 @@ iplug_format_helper(
   CUSTOM_XML ""
 )
 
-# Check if we're compiling with GCC
-bn_tern(is_gcc 1 0 ${CMAKE_CXX_COMPILER_ID} MATCHES "GNU")
-
 set(cwd ${IPLUG2_SDK_PATH}/IPlug/VST2)
 
 add_library(iPlug2_VST2 INTERFACE)
@@ -59,10 +56,10 @@ if(IPLUG_OS STREQUAL "Linux")
   # Linux needs this define
   bn_target_add(iPlug2_VST2 PUBLIC DEFINE "SMTG_OS_LINUX")
 endif()
-if(is_gcc)
+if(${CMAKE_CXX_COMPILER_ID} MATCHES "GNU")
   # GCC doesn't like __cdecl, so instead of having people modify their
   # aeffect.h file, just redefine __cdecl.
-  bn_target_add(iPlug2_VST2 INTERFACE DEFINE "__cdecl=__attribute__(())")
+  bn_target_add(iPlug2_VST2 PUBLIC DEFINE "__cdecl=__attribute__(())")
 endif()
 
 #--------------------------------------------------------------------

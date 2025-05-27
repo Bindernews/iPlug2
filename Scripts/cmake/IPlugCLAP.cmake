@@ -3,7 +3,7 @@ include(ExternalProject)
 
 set(cwd ${IPLUG2_SDK_PATH}/IPlug/CLAP)
 set(deps_dir ${IPLUG2_SDK_PATH}/Dependencies/IPlug)
-set(extern_install_dir ${CMAKE_BINARY_DIR}/IPlug)
+set(extern_install_dir ${CMAKE_BINARY_DIR}/iplug)
 
 add_subdirectory(${deps_dir}/CLAP_SDK ${extern_install_dir}/clap)
 add_subdirectory(${deps_dir}/CLAP_HELPERS ${extern_install_dir}/clap_helpers)

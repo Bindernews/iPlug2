@@ -10,6 +10,7 @@ cmake_minimum_required(VERSION 3.20 FATAL_ERROR)
 #   cmake --build build-linux --target IPlugInstrument_vst2
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
+set(IPLUG_COPY_AFTER_BUILD ON CACHE BOOL "")
 project(IPlugInstrument VERSION 1.0.0 LANGUAGES C CXX)
 
 if (NOT IPLUG2_SDK_PATH)
@@ -59,9 +60,6 @@ iplug_setup_plugin(
   GRAPHICS NanoVG+GL3
   # List of plugin formats to export, or ALL for all supported formats on this platform.
   FORMATS ALL
-  # The icon to use for the plugin
-  # ICON resources/IPlugInstrument.ico
-  COPY_AFTER_BUILD
   # Metadata
   CONFIG [[
   channel_io: 0-2

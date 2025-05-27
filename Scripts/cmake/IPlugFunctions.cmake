@@ -32,6 +32,7 @@ define_property(TARGET PROPERTY IPLUG_PLUGIN_GRAPHICS
   BRIEF_DOCS "The IGraphics backend API."
   FULL_DOCS "See iplug_setup_plugin.")
 define_property(TARGET PROPERTY IPLUG_COPY_AFTER_BUILD
+  INITIALIZE_FROM_VARIABLE IPLUG_COPY_AFTER_BUILD
   BRIEF_DOCS "If true the plugin will be copied to the appropriate directory after a successful build."
   FULL_DOCS "iPlug2 will attempt to automatically find the correct directories to copy to, but if you
     want to set them manually the variables are: VST2_INSTALL_PATH, VST3_INSTALL_PATH, AUv2_INSTALL_PATH, LV2_INSTALL_PATH")
@@ -616,7 +617,6 @@ Setup the base INTERFACE target for an iPlug2 plugin with required options.
     <base_target>
     FORMATS [``ALL`` | formats...]
     [GRAPHICS backend[+api]]
-    [COPY_AFTER_BUILD]
     CONFIG <yaml>
   )
 
@@ -648,12 +648,7 @@ Main Arguments
 
   For extra control the ``api`` option may be given as ``GL2``, ``GL3``, or ``CPU``.
   These extra options control specifically which rendering API the backend uses.
-  Use ``_`` for the default api for a given backend.
-
-``COPY_AFTER_BUILD``
-  For the output formats that support it, the plugin will be copied to the default
-  user-writable location where DAWs and other tools will search for plugins of
-  that format.
+  Use ``auto`` for the default api for a given backend.
 
 ``CONFIG``
   A set of "key: value" pairs, one per line. See the `Config Options`_ section for a list
@@ -673,9 +668,6 @@ Config Options
   The C++ class name of the main plugin class. This will override the default, which is the same
   as the project name.
 
-``description``
-  A description of the plugin. If unspecified, defaults to the project description, or an empty string.
-
 ``author``
   The plugin author, or the company who makes it. Defaults to an empty string.
 
@@ -684,15 +676,32 @@ Config Options
   it will default to the first 4 characters of `AUTHOR`_. If ``AUTHOR`` is an empty string,
   an error will be reported.
 
+``category``
+  The plugin category/categories, used by hosts for organization.
+  This uses values from CLAP (https://github.com/free-audio/clap/blob/main/include/clap/plugin-features.h)
+  and converts them to other formats as appropriate.
+
+``midi_in``
+  Boolean (default FALSE) which controls if this plugin has MIDI input.
+
+``midi_out``
+  Boolean (default FALSE) which controls if this plugin has MIDI output.
+
+``does_mpe``
+  Boolean (default FALSE) which controls if the plugin does MPE or not.
+
+Metadata Options
+""""""""""""""""
+These options have no bearing on the plugin's functionality and are purely metadata.
+
+``description``
+  A description of the plugin. If unspecified, defaults to the project description, or an empty string.
+
 ``year``
   The year the plugin was released. Defaults to the current year.
 
 ``copyright``
   A custom copyright string. The default is "Copyright (c) <year> <author>".
-
-``category``
-  The plugin category/categories, used by hosts for organization.
-  This uses values from CLAP (https://github.com/free-audio/clap/blob/main/include/clap/plugin-features.h).
 
 ``email``
   The support email for the plugin.
@@ -706,30 +715,26 @@ Config Options
 ``manual_url``
   The URL of a manual (usually .pdf) for the plugin.
 
-``midi_in``
-  Boolean (default FALSE) which controls if this plugin has MIDI input.
-
-``midi_out``
-  Boolean (default FALSE) which controls if this plugin has MIDI output.
-
-``does_mpe``
-  Boolean (default FALSE) which controls if the plugin does MPE or not.
-
-``allow_host_resize``
-  Boolean (default FALSE), allow the host to resize the plugin's GUI.
+UI Options
+""""""""""
 
 ``ui_width``
   The default width of the UI.
+
 ``ui_height``
   The default height of the UI.
+
 ``ui_fps``
   The target FPS for the UI.
+
+``allow_host_resize``
+  Boolean (default FALSE), allow the host to resize the plugin's GUI.
 
 #]===]
 function(iplug_setup_plugin base_target)
   cmake_parse_arguments(
     PARSE_ARGV 1 arg
-    "COPY_AFTER_BUILD"
+    ""
     "CONFIG"
     "GRAPHICS;FORMATS"
   )
@@ -737,72 +742,37 @@ function(iplug_setup_plugin base_target)
   if (NOT arg_FORMATS)
     message(SEND_ERROR "In iplug_setup_plugin the FORMATS argument is required")
   endif()
-  if (NOT arg_COPY_AFTER_BUILD)
-    set(arg_COPY_AFTER_BUILD OFF)
-  endif()
 
   #========================================================
-  # Parse graphics options
+  # Parse metadata and graphics options
 
   # Use the global/cli flag, then the argument, then the default.
   bn_fallback(graphics_api "${IPLUG_FORCE_GRAPHICS}" "${arg_GRAPHICS}" "nanovg+gl2")
-  string(TOLOWER "${graphics_api}" graphics_api)
-  if(NOT "${graphics_api}" MATCHES "(nanovg|skia|custom|none)([+](gl2|gl3|cpu|auto))?")
-    message(FATAL_ERROR "Invalid IGraphics backend ${arg_GRAPHICS} - choices are NanoVG, Skia, Custom, None")
-  endif()
-  set(gui0 "${CMAKE_MATCH_1}")
-  set(gui_api "${CMAKE_MATCH_3}")
-  # Auto defaults to empty string so bn_fallback works
-  if(gui_api STREQUAL "auto")
-    set(gui_api "")
-  endif()
-
-  # Check NanoVG options
-  if(gui0 STREQUAL "nanovg")
-    bn_fallback(gui_api "${gui_api}" "gl2")
-    if(NOT "${gui_api}" MATCHES "gl2|gl3")
-      message(FATAL_ERROR "Invalid api for NanoVG ${gui_api} - choices are auto, GL2, GL3")
-    endif()
-  endif()
-
-  # Check Skia options
-  if(gui0 STREQUAL "skia")
-    bn_fallback(gui_api "${gui_api}" "cpu")
-    if(NOT "${gui_api}" MATCHES "gl2|gl3|cpu")
-      message(FATAL_ERROR "Invalid api for Skia ${gui_api} - choices are auto, GL2, GL3, CPU")
-    endif()
-    # Try to find Skia package
-    find_package(Skia REQUIRED)
-  endif()
-
-  # Set plug_has_ui for the configure_file later.
-  set(plug_has_ui 1)
-  # Determine libraries to link to.
-  if (gui0 STREQUAL "none")
-    set(gui_libs iPlug2_NoGraphics)
-    set(plug_has_ui 0)
-  elseif (gui0 STREQUAL "custom")
-    set(gui_libs iPlug2_CustomGraphics)
-  else()
-    set(gui_libs iPlug2_${gui0} iPlug2_${gui_api})
-  endif()
-
-  message(VERBOSE "GUI libraries for ${base_target} are ${gui_libs}")
-
-  # End parse graphics options
-  #========================================================
 
   # Parse config options
   bn_cache_call(
     CACHE_VARIABLE "${base_target}_metadata"
     OUTPUT_VARIABLE "meta"
     DID_RERUN meta_changed
-    CALL iplug_build_config meta "${arg_CONFIG}"
+    CALL iplug_build_config meta "${arg_CONFIG}" "${graphics_api}"
   )
 
   # Load all config variables from the json with a plug_ prefix
   bn_json_to_variables(plug JSON "${meta}")
   set(plugin_name "${plug_name}")
+
+  # Handle minor differences for different gui libraries.
+  if(plug_gui_library STREQUAL "skia")
+    # Try to find Skia package
+    find_package(Skia REQUIRED)
+  endif()
+  if(plug_gui_library STREQUAL "none")
+    set(gui_libs iPlug2_gui_${plug_gui_library} iPlug2_${plug_gui_backend})
+  else()
+    set(gui_libs iPlug2_NoGraphics)
+  endif()
+
+  message(VERBOSE "GUI libraries for ${base_target} are ${gui_libs}")
 
   if(meta_changed)
     configure_file(
@@ -823,7 +793,6 @@ function(iplug_setup_plugin base_target)
     IPLUG_PLUGIN_METADATA "${meta}"
     IPLUG_PLUGIN_NAME "${plug_name}"
     IPLUG_PLUGIN_GRAPHICS "${gui_libs}"
-    IPLUG_COPY_AFTER_BUILD ${arg_COPY_AFTER_BUILD}
   )
 
   #========================================================
@@ -836,7 +805,7 @@ function(iplug_setup_plugin base_target)
     set(all_formats TRUE)
   endif()
 
-  # Load global property
+  # Load global properties and cache values
   get_property(IPLUG_ALL_FORMATS GLOBAL PROPERTY IPLUG_ALL_FORMATS)
   set(IPLUG_LOADED_FORMATS "$CACHE{IPLUG_LOADED_FORMATS}")
   set(IPLUG_VALID_FORMATS "$CACHE{IPLUG_VALID_FORMATS}")
@@ -885,14 +854,15 @@ function(iplug_setup_plugin base_target)
 
 endfunction(iplug_setup_plugin)
 
-function(iplug_build_config VAR config_in)
+function(iplug_build_config VAR config_in graphics_api)
+  string(REPLACE "'" "\\'" config_in "${config_in}")
   set(build_config_cmd "
-import iplug; iplug.cm_build_config(\"\"\"${arg_CONFIG}\"\"\", {
+import iplug; iplug.cm_build_config('''${config_in}''', {
   'name': '''${CMAKE_PROJECT_NAME}''',
   'version': '''${CMAKE_PROJECT_VERSION}''',
   'description': '''${CMAKE_PROJECT_DESCRIPTION}''',
   'url': '''${CMAKE_PROJECT_HOMEPAGE_URL}''',
-  'has_ui': '${plug_has_ui}',
+  'graphics': '''${graphics_api}''',
 })")
   execute_process(
     COMMAND ${IPLUG_PYENV_EXECUTABLE} -c "${build_config_cmd}"
