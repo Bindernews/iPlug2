@@ -20,8 +20,6 @@ set(_inc
   # IGraphics
   ${cwd}
   ${cwd}/Controls
-  ${cwd}/Drawing
-  ${cwd}/Platforms
   ${cwd}/Extras
   ${deps_dir}/NanoSVG/src
   ${deps_dir}/NanoVG/src

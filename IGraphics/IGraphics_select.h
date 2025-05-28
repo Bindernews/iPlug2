@@ -53,13 +53,13 @@
   #endif
 
   #if defined IGRAPHICS_NANOVG
-    #include "IGraphicsNanoVG.h"
+    #include "Drawing/IGraphicsNanoVG.h"
     #define IGRAPHICS_DRAW_CLASS_TYPE IGraphicsNanoVG
   #elif defined IGRAPHICS_SKIA
-    #include "IGraphicsSkia.h"
+    #include "Drawing/IGraphicsSkia.h"
     #define IGRAPHICS_DRAW_CLASS_TYPE IGraphicsSkia
   #elif defined IGRAPHICS_CANVAS
-     #include "IGraphicsCanvas.h"
+     #include "Drawing/IGraphicsCanvas.h"
      #define IGRAPHICS_DRAW_CLASS_TYPE IGraphicsCanvas
     #if defined IGRAPHICS_GL || defined IGRAPHICS_METAL
       // #error "When using IGRAPHICS_CANVAS, don't define IGRAPHICS_METAL or IGRAPHICS_GL*"

@@ -2222,9 +2222,9 @@ void IGraphicsWin::VBlankNotify()
 
 #ifndef NO_IGRAPHICS
 #if defined IGRAPHICS_SKIA
-  #include "IGraphicsSkia.cpp"
+  #include "Drawing/IGraphicsSkia.cpp"
 #elif defined IGRAPHICS_NANOVG
-  #include "IGraphicsNanoVG.cpp"
+  #include "Drawing/IGraphicsNanoVG.cpp"
 #ifdef IGRAPHICS_FREETYPE
 #define FONS_USE_FREETYPE
   #pragma comment(lib, "freetype.lib")
