@@ -157,7 +157,7 @@ Misc Options
 function(iplug_format_helper)
   cmake_parse_arguments(
     PARSE_ARGV 0 a13
-    "SETUP;APPLY;MAKE_BUNDLE;GENERATE_PLIST;MAIN_RC;POST_BUILD_COPY;GET_VARS;COPY_PROPERTIES;COPY_RESOURCE_H;TARGET_COMMON"
+    "SETUP;MAKE_BUNDLE;GENERATE_PLIST;MAIN_RC;POST_BUILD_COPY;GET_VARS;COPY_PROPERTIES;COPY_RESOURCE_H;SET_NAME;TARGET_COMMON"
     "FORMAT;TARGET;CUSTOM_XML;INSTALL_SUBDIR;CONVERT_XIB"
     "USER_INSTALL_PATH;SYSTEM_INSTALL_PATH;SUFFIX;RESOURCE_METHOD;PLIST_VARIABLES"
   )
@@ -214,6 +214,8 @@ function(iplug_format_helper)
     #
     bn_fallback(tmp "${a13_INSTALL_SUBDIR}" "\${plugin_name}.${format}")
     set_property(GLOBAL PROPERTY ${prop_key}_install_subdir "${tmp}")
+    # Exit early
+    return()
   endif()
 
   if (a13_GET_VARS)
@@ -314,8 +316,6 @@ function(iplug_format_helper)
       ${a13_plist_output}
       @ONLY NEWLINE_STYLE UNIX
     )
-    # Return early
-    return()
   endif()
 
   if(a13_MAKE_BUNDLE AND APPLE)
@@ -329,16 +329,17 @@ function(iplug_format_helper)
   if(a13_SET_NAME)
     get_property(a13_suffix GLOBAL PROPERTY ${prop_key}_suffix)
     get_property(a13_is_bundle TARGET ${target} PROPERTY MACOSX_BUNDLE)
-    bn_tern(suffix_property "BUNDLE_EXTENSION" "SUFFIX" a13_is_bundle)
 
     set_target_properties(${target} PROPERTIES
       # Make sure the output name is the same as the app name.
       # This is basically required for bundles, but good for all formats.
       OUTPUT_NAME "${PLUGIN_NAME}"
       PREFIX ""
-      # Set either the bundle extension or the file suffix
-      ${suffix_property} "${a13_suffix}"
     )
+    if(NOT "${a13_suffix}" STREQUAL "")
+      bn_tern(suffix_property "BUNDLE_EXTENSION" "SUFFIX" a13_is_bundle)
+      set_target_properties(${target} PROPERTIES ${suffix_property} "${a13_suffix}")
+    endif()
   endif()
 
   if(a13_MAIN_RC AND IPLUG_OS MATCHES "Windows")
