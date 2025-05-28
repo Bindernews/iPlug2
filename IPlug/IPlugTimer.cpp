@@ -15,10 +15,43 @@
 
 #include "IPlugTimer.h"
 #include "IPlugTaskThread.h"
+#include <stdint.h>
+#include <cstring>
+#include <cmath>
+#include "ptrlist.h"
+#include "mutex.h"
+
+#if defined OS_LINUX && defined APP_API
+#include "swell.h"
+#elif defined OS_LINUX
+#include <signal.h>
+#include <time.h>
+#endif
+
+#if defined OS_MAC || defined OS_IOS
+#include <CoreFoundation/CoreFoundation.h>
+#elif defined OS_WEB
+#include <emscripten/html5.h>
+#endif
 
 using namespace iplug;
 
 #if defined OS_MAC || defined OS_IOS
+
+class Timer_impl : public Timer
+{
+public:
+  Timer_impl(ITimerFunction func, uint32_t intervalMs);
+  ~Timer_impl();
+
+  void Stop() override;
+  static void TimerProc(CFRunLoopTimerRef timer, void *info);
+
+private:
+  CFRunLoopTimerRef mOSTimer;
+  ITimerFunction mTimerFunc;
+  uint32_t mIntervalMs;
+};
 
 Timer* Timer::Create(ITimerFunction func, uint32_t intervalMs)
 {
@@ -63,6 +96,24 @@ void Timer_impl::TimerProc(CFRunLoopTimerRef timer, void *info)
 }
 
 #elif defined OS_WIN || (defined OS_LINUX && defined APP_API)
+
+class Timer_impl : public Timer
+{
+public:
+  Timer_impl(ITimerFunction func, uint32_t intervalMs);
+  ~Timer_impl();
+  void Stop() override;
+  static void CALLBACK TimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime);
+
+private:
+  static WDL_Mutex sMutex;
+  static WDL_PtrList<Timer_impl> sTimers;
+
+  UINT_PTR ID = 0;
+  ITimerFunction mTimerFunc;
+  uint32_t mIntervalMs;
+};
+
 
 Timer* Timer::Create(ITimerFunction func, uint32_t intervalMs)
 {
@@ -117,7 +168,31 @@ void CALLBACK Timer_impl::TimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWOR
     }
   }
 }
+
 #elif defined OS_LINUX
+// other API on Linux do not support unrelated timers
+class Timer_impl : public Timer
+{
+public:
+  Timer_impl(ITimerFunction func, uint32_t intervalMs);
+  ~Timer_impl();
+
+  void Stop() override;
+  static void NotifyCallback(union sigval v);
+
+
+private:
+  static WDL_Mutex sMutex;
+  static WDL_PtrList<Timer_impl> sTimers;
+
+#if IPLUG_EDITOR
+  uint32_t mID;
+#else
+  timer_t mID;
+#endif
+  ITimerFunction mTimerFunc;
+  uint32_t mIntervalMs;
+};
 
 WDL_Mutex Timer_impl::sMutex;
 WDL_PtrList<Timer_impl> Timer_impl::sTimers;
@@ -217,6 +292,19 @@ void Timer_impl::Stop()
 #endif // IPLUG_EDITOR
 
 #elif defined OS_WEB
+class Timer_impl : public Timer
+{
+public:
+  Timer_impl(ITimerFunction func, uint32_t intervalMs);
+  ~Timer_impl();
+  void Stop() override;
+  static void TimerProc(void *userData);
+
+private:
+  long ID = 0;
+  ITimerFunction mTimerFunc;
+};
+
 Timer* Timer::Create(ITimerFunction func, uint32_t intervalMs)
 {
   return new Timer_impl(func, intervalMs);
@@ -243,4 +331,7 @@ void Timer_impl::TimerProc(void* userData)
   Timer_impl* itimer = (Timer_impl*) userData;
   itimer->mTimerFunc(*itimer);
 }
+
+#else
+  #error NOT IMPLEMENTED
 #endif
