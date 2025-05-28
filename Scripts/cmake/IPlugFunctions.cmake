@@ -274,7 +274,7 @@ function(iplug_format_helper)
     set(a13_GENERATE_PLIST ON)
     set(a13_MAKE_BUNDLE ON)
     set(a13_SET_NAME ON)
-    set(a13_POST_BUILD ON)
+    set(a13_POST_BUILD_COPY ON)
     if(IPLUG_OS MATCHES "Windows")
       set(a13_MAIN_RC ON)
       set(a13_COPY_RESOURCE_H ON)
@@ -400,14 +400,25 @@ function(iplug_format_helper)
     get_property(a13_do_copy TARGET ${target} PROPERTY IPLUG_COPY_AFTER_BUILD)
     get_property(a13_install_subdir GLOBAL PROPERTY ${prop_key}_install_subdir)
     set(a13_install_superdir "${IPLUG_${format_cap}_USER_INSTALL_PATH}")
-    if("${a13_do_copy}" AND "${a13_install_superdir}" AND "${a13_install_subdir}")
+    if("${a13_install_superdir}" STREQUAL "" OR "${a13_install_subdir}" STREQUAL "")
+      set(a13_do_copy OFF)
+    endif()
+
+    if(a13_do_copy)
       # Assume ${output_dir} exists from parent function
-      set(dest_dir "${a13_install_superdir}/${a13_install_subdir}")
-      add_custom_command(
-        TARGET ${target} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} "-E" "remove_directory" "${dest_dir}"
-        COMMAND ${CMAKE_COMMAND} "-E" "copy_directory" "${output_dir}" "${dest_dir}"
-        COMMENT "Copied ${output_dir} to ${dest_dir}"
+      get_target_property(plugin_name ${base_plugin} IPLUG_PLUGIN_NAME)
+      string(CONFIGURE "${a13_install_subdir}" a13_out_dir)
+      set(dest_dir "${a13_install_superdir}/${a13_out_dir}")
+      add_custom_target(
+        ${target}_copy ALL
+        COMMAND ${CMAKE_COMMAND}
+          "-DARG_BINARY=$<TARGET_FILE:${target}>"
+          "-DARG_SOURCE=${output_dir}"
+          "-DARG_DESTINATION=${dest_dir}/$<TARGET_FILE_NAME:${target}>"
+          -P ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/CopyDir.cmake
+        # COMMENT "Copied ${output_dir} to ${dest_dir}"
+        DEPENDS ${target}
+        VERBATIM
       )
     endif()
   endif()
