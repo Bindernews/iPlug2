@@ -1,10 +1,10 @@
 /*
  ==============================================================================
- 
+
  This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers.
- 
+
  See LICENSE.txt for  more info.
- 
+
  ==============================================================================
 */
 
@@ -45,29 +45,29 @@ YGNodeRef IFlexBox::AddItem(float width, float height, YGAlign alignSelf, float 
 {
   int index = mNodeCounter;
   YGNodeRef child = YGNodeNew();
-  
+
   if(width == YGUndefined)
     YGNodeStyleSetWidthAuto(child);
   else if(width < 0.f)
     YGNodeStyleSetWidthPercent(child, width * -1.f);
   else
     YGNodeStyleSetWidth(child, width);
-  
+
   if(height == YGUndefined)
     YGNodeStyleSetHeightAuto(child);
   else if(height < 0.f)
     YGNodeStyleSetHeightPercent(child, height * -1.f);
   else
     YGNodeStyleSetHeight(child, height);
-  
+
   YGNodeStyleSetAlignSelf(child, alignSelf);
   YGNodeStyleSetMargin(child, YGEdgeAll, margin);
   YGNodeStyleSetFlexGrow(child, grow);
   YGNodeStyleSetFlexShrink(child, shrink);
   YGNodeInsertChild(mRootNodeRef, child, index);
-  
+
   mNodeCounter++;
-  
+
   return child;
 }
 
@@ -95,6 +95,7 @@ IRECT IFlexBox::GetItemBounds(int nodeIndex) const
 
 // TODO: eventually build Yoga as a static library,
 // for now include Yoga .cpp files here
+#ifndef BUILT_WITH_CMAKE
 #include "YGLayout.cpp"
 #include "YGEnums.cpp"
 #include "YGNodePrint.cpp"
@@ -106,3 +107,4 @@ IRECT IFlexBox::GetItemBounds(int nodeIndex) const
 #include "Utils.cpp"
 #include "log.cpp"
 #include "event/event.cpp"
+#endif

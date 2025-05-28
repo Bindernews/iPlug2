@@ -5,17 +5,22 @@ if (IPLUG_OS MATCHES "Linux")
   find_package(PkgConfig)
 endif()
 
+set(cwd ${CMAKE_CURRENT_LIST_DIR})
+set(deps_dir ${IPLUG2_SDK_PATH}/Dependencies/IGraphics)
+
+add_subdirectory(${deps_dir}/yoga ${CMAKE_CURRENT_BINARY_DIR}/yoga)
+
 ########################
 # iPlug2_IGraphicsCore #
 ########################
 
-set(cwd ${CMAKE_CURRENT_LIST_DIR})
-set(deps_dir ${IPLUG2_SDK_PATH}/Dependencies/IGraphics)
 set(_def
   "IPLUG_EDITOR=1"
   BUILT_WITH_CMAKE
 )
-set(_lib iPlug2_Core)
+set(_lib
+  iPlug2_Core
+)
 set(_inc
   # IGraphics
   ${cwd}
@@ -26,8 +31,6 @@ set(_inc
   ${deps_dir}/STB
   ${deps_dir}/imgui
   ${deps_dir}/imgui/examples
-  ${deps_dir}/yoga
-  ${deps_dir}/yoga/yoga
   ${IPLUG2_SDK_PATH}/Dependencies/Build/src
   ${IPLUG2_SDK_PATH}/Dependencies/Build/src/freetype/include
 )
@@ -296,6 +299,20 @@ if (CMAKE_SYSTEM_NAME MATCHES "Emscripten")
       iPlug2_IGraphicsCore
   )
 endif()
+
+#--------#
+# Extras #
+#--------#
+
+add_library(iplug2_flex_box INTERFACE)
+bn_target_add(
+  iplug2_flex_box INTERFACE
+  SOURCE
+    Extras/IGraphicsFlexBox.cpp
+    Extras/IGraphicsFlexBox.h
+  LINK
+    yoga
+)
 
 ########
 # Skia #
