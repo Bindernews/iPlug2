@@ -57,7 +57,7 @@ IGraphicsMac::~IGraphicsMac()
 {
   StaticStorage<CoreTextFontDescriptor>::Accessor storage(sFontDescriptorCache);
   storage.Release();
-  
+
   CloseWindow();
 }
 
@@ -92,14 +92,14 @@ void* IGraphicsMac::OpenWindow(void* pParent)
   CloseWindow();
   IGRAPHICS_VIEW* pView = [[IGRAPHICS_VIEW alloc] initWithIGraphics: this];
   mView = (void*) pView;
-    
+
   ActivateGLContext();
   OnViewInitialized([pView layer]);
   SetScreenScale([[NSScreen mainScreen] backingScaleFactor]);
   GetDelegate()->LayoutUI(this);
   UpdateTooltips();
   GetDelegate()->OnUIOpen();
-  
+
   if (pParent)
   {
     [(NSView*) pParent addSubview: pView];
@@ -112,7 +112,7 @@ void IGraphicsMac::AttachPlatformView(const IRECT& r, void* pView)
 {
   NSView* pNewSubView = (NSView*) pView;
   [pNewSubView setFrame:ToNSRect(this, r)];
-  
+
   [(IGRAPHICS_VIEW*) mView addSubview:(NSView*) pNewSubView];
 }
 
@@ -129,19 +129,19 @@ void IGraphicsMac::HidePlatformView(void* pView, bool hide)
 void IGraphicsMac::CloseWindow()
 {
   if (mView)
-  {    
+  {
     IGRAPHICS_VIEW* pView = (IGRAPHICS_VIEW*) mView;
-      
+
 #ifdef IGRAPHICS_GL
     [[pView pixelFormat] release];
     [[pView openGLContext] release];
 #endif
-      
+
     [pView removeAllToolTips];
     [pView killTimer];
     [pView removeFromSuperview];
     [pView release];
-      
+
     mView = nullptr;
     OnViewDestroyed();
   }
@@ -161,10 +161,10 @@ void IGraphicsMac::PlatformResize(bool parentHasResized)
     [NSAnimationContext beginGrouping]; // Prevent animated resizing
     [[NSAnimationContext currentContext] setDuration:0.0];
     [(IGRAPHICS_VIEW*) mView setFrameSize: size ];
-    
+
     [NSAnimationContext endGrouping];
   }
-    
+
   UpdateTooltips();
 }
 
@@ -177,7 +177,7 @@ void IGraphicsMac::PointToScreen(float& x, float& y) const
     NSWindow* pWindow = [(IGRAPHICS_VIEW*) mView window];
     NSPoint wndpt = [(IGRAPHICS_VIEW*) mView convertPoint:NSMakePoint(x, y) toView:nil];
     NSPoint pt = [pWindow convertRectToScreen: NSMakeRect(wndpt.x, wndpt.y, 0.0, 0.0)].origin;
-      
+
     x = pt.x;
     y = pt.y;
   }
@@ -206,9 +206,9 @@ void IGraphicsMac::HideMouseCursor(bool hide, bool lock)
   {
     if (mCursorHidden == hide)
       return;
-    
+
     mCursorHidden = hide;
-    
+
     if (hide)
     {
       StoreCursorPosition();
@@ -228,7 +228,7 @@ void IGraphicsMac::MoveMouseCursor(float x, float y)
 {
   if (mTabletInput)
     return;
-    
+
   PointToScreen(x, y);
   RepositionCursor(CGPoint{x, y});
   StoreCursorPosition();
@@ -264,7 +264,7 @@ void IGraphicsMac::StoreCursorPosition()
   mCursorX = mouse.x = std::round(mouse.x);
   mCursorY = mouse.y = std::round(mouse.y);
   mCursorLockPosition = CGPoint{mouse.x, mouse.y};
-  
+
   // Convert to IGraphics coordinates
   ScreenToPoint(mCursorX, mCursorY);
 }
@@ -275,7 +275,7 @@ void IGraphicsMac::GetMouseLocation(float& x, float&y) const
   NSPoint mouse = [NSEvent mouseLocation];
   x = mouse.x;
   y = mouse.y;
-  
+
   // Convert to IGraphics coordinates
   ScreenToPoint(x, y);
 }
@@ -286,13 +286,13 @@ EMsgBoxResult IGraphicsMac::ShowMessageBox(const char* str, const char* title, E
 
   NSString* messageContent = @(str ? str : "");
   NSString* alertTitle = @(title ? title : "");
-  
+
   NSAlert* alert = [[NSAlert alloc] init];
   [alert setMessageText:alertTitle];
   [alert setInformativeText:messageContent];
-  
+
   EMsgBoxResult result = kCANCEL;
-  
+
   switch (type)
   {
     case kMB_OK:
@@ -321,9 +321,9 @@ EMsgBoxResult IGraphicsMac::ShowMessageBox(const char* str, const char* title, E
       result = kCANCEL;
       break;
   }
-  
+
   NSModalResponse response = [alert runModal];
-  
+
   switch (type)
   {
     case kMB_OK:
@@ -344,14 +344,14 @@ EMsgBoxResult IGraphicsMac::ShowMessageBox(const char* str, const char* title, E
       else result = kCANCEL;
       break;
   }
-  
+
   if (completionHandler)
   {
     completionHandler(result);
   }
-  
+
   [alert release];
-  
+
   return result;
 }
 
@@ -390,7 +390,7 @@ void IGraphicsMac::UpdateTooltips()
   };
 
   ForStandardControlsFunc(func);
-  
+
   }
 }
 
@@ -404,7 +404,7 @@ bool IGraphicsMac::RevealPathInExplorerOrFinder(WDL_String& path, bool select)
   BOOL success = FALSE;
 
   @autoreleasepool {
-    
+
   if(path.GetLength())
   {
     NSString* pPath = [NSString stringWithUTF8String:path.Get()];
@@ -450,7 +450,7 @@ void IGraphicsMac::PromptForFile(WDL_String& fileName, WDL_String& path, EFileAc
     pDefaultFileName = [NSString stringWithUTF8String:fileName.Get()];
   else
     pDefaultFileName = @"";
-  
+
   if (path.GetLength())
     pDefaultPath = [NSString stringWithUTF8String:path.Get()];
   else
@@ -460,32 +460,32 @@ void IGraphicsMac::PromptForFile(WDL_String& fileName, WDL_String& path, EFileAc
 
   if (CStringHasContents(ext))
     pFileTypes = [[NSString stringWithUTF8String:ext] componentsSeparatedByString: @" "];
-  
+
   auto doHandleResponse = [](NSPanel* pPanel, NSModalResponse response, WDL_String& fileName, WDL_String& path, IFileDialogCompletionHandlerFunc completionHandler){
     if (response == NSOKButton)
     {
       NSString* pFullPath = [(NSSavePanel*) pPanel filename] ;
       fileName.Set([pFullPath UTF8String]);
-      
+
       NSString* pTruncatedPath = [pFullPath stringByDeletingLastPathComponent];
-      
+
       if (pTruncatedPath)
       {
         path.Set([pTruncatedPath UTF8String]);
         path.Append("/");
       }
     }
-  
+
     if (completionHandler)
       completionHandler(fileName, path);
   };
-  
+
   NSPanel* pPanel = nullptr;
-  
+
   if (action == EFileAction::Save)
   {
     pPanel = [NSSavePanel savePanel];
-    
+
     [(NSSavePanel*) pPanel setAllowedFileTypes: pFileTypes];
     [(NSSavePanel*) pPanel setDirectoryURL: [NSURL fileURLWithPath: pDefaultPath]];
     [(NSSavePanel*) pPanel setNameFieldStringValue: pDefaultFileName];
@@ -494,7 +494,7 @@ void IGraphicsMac::PromptForFile(WDL_String& fileName, WDL_String& path, EFileAc
   else
   {
     pPanel = [NSOpenPanel openPanel];
-    
+
     [(NSOpenPanel*) pPanel setAllowedFileTypes: pFileTypes];
     [(NSOpenPanel*) pPanel setDirectoryURL: [NSURL fileURLWithPath: pDefaultPath]];
     [(NSOpenPanel*) pPanel setCanChooseFiles:YES];
@@ -502,7 +502,7 @@ void IGraphicsMac::PromptForFile(WDL_String& fileName, WDL_String& path, EFileAc
     [(NSOpenPanel*) pPanel setResolvesAliases:YES];
   }
   [pPanel setFloatingPanel: YES];
-  
+
   if (completionHandler)
   {
     NSWindow* pWindow = [(IGRAPHICS_VIEW*) mView window];
@@ -542,7 +542,7 @@ void IGraphicsMac::PromptForDirectory(WDL_String& dir, IFileDialogCompletionHand
   [panelOpen setCanCreateDirectories:YES];
   [panelOpen setFloatingPanel: YES];
   [panelOpen setDirectoryURL: [NSURL fileURLWithPath: defaultPath]];
-  
+
   auto doHandleResponse = [](NSOpenPanel* pPanel, NSModalResponse response, WDL_String& pathAsync, IFileDialogCompletionHandlerFunc completionHandler){
     if (response == NSOKButton)
     {
@@ -554,7 +554,7 @@ void IGraphicsMac::PromptForDirectory(WDL_String& dir, IFileDialogCompletionHand
     {
       pathAsync.Set("");
     }
-    
+
     if (completionHandler)
     {
       WDL_String fileNameAsync; // not used
@@ -589,7 +589,7 @@ bool IGraphicsMac::PromptForColor(IColor& color, const char* str, IColorPickerHa
 IPopupMenu* IGraphicsMac::CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT bounds, bool& isAsync)
 {
   isAsync = true;
-  
+
   dispatch_async(dispatch_get_main_queue(), ^{
     IPopupMenu* pReturnMenu = nullptr;
 
@@ -601,7 +601,7 @@ IPopupMenu* IGraphicsMac::CreatePlatformPopupMenu(IPopupMenu& menu, const IRECT 
 
     if (pReturnMenu && pReturnMenu->GetFunction())
       pReturnMenu->ExecFunction();
-    
+
     this->SetControlValueAfterPopupMenu(pReturnMenu);
   });
 
@@ -621,7 +621,7 @@ ECursor IGraphicsMac::SetMouseCursor(ECursor cursorType)
 {
   if (mView)
     [(IGRAPHICS_VIEW*) mView setMouseCursor: cursorType];
-    
+
   return IGraphics::SetMouseCursor(cursorType);
 }
 
@@ -691,20 +691,20 @@ bool IGraphicsMac::InitiateExternalFileDragDrop(const char* path, const IRECT& i
   NSPasteboardItem* pasteboardItem = [[NSPasteboardItem alloc] init];
   NSURL* fileURL = [NSURL fileURLWithPath: [NSString stringWithUTF8String:path]];
   [pasteboardItem setString:fileURL.absoluteString forType:NSPasteboardTypeFileURL];
-  
+
   NSDraggingItem* draggingItem = [[NSDraggingItem alloc] initWithPasteboardWriter:pasteboardItem];
   NSRect draggingFrame = ToNSRect(this, iconBounds);
   NSImage* iconImage = [[NSWorkspace sharedWorkspace] iconForFile:fileURL.path];
   [iconImage setSize:NSMakeSize(64, 64)];
   [draggingItem setDraggingFrame:draggingFrame contents: iconImage];
-  
+
   IGRAPHICS_VIEW* view = (IGRAPHICS_VIEW*) mView;
   NSDraggingSession* draggingSession = [view beginDraggingSessionWithItems:@[draggingItem] event:[NSApp currentEvent] source: view];
   draggingSession.animatesToStartingPositionsOnCancelOrFail = YES;
   draggingSession.draggingFormation = NSDraggingFormationNone;
-  
+
   ReleaseMouseCapture();
-  
+
   return true;
 }
 
@@ -718,7 +718,7 @@ EUIAppearance IGraphicsMac::GetUIAppearance() const
       return isDarkMode ? EUIAppearance::Dark :  EUIAppearance::Light;
     }
   }
-  
+
   return EUIAppearance::Light;
 }
 
@@ -735,9 +735,9 @@ void IGraphicsMac::DeactivateGLContext()
 }
 
 #if defined IGRAPHICS_NANOVG
-  #include "IGraphicsNanoVG.cpp"
+  #include "Drawing/IGraphicsNanoVG.cpp"
 #elif defined IGRAPHICS_SKIA
-  #include "IGraphicsSkia.cpp"
+  #include "Drawing/IGraphicsSkia.cpp"
 #else
   #error Either NO_IGRAPHICS or one and only one choice of graphics library must be defined!
 #endif

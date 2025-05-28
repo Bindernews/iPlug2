@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
+cmake_policy(VERSION 3.31)
 include_guard(GLOBAL)
 
 bn_make_python_venv(
@@ -7,10 +8,10 @@ bn_make_python_venv(
   DIRECTORY "${IPLUG2_SDK_PATH}/.venv"
   PROMPT "iplug"
   ADD_TO_PATH
-  PACKAGES "${CMAKE_CURRENT_LIST_DIR}/../pyplug"
+  PACKAGES "${CMAKE_CURRENT_LIST_DIR}/../iplugpy"
 )
 
-find_package(Embedc QUIET)
+find_package(Embedc)
 
 # Find ibtool on MacOS
 bn_tern(IBTOOL_REQUIRED "REQUIRED" "" CMAKE_HOST_SYSTEM_NAME MATCHES "Darwin")
@@ -156,7 +157,7 @@ Misc Options
 function(iplug_format_helper)
   cmake_parse_arguments(
     PARSE_ARGV 0 a13
-    "SETUP;APPLY;MAKE_BUNDLE;GENERATE_PLIST;MAIN_RC;POST_BUILD_COPY;GET_VARS;COPY_PROPERTIES;TARGET_COMMON"
+    "SETUP;APPLY;MAKE_BUNDLE;GENERATE_PLIST;MAIN_RC;POST_BUILD_COPY;GET_VARS;COPY_PROPERTIES;COPY_RESOURCE_H;TARGET_COMMON"
     "FORMAT;TARGET;CUSTOM_XML;INSTALL_SUBDIR;CONVERT_XIB"
     "USER_INSTALL_PATH;SYSTEM_INSTALL_PATH;SUFFIX;RESOURCE_METHOD;PLIST_VARIABLES"
   )
@@ -272,7 +273,10 @@ function(iplug_format_helper)
     set(a13_MAKE_BUNDLE ON)
     set(a13_SET_NAME ON)
     set(a13_POST_BUILD ON)
-    set(a13_MAIN_RC ON)
+    if(IPLUG_OS MATCHES "Windows")
+      set(a13_MAIN_RC ON)
+      set(a13_COPY_RESOURCE_H ON)
+    endif()
   endif()
 
   if (a13_COPY_PROPERTIES)
@@ -341,7 +345,7 @@ function(iplug_format_helper)
     # Configure main.rc and resource.h
     # N.B. Assumes ${binary_subdir}, ${base_plugin}, ${plugin_name} are already set in parent scope.
     set(app_main_rc ${binary_subdir}/main.rc)
-    set(app_resource_h ${binary_subdir}/resource.h)
+
     set(icon_in_file ${CMAKE_CURRENT_SOURCE_DIR}/resources/${PLUGIN_NAME}.ico)
 
     # Copy .ico to temp dir
@@ -351,16 +355,23 @@ function(iplug_format_helper)
     get_target_property(PLUGIN_META ${base_plugin} IPLUG_PLUGIN_METADATA)
     get_target_property(PLUGIN_VERSION ${base_plugin} VERSION)
     string(REPLACE "." "," PLUGIN_VERSION_COMMAS "${PLUGIN_VERSION}")
-
     string(JSON PLUGIN_COPYRIGHT GET "${PLUGIN_META}" copyright)
 
     # Do the configure
     configure_file(${CMAKE_CURRENT_FUNCTION_LIST_DIR}/main.rc.in ${app_main_rc} @ONLY)
-    configure_file(${CMAKE_CURRENT_FUNCTION_LIST_DIR}/resource.h ${app_resource_h} COPYONLY)
     # Add as sources
-    target_sources(${target} PRIVATE ${app_main_rc} ${app_resource_h})
+    target_sources(${target} PRIVATE ${app_main_rc})
+    source_group("IPlug" FILES ${app_main_rc})
+  endif()
+
+  if(a13_COPY_RESOURCE_H OR a13_MAIN_RC)
+    set(app_resource_h ${binary_subdir}/resource.h)
+    configure_file(${CMAKE_CURRENT_FUNCTION_LIST_DIR}/resource.h ${app_resource_h} COPYONLY)
+    # Add include dir
     target_include_directories(${target} PRIVATE ${binary_subdir})
-    source_group("IPlug" FILES ${app_main_rc} ${app_resource_h})
+    # Add as sources
+    target_sources(${target} PRIVATE ${app_resource_h})
+    source_group("IPlug" FILES ${app_resource_h})
   endif()
 
   if(a13_CONVERT_XIB AND IPLUG_OS MATCHES "(Darwin)|(IOS)")
@@ -407,7 +418,7 @@ function(iplug_guess_file_types VAR)
   if(NOT DEFINED ${cache_key})
     # Guess file types for all files
     execute_process(
-      COMMAND ${IPLUG_PYENV_EXECUTABLE} -c "import iplug; iplug.do_guess_file_types('${ARGN}')"
+      COMMAND ${IPLUG_PYENV_EXECUTABLE} -c "import iplug; iplug.cm_guess_file_types('${ARGN}')"
       OUTPUT_STRIP_TRAILING_WHITESPACE
       OUTPUT_VARIABLE file_types
       COMMAND_ERROR_IS_FATAL ANY

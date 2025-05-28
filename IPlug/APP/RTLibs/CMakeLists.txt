@@ -89,7 +89,7 @@ elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
   endif()
 
   if (CMAKE_COMPILER_IS_GNUCXX)
-    target_compile_options(iPlug2_RTAudioMidi PRIVATE -Wno-suggest-override)
+    target_compile_options(RTAudioMidi PRIVATE -Wno-suggest-override)
   endif()
 
 endif()

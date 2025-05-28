@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 
 set(cwd ${IPLUG2_SDK_PATH}/IPlug/APP)
-add_subdirectory(${cwd}/RTLibs ${CMAKE_BINARY_DIR}/IPlug/RTLibs)
+
+add_subdirectory(${cwd}/RTLibs ${iPlug2_BINARY_DIR}/RTLibs)
 
 iplug_format_helper(
   SETUP
@@ -88,7 +89,7 @@ function(iplug_configure_app base_plugin target)
   # Create target
   add_executable(${target} WIN32 MACOSX_BUNDLE)
   # Setup and link
-  iplug_format_helper(FORMAT app TARGET ${target} TARGET_COMMON)
+  iplug_format_helper(FORMAT app TARGET ${target} TARGET_COMMON COPY_RESOURCE_H)
   iplug_target_add(${target} PUBLIC LINK iPlug2_APP ${base_plugin} ${gui_libraries})
 
   #--------------------------------------------------------

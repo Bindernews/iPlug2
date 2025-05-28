@@ -11,6 +11,7 @@
 #include "PlatformX11.hpp"
 #include "IPlugStructs.h"
 #include "IPlugConstants.h"
+#include <string>
 
 #include <X11/Xlib.h>
 #include <X11/Xlib-xcb.h>
@@ -171,6 +172,9 @@ struct XcbPlatform
   /// @brief Overall loading/connected status
   ELoadStatus mStatus = kNotAttempted;
 
+  /// @brief Are we inside a VM? If so, we probably can't control the cursor.
+  ELoadStatus mIsInVm = kNotAttempted;
+
   /// @brief Can we control the mouse cursor?
   ELoadStatus mCanMoveCursor = kNotAttempted;
 
@@ -247,6 +251,8 @@ struct XcbPlatform
   int WindowToScreen(xcb_window_t wnd);
 
   bool CheckScreenIsTrueColor(int screen);
+
+  bool TestInVM();
 
   /// @brief Test if we can control the cursor.
   /// @return true if the cursor can be controlled, false if not
@@ -857,6 +863,50 @@ bool XcbPlatform::CheckScreenIsTrueColor(int screen)
       && (vt->red_mask == 0xff0000) && (vt->green_mask == 0xff00) && (vt->blue_mask == 0xff);
 }
 
+bool XcbPlatform::TestInVM()
+{
+#define LOG_PREFIX "PX11:TestInVM"
+  // Assume locked by caller
+
+  if (mCanMoveCursor != 0) {
+    return mCanMoveCursor == kLoadSuccess;
+  }
+  // Assume in a VM unless we think otherwise
+  mCanMoveCursor = kLoadSuccess;
+
+  // try to open the subprocess, looking for VMware devices
+  FILE *out = popen("lsusb -d 0e0f:", "r");
+  if (!out)
+  {
+    return true;
+  }
+  std::string buf;
+  buf.resize(1024 * 4);
+  size_t last = 0;
+  do
+  {
+    ssize_t len = fread(buf.data(), 1, buf.size() - last, out);
+    if (len < 0)
+    {
+      break;
+    }
+    last += (size_t)len;
+    buf.resize(last + 1024);
+  } while(1);
+  pclose(out);
+
+  // See if Virtual Mouse is in the list of devices
+  if (buf.find("Virtual Mouse") != std::string::npos)
+  {
+    return true;
+  }
+
+  // Probably not in a VM, or at least not in a way we care about.
+  mIsInVm = kLoadFailed;
+  return false;
+#undef LOG_PREFIX
+}
+
 bool XcbPlatform::TestMoveCursor()
 {
 #define LOG_PREFIX "PX11:TestMoveCursor"
@@ -868,6 +918,13 @@ bool XcbPlatform::TestMoveCursor()
   }
   // Assume we failed unless we say otherwise
   mCanMoveCursor = kLoadFailed;
+
+  // If we're in a VM, assume we can't control the cursor.
+  if (TestInVM())
+  {
+    return false;
+  }
+
   // To test, we create a window, grab the cursor, move it, and check if we got any events.
   xcb_screen_t* defScreen = mScreens[mDefaultScreen];
   WindowOptions opts;

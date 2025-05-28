@@ -24,10 +24,14 @@ add_subdirectory(${VST3_SDK} ${CMAKE_CURRENT_BINARY_DIR}/VST3_SDK)
 # Required
 smtg_enable_vst3_sdk()
 
+add_library(iplug2_smtg_defines INTERFACE)
+target_compile_definitions(iplug2_smtg_defines INTERFACE $<IF:$<CONFIG:Debug>,DEVELOPMENT,RELEASE>)
+
 # Set the MSVC static vs dll stdandard library mode for the VST3 sdk.
 # This MUST be consistent for all libraries that link together.
 set(vst3_targets sdk sdk_common sdk_hosting pluginterfaces base moduleinfotool validator)
 set_property(TARGET ${vst3_targets} APPEND PROPERTY COMPILE_OPTIONS ${IPLUG_MSVC_FLAGS})
+set_property(TARGET ${vst3_targets} APPEND PROPERTY LINK_LIBRARIES iplug2_smtg_defines)
 # set_property(TARGET ${vst3_targets} PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 # Reference: https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical+Documentation/Locations+Format/Plugin+Locations.html

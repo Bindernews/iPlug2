@@ -54,12 +54,12 @@ iplug_target_add(iPlug2_VST2 INTERFACE
 )
 if(IPLUG_OS STREQUAL "Linux")
   # Linux needs this define
-  bn_target_add(iPlug2_VST2 PUBLIC DEFINE "SMTG_OS_LINUX")
+  bn_target_add(iPlug2_VST2 INTERFACE DEFINE "SMTG_OS_LINUX")
 endif()
 if(${CMAKE_CXX_COMPILER_ID} MATCHES "GNU")
   # GCC doesn't like __cdecl, so instead of having people modify their
   # aeffect.h file, just redefine __cdecl.
-  bn_target_add(iPlug2_VST2 PUBLIC DEFINE "__cdecl=__attribute__(())")
+  bn_target_add(iPlug2_VST2 INTERFACE DEFINE "__cdecl=__attribute__(())")
 endif()
 
 #--------------------------------------------------------------------

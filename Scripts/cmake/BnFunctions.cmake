@@ -346,6 +346,7 @@ function(bn_make_python_venv VAR)
   if(NOT bn950_PROMPT)
     set(bn950_PROMPT "${CMAKE_PROJECT_NAME}")
   endif()
+  cmake_path(NORMAL_PATH bn950_DIRECTORY)
 
   # find_program arguments, on Unix/Linux systems python will be <venv>/bin/python
   # while on Windows it's normally <venv>/Scripts/python.exe
@@ -355,12 +356,17 @@ function(bn_make_python_venv VAR)
     NAMES python python3 python.exe
     PATHS "${bn950_DIRECTORY}/bin" "${bn950_DIRECTORY}/Scripts"
     NO_SYSTEM_ENVIRONMENT_PATH
+    NO_CMAKE_ENVIRONMENT_PATH
+    NO_CMAKE_SYSTEM_PATH
+    NO_CMAKE_INSTALL_PREFIX
     NO_CACHE
   )
 
   # What if the venv exists but it's not in the cache?
   find_program(${bn950_find_py_args})
-  if(NOT bn950_py_exe)
+  if(bn950_py_exe)
+    message(STATUS "Using Python venv in ${bn950_DIRECTORY}")
+  else()
     # Okay, try to create it
 
     # Find python version 3.8 or higher
@@ -380,6 +386,7 @@ function(bn_make_python_venv VAR)
   endif()
   if(NOT bn950_py_exe)
     message(FATAL_ERROR "Unable to create virtual environment at ${bn950_DIRECTORY}")
+    return()
   endif()
 
   set(${VAR} "${bn950_py_exe}" CACHE PATH "Python executable in venv" FORCE)
@@ -392,8 +399,9 @@ function(bn_make_python_venv VAR)
   endif()
 
   if(bn950_PACKAGES)
+    set(pip_flags -q --disable-pip-version-check --require-virtualenv)
     execute_process(
-      COMMAND ${bn950_py_exe} -m pip -q --disable-pip-version-check install ${bn950_PACKAGES}
+      COMMAND ${bn950_py_exe} -m pip ${pip_flags} install ${bn950_PACKAGES}
       OUTPUT_QUIET
       COMMAND_ERROR_IS_FATAL LAST
     )

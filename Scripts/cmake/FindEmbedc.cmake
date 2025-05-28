@@ -21,7 +21,7 @@ endif()
 
 find_package_handle_standard_args(
   Embedc # Package name
-  REQUIRED_VARS Python_FOUND BnFunctions_FOUND EMBEDC_COMMAND
+  REQUIRED_VARS BnFunctions_FOUND EMBEDC_COMMAND
 )
 
 # Exit early if we don't have all dependencies
@@ -92,8 +92,11 @@ function(embedc_add_files target)
 
   # Setup some paths
   get_target_property(binary_dir ${target} BINARY_DIR)
-  set(bundle_c ${binary_dir}/${target}_bundle.c)
-  set(bundle_h ${binary_dir}/${target}_bundle.h)
+  set(embedc_dir "${binary_dir}/embedc")
+  set(bundle_c "${embedc_dir}/${target}_bundle.c")
+  set(bundle_h "${embedc_dir}/${target}_bundle.h")
+  # Make sure directory exists
+  file(MAKE_DIRECTORY "${embedc_dir}")
 
   # Determine set-type for target_sources
   get_target_property(target_type ${target} TYPE)
@@ -120,7 +123,7 @@ function(embedc_add_files target)
 
   # Make unique name for data file
   string(SHA256 names_hash "${arg_FILES}")
-  set(convert_c "${binary_dir}/embedc/convert_${names_hash}.c")
+  set(convert_c "${embedc_dir}/convert_${names_hash}.c")
 
   # Use embedc to parse the inputs
   bn_tern(into_option "--into=${arg_DIR}" "" arg_DIR)

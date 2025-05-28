@@ -38,7 +38,7 @@ NON_ESCAPED_EQUALS = re.compile(r'(?<!\\)=')
 """ Regex to match a '=' without a preceeding \\ """
 
 DATA_SUFFIX = '_data'
-INC_STDINT = '#include <stdint.h>\n'
+INC_STDINT = '#include <stdint.h>\n#include <stddef.h>\n'
 
 EXTERN_C_BEGIN = '''\
 #ifdef __cplusplus
@@ -593,7 +593,9 @@ def make_parser(prog: str = 'embedc.py') -> argparse.ArgumentParser:
   parser.add_argument('inputs', type=str, nargs='*', default=[], help=INPUTS_HELP)
   return parser
 
-def main(argv):
+def main(argv = None):
+  if argv is None:
+    argv = sys.argv
   parser = make_parser()
   args = parser.parse_args(argv[1:], HelperCliArgs())
 
@@ -612,4 +614,4 @@ def main(argv):
     logger.error(str(e))
 
 if __name__ == '__main__':
-  main(sys.argv)
+  main()

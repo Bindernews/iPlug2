@@ -4,7 +4,7 @@ set(cwd ${IPLUG2_SDK_PATH}/IPlug/LV2)
 set(deps_dir ${IPLUG2_SDK_PATH}/Dependencies/IPlug)
 
 # So that we can generate the .ttl file
-add_subdirectory(${deps_dir}/rundyn ${CMAKE_BINARY_DIR}/IPlug/rundyn)
+add_subdirectory(${deps_dir}/rundyn ${iPlug2_BINARY_DIR}/rundyn)
 
 # Locate the LV2 sdk
 find_path(LV2_SDK_PATH
