@@ -102,6 +102,7 @@ set(_static_src
   ${cwd}/IPlugPlatform.h
   ${cwd}/IPlugLogger.h
   ${cwd}/IPlugMidi.h
+  ${cwd}/IPlugMidi.cpp
   ${cwd}/IPlugParameter.h
   ${cwd}/IPlugParameter.cpp
   ${cwd}/IPlugPaths.h
