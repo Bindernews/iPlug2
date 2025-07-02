@@ -912,13 +912,16 @@ PlatformFontPtr IGraphicsLinux::LoadPlatformFont(const char* fontID, const char*
 {
   WDL_String fullPath;
   const EResourceLocation fontLocation = LocateResource(fileNameOrResID, "ttf", fullPath, GetBundleID(), GetWinModuleHandle(), nullptr);
-
-  if ((fontLocation == kNotFound) || (fontLocation != kAbsolutePath) )
+  if (fontLocation == kAbsolutePath)
   {
-    return nullptr;
+    return PlatformFontPtr(new Font(fullPath));
   }
-
-  return PlatformFontPtr(new Font(fullPath));
+  auto res = LoadRcResource(fileNameOrResID, "ttf");
+  if (res)
+  {
+    return LoadPlatformFont(fontID, (void*)res->data(), res->size());
+  }
+  return nullptr;
 }
 
 PlatformFontPtr IGraphicsLinux::LoadPlatformFont(const char* fontID, void* pData, int dataSize)

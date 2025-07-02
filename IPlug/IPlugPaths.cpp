@@ -1,10 +1,10 @@
 /*
  ==============================================================================
- 
- This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers. 
- 
+
+ This file is part of the iPlug 2 library. Copyright (C) the iPlug 2 developers.
+
  See LICENSE.txt for  more info.
- 
+
  ==============================================================================
 */
 
@@ -29,7 +29,90 @@
 #include <sys/stat.h>
 #endif
 
+
+
 BEGIN_IPLUG_NAMESPACE
+
+extern "C" {
+struct embedded_file { const char* name; const uint32_t size; const unsigned char* data; };
+extern const struct embedded_file EMBED_LIST[];
+}
+
+static bool FindEmbedResource(const char* name, const void** dataOut, size_t* dataSz)
+{
+  // zero output values
+  *dataOut = nullptr;
+  *dataSz = 0;
+  // Determine name length
+  const size_t nameLen = strnlen(name, PATH_MAX);
+  for (int i = 0; EMBED_LIST[i].name; ++i)
+  {
+    if (strncmp(name, EMBED_LIST[i].name, nameLen) == 0)
+    {
+      *dataOut = EMBED_LIST[i].data;
+      *dataSz = EMBED_LIST[i].size;
+      return true;
+    }
+  }
+  return false;
+}
+
+// Base resource deconstructor assumes there's nothing else to do.
+Resource::~Resource() {}
+
+std::shared_ptr<Resource> Resource::fromBuffer(const void* data, size_t len)
+{
+  auto res = std::shared_ptr<Resource>(new Resource());
+  res->mData = reinterpret_cast<const uint8_t*>(data);
+  res->mSize = len;
+  return res;
+}
+
+struct DeallocResource : public Resource
+{
+  DeallocResource(const uint8_t* data, size_t len)
+  {
+    mData = data;
+    mSize = len;
+  }
+
+  ~DeallocResource() override
+  {
+    free((void*)mData);
+  }
+};
+
+std::shared_ptr<Resource> Resource::fromFile(const char* path)
+{
+  FILE* f = fopenUTF8(path, "rb");
+  long totalSize = 0;
+  size_t totalSizeU = 0;
+  uint8_t *dataPtr = nullptr;
+
+  if (!f) return nullptr;
+  // Seek to end to determine the file size.
+  if (fseek(f, 0, SEEK_END) != 0) goto fail;
+  totalSize = ftell(f);
+  if (totalSize == -1L) goto fail;
+  // Seek back to the start.
+  if (fseek(f, 0, SEEK_SET) != 0) goto fail;
+  // Try to allocate memory for the resource.
+  totalSizeU = static_cast<size_t>(totalSize);
+  dataPtr = (uint8_t*)::malloc(totalSizeU);
+  // Check allocation success.
+  if (!dataPtr) goto fail;
+  // Read data.
+  if (fread(dataPtr, 1, totalSizeU, f) != totalSizeU) goto fail;
+  // Close the file.
+  fclose(f);
+  // Success.
+  return std::make_shared<DeallocResource>(dataPtr, totalSizeU);
+
+  fail:
+  if (dataPtr) ::free(dataPtr);
+  if (f) ::fclose(f);
+  return nullptr;
+}
 
 #if defined OS_WIN
 #pragma mark - OS_WIN
@@ -112,7 +195,7 @@ void VST3PresetsPath(WDL_String& path, const char* mfrName, const char* pluginNa
     GetKnownFolder(path, CSIDL_PERSONAL, SHGFP_TYPE_CURRENT);
   else
     AppSupportPath(path, true);
-  
+
   path.AppendFormatted(MAX_WIN32_PATH_LEN, "\\VST3 Presets\\%s\\%s", mfrName, pluginName);
 }
 
@@ -147,7 +230,7 @@ static BOOL CALLBACK EnumResNameProc(HMODULE module, LPCWSTR type, LPWSTR name, 
   else
   {
     WinResourceSearch* search = reinterpret_cast<WinResourceSearch*>(param);
-   
+
     if (search != nullptr && name != nullptr)
     {
       WDL_String searchName(search->mName);
@@ -261,11 +344,11 @@ EResourceLocation LocateResource(const char* name, const char* type, WDL_String&
     WDL_String plusSlash;
     WDL_String path(name);
     const char* file = path.get_filepart();
-      
+
     bool foundResource = false;
-    
+
     //TODO: FindResource is not sufficient here
-    
+
     if(strcmp(type, "png") == 0) { //TODO: lowercase/uppercase png
       plusSlash.SetFormatted(strlen("/resources/img/") + strlen(file) + 1, "/resources/img/%s", file);
       foundResource = emscripten::val::global("Browser")["preloadedImages"].call<bool>("hasOwnProperty", std::string(plusSlash.Get()));
@@ -278,7 +361,7 @@ EResourceLocation LocateResource(const char* name, const char* type, WDL_String&
       plusSlash.SetFormatted(strlen("/resources/img/") + strlen(file) + 1, "/resources/img/%s", file);
       foundResource = true; // TODO: check svg
     }
-    
+
     if(foundResource)
     {
       result.Set(plusSlash.Get());
@@ -314,7 +397,6 @@ static bool GetFileNameFor(void* code, char* path, int size)
 EResourceLocation LocateResource(const char* name, const char* type, WDL_String& result, const char*, void* pHInstance, const char*)
 {
   char path[PATH_MAX];
-  
   if (CStringHasContents(name) && GetFileNameFor(reinterpret_cast<void*>(GetFileNameFor), path, PATH_MAX))
   {
     for (char *s = path + strlen(path) - 1; s >= path; --s)
@@ -348,6 +430,29 @@ EResourceLocation LocateResource(const char* name, const char* type, WDL_String&
 #endif
   }
   return EResourceLocation::kNotFound;
+}
+
+std::shared_ptr<Resource> LoadRcResource(const char* fileOrResId, const char* type)
+{
+  // No passed name? Return an empty shared_ptr.
+  if (!CStringHasContents(fileOrResId)) return nullptr;
+
+  // Try to load an embedded resource
+  const void* pData = nullptr;
+  size_t dataSize = 0;
+  if (FindEmbedResource(fileOrResId, &pData, &dataSize))
+  {
+    return Resource::fromBuffer(pData, dataSize);
+  }
+
+  WDL_String fullPath;
+  const EResourceLocation location = LocateResource(fileOrResId, type, fullPath, "", nullptr, nullptr);
+  if ((location == kNotFound) || (location != kAbsolutePath) )
+  {
+    return nullptr;
+  }
+  // Load from a file
+  return Resource::fromFile(fullPath.Get());
 }
 
 bool AppIsSandboxed()

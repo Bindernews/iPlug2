@@ -320,9 +320,6 @@ struct RealWindow
   uint32_t mCmap;
   /// @brief Graphics context, created on-demand for drawing images in software
   xcb_gcontext_t mGc;
-  /// @brief Result of glXCreateWindow
-  /// @remark `XID`
-  uintptr_t mGlWindow;
   /// @brief GL Context
   GLXContext mGlContext;
   /// @brief Tracks paired DrawBegin() and DrawEnd() calls.
@@ -798,16 +795,16 @@ RealWindow* XcbPlatform::CreateGlxWindow(const WindowOptions& options)
     TRACE(LOG_PREFIX ":ERR: xcb_flush failed\n");
   }
 
-  // Register the window with GLX
-  w->mGlWindow = glXCreateWindow(this->dpy, fbcs.get()[0], (long)w->mWnd, nullptr);
-  if (!w->mGlWindow) {
-    TRACE(LOG_PREFIX " Could not create GL window\n");
-    return nullptr;
-  }
+  // // Register the window with GLX
+  // w->mGlWindow = glXCreateWindow(this->dpy, fbcs.get()[0], (long)w->mWnd, nullptr);
+  // if (!w->mGlWindow) {
+  //   TRACE(LOG_PREFIX " Could not create GL window\n");
+  //   return nullptr;
+  // }
 
   if (mGladGLLoaded == kNotAttempted) {
     mGladGLLoaded = kLoadFailed;
-    glXMakeContextCurrent(dpy, w->mGlWindow, w->mGlWindow, w->mGlContext);
+    glXMakeContextCurrent(dpy, w->mWnd, w->mWnd, w->mGlContext);
     if (!gladLoadGL()) {
       TRACE(LOG_PREFIX " gladLoadGL failed\n");
       return nullptr;
@@ -1444,7 +1441,6 @@ RealWindow::RealWindow(XcbPlatform* xp)
 : mWnd(0)
 , mCmap(0)
 , mGc(0)
-, mGlWindow(0)
 , mGlContext(nullptr)
 , mInDraw(0)
 , mVisible(false)
@@ -1466,7 +1462,7 @@ bool RealWindow::CreateXWindow(const WindowOptions& options, int visual_id)
     XCB_EVENT_MASK_PROPERTY_CHANGE | // useful when something will change our property
     XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE  |  // mouse clicks
     XCB_EVENT_MASK_KEY_PRESS | XCB_EVENT_MASK_KEY_RELEASE  |      // keyboard is questionable accordung to XEMBED
-    XCB_EVENT_MASK_ENTER_WINDOW   | XCB_EVENT_MASK_LEAVE_WINDOW |   // mouse entering/leaving
+    XCB_EVENT_MASK_ENTER_WINDOW | XCB_EVENT_MASK_LEAVE_WINDOW |   // mouse entering/leaving
     XCB_EVENT_MASK_POINTER_MOTION // mouse motion
     ;
 
@@ -1539,10 +1535,6 @@ void RealWindow::Destroy()
     glXDestroyContext(xp->dpy, mGlContext);
     mGlContext = nullptr;
   }
-  if (mGlWindow) {
-    glXDestroyWindow(xp->dpy, mGlWindow);
-    mGlWindow = 0;
-  }
   if (mWnd) {
     xcb_destroy_window(conn(), mWnd);
     mWnd = 0;
@@ -1571,7 +1563,7 @@ bool RealWindow::DrawBegin()
   auto xp = CastX();
   mInDraw++;
   if (mInDraw == 1 && mGlContext) {
-    if (!glXMakeContextCurrent(xp->dpy, mGlWindow, mGlWindow, mGlContext)) {
+    if (!glXMakeContextCurrent(xp->dpy, mWnd, mWnd, mGlContext)) {
       TRACE(LOG_PREFIX ":BUG: glXMakeContextCurrent failed\n");
       return false;
     }
@@ -1595,7 +1587,7 @@ void RealWindow::DrawEnd()
     mInDraw--;
     if (mInDraw == 0 && mGlContext) {
       // Swap buffers
-      glXSwapBuffers(CastX()->dpy, mGlWindow);
+      glXSwapBuffers(CastX()->dpy, mWnd);
       // Unset the context. IMPORTANT!! If we don't do this every time, then
       // we can't render off-thread which causes problems.
       glXMakeContextCurrent(CastX()->dpy, 0, 0, nullptr);
@@ -1634,8 +1626,10 @@ void RealWindow::Resize(uint32_t w, uint32_t h)
 {
   auto lock = LockX();
   uint32_t values[] = { w, h };
-  xcb_configure_window(conn(), mWnd, XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT, values);
+  auto cookie1 = xcb_configure_window(
+    conn(), mWnd, XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT, values);
   xcb_flush(conn());
+  CastX()->CheckCookie(cookie1, "X11Window:Resize:");
 }
 
 void RealWindow::Move(int32_t x, int32_t y)
