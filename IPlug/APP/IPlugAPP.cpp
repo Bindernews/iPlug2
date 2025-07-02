@@ -77,11 +77,18 @@ bool IPlugAPP::EditorResize(int viewWidth, int viewHeight)
     float ss = 1.f;
     #endif
 
+    LONG szW = static_cast<LONG>((viewWidth + ptDiff.x) * ss);
+    LONG szH = static_cast<LONG>((viewHeight + ptDiff.y) * ss);
+
+    #if defined(OS_LINUX)
+    HWND site = GetWindow(gHWND, GW_CHILD);
+    SetWindowPos(site, 0, 0, 0, szW, szH, SWP_NOZORDER);
+    #endif
+
     SetWindowPos(gHWND, 0,
                  static_cast<LONG>(rcWindow.left * ss),
                  static_cast<LONG>((rcWindow.bottom - viewHeight - ptDiff.y) * ss),
-                 static_cast<LONG>((viewWidth + ptDiff.x) * ss),
-                 static_cast<LONG>((viewHeight + ptDiff.y) * ss), flags);
+                 szW, szH, flags);
     parentResized = true;
     #endif
 
