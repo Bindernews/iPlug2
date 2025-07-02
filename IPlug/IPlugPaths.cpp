@@ -35,22 +35,29 @@ BEGIN_IPLUG_NAMESPACE
 
 extern "C" {
 struct embedded_file { const char* name; const uint32_t size; const unsigned char* data; };
-extern const struct embedded_file EMBED_LIST[];
 }
+
+// OS-specific implementation to dynamically get the embed list symbol.
+static void* GetEmbedListPtr();
 
 static bool FindEmbedResource(const char* name, const void** dataOut, size_t* dataSz)
 {
+  static void* sEmbedList = GetEmbedListPtr();
+  if (!sEmbedList) return false;
+
+  // cast
+  auto embedList = reinterpret_cast<const embedded_file*>(sEmbedList);
   // zero output values
   *dataOut = nullptr;
   *dataSz = 0;
   // Determine name length
   const size_t nameLen = strnlen(name, PATH_MAX);
-  for (int i = 0; EMBED_LIST[i].name; ++i)
+  for (int i = 0; embedList[i].name; ++i)
   {
-    if (strncmp(name, EMBED_LIST[i].name, nameLen) == 0)
+    if (strncmp(name, embedList[i].name, nameLen) == 0)
     {
-      *dataOut = EMBED_LIST[i].data;
-      *dataSz = EMBED_LIST[i].size;
+      *dataOut = embedList[i].data;
+      *dataSz = embedList[i].size;
       return true;
     }
   }
@@ -373,6 +380,17 @@ EResourceLocation LocateResource(const char* name, const char* type, WDL_String&
 
 #elif defined OS_LINUX
 #pragma mark - OS_LINUX
+
+void* GetEmbedListPtr()
+{
+  Dl_info info;
+  auto codePtr = reinterpret_cast<const void*>(&GetEmbedListPtr);
+  if (dladdr(codePtr, &info) == 0) return nullptr;
+  void* hDll = dlopen(info.dli_fname, RTLD_LOCAL);
+  if (!hDll) return nullptr;
+  void* hEmbedList = dlsym(hDll, "EMBED_LIST");
+  return hEmbedList;
+}
 
 // Get the file path for the module where specified symbol is defined
 static bool GetFileNameFor(void* code, char* path, int size)
