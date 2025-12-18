@@ -11,8 +11,8 @@
 #pragma once
 
 #include "IGraphics_select.h"
-#include "PlatformX11.hpp"
 #include "IPlugTaskThread.h"
+#include <SDL3/SDL_video.h>
 #include <memory>
 #include <mutex.h>
 #include <functional>
@@ -35,7 +35,7 @@ public:
 
   void* OpenWindow(void* pWindow) override;
   void CloseWindow() override;
-  void* GetWindow() override { return mWindow->GetHandle(); }
+  void* GetWindow() override;
   bool WindowIsOpen() override { return mWindow != nullptr; }
   void PlatformResize(bool parentHasResized) override;
   void GetMouseLocation(float& x, float& y) const override;
@@ -73,11 +73,18 @@ protected:
 
   /// @brief Add a task to be run in the UI thread
   void AddUiTask(std::function<void()>&& task);
+  void WaitUiTask(std::function<void()>&& task);
 
   friend class IGraphics;
 private:
+  bool DrawBegin();
+  void DrawEnd();
+  void InitPlatform();
+
   /// @brief Window pointer
-  X11Window* mWindow = NULL;
+  SDL_Window* mWindow = NULL;
+  SDL_GLContext mContext = NULL;
+  int mDrawLock = 0;
   /// @brief timestamp when we should re-render,
   uint64_t mNextDrawTime;
   /// @brief If true, then we should re-paint at the end of the call to Update().

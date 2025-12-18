@@ -3,6 +3,8 @@
 #include <functional>
 #include <cstdint>
 #include <vector>
+#include <type_traits>
+#include <future>
 #include "mutex.h"
 #include "IPlugPlatform.h"
 #include "IPlugQueue.h"
@@ -59,6 +61,21 @@ public:
   void Cancel(TaskID id);
   /** Stop the task thread. */
   void Stop();
+
+  /** Run `task` as soon as possible, and wait for it to complete. */
+  template<class F, class R = std::invoke_result_t<F>>
+  R RunAndWait(F&& cb)
+  {
+    std::promise<R> done;
+    AddOnce([cb, &done](uint64_t ign) {
+      (void)ign;
+      done.set_value(cb());
+      return false;
+    });
+    auto fut = done.get_future();
+    fut.wait();
+    return fut.get();
+  }
 
   /**
    * Get the global \c IPlugTaskThread instance. Users may create new task threads,

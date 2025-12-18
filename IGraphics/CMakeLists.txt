@@ -1,4 +1,24 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.24)
+include(FetchContent)
+
+# Set SDL options before making it available.
+set(SDL_SHARED OFF CACHE BOOL "")
+set(SDL_STATIC ON CACHE BOOL "")
+set(SDL_WAYLAND OFF CACHE BOOL "")
+set(SDL_STATIC_PIC ON CACHE BOOL "")
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "")
+set(BUILD_STATIC_LIBS ON CACHE BOOL "")
+
+
+FetchContent_Declare(
+    SDL3
+    GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+#    GIT_TAG release-3.2.16
+    GIT_TAG 0f061ff154dafb2f65fd882aa69beb119f99318d
+    SOURCE_DIR "${IPLUG2_SDK_PATH}/Dependencies/sdl3"
+)
+FetchContent_MakeAvailable(SDL3)
+set_target_properties(SDL3-static PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 set(WDL_DIR ${IPLUG2_SDK_PATH}/WDL)
 if (IPLUG_OS MATCHES "Linux")
@@ -121,6 +141,7 @@ elseif (IPLUG_OS MATCHES "Linux")
   )
   list(APPEND _lib
     PkgConfig::X11Libraries
+    SDL3::SDL3-static
     "dl"
   )
 

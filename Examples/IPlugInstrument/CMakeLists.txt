@@ -59,7 +59,7 @@ iplug_setup_plugin(
   plugin_base
   GRAPHICS NanoVG+GL3
   # List of plugin formats to export, or ALL for all supported formats on this platform.
-  FORMATS ALL
+  FORMATS app clap
   # Metadata
   CONFIG [[
   channel_io: 0-2

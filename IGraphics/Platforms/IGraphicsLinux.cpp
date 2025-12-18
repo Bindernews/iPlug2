@@ -11,6 +11,7 @@
 #include <stddef.h>
 #include <wdlutf8.h>
 
+#include <SDL3/SDL.h>
 #include "IPlugParameter.h"
 #include "IGraphicsLinux.h"
 #include "IPlugTaskThread.h"
@@ -24,6 +25,8 @@
 
 #ifdef OS_LINUX
   #ifdef IGRAPHICS_GL
+    // use GLX loaded by GLAD, linking with glx librariy is required otherwise
+    #include <glad/glad.h>
     #include <glad/glad_glx.h>
   #endif
   #include <fontconfig/fontconfig.h>
@@ -34,10 +37,12 @@
 using namespace iplug;
 using namespace igraphics;
 
-/// @brief Global platform backend instance
-static PlatformX11* gPlatform = nullptr;
 /// @brief Protects the creation of gPlatform, does not protect use
 static WDL_Mutex gPlatformLock;
+/// @brief Track if we've initialized SDL3
+static int gDidSDLInit = 0;
+/// @brief Did we do the GLAD init?
+static int gDidGladInit = 0;
 
 class IGraphicsLinux::Font : public PlatformFont
 {
@@ -171,36 +176,105 @@ static uint64_t GetTimeMs()
   return (t.tv_sec * 1000) + (t.tv_nsec / 1000000);
 }
 
+static void logSdlError()
+{
+  printf("SDL error: %s\n", SDL_GetError());
+}
+
+bool IGraphicsLinux::DrawBegin()
+{
+  mDrawLock++;
+  if (mDrawLock == 1)
+  {
+    // GL context set
+    if (!SDL_GL_MakeCurrent(mWindow, mContext)) {
+      logSdlError();
+      mDrawLock--;
+      return false;
+    }
+    return true;
+  }
+  return false;
+}
+
+void IGraphicsLinux::DrawEnd()
+{
+  mDrawLock--;
+  if (mDrawLock == 0)
+  {
+    SDL_GL_SwapWindow(mWindow);
+    SDL_GL_MakeCurrent(NULL, NULL);
+  }
+}
+
+void IGraphicsLinux::InitPlatform()
+{
+  gPlatformLock.Enter();
+  // Initialize SDL if we haven't yet.
+  if (gDidSDLInit == 0) {
+    gDidSDLInit = 1;
+    if (!SDL_InitSubSystem(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
+      printf("SDL init error: %s\n", SDL_GetError());
+      return;
+    }
+
+    // Have to set the GL version before creating new windows.
+    std::array<int, 2> glVersion = {0, 0};
+    #ifdef IGRAPHICS_GL
+    #ifdef IGRAPHICS_GL2
+    glVersion = {2, 1};
+    #elif defined IGRAPHICS_GL3
+    glVersion = {3, 3};
+    #else
+    #error "Unsupported GL version"
+    #endif
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, glVersion[0]);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, glVersion[1]);
+    #endif
+
+    gDidSDLInit = 2;
+  }
+  gPlatformLock.Leave();
+}
+
 void IGraphicsLinux::Paint()
 {
   IRECT ir = {0, 0, static_cast<float>(WindowWidth()), static_cast<float>(WindowHeight())};
   IRECTList rects;
   rects.Add(ir.GetScaled(1.f / GetBackingPixelScale()));
 
-  if (mWindow->DrawBegin())
+  if (DrawBegin())
   {
     Draw(rects);
-    mWindow->DrawEnd();
   }
+  DrawEnd();
 }
 
 void IGraphicsLinux::DrawResize()
 {
   // WARNING: in CAN BE reentrant!!! (f.e. it is called from SetScreenScale during initialization)
-  if (mWindow->DrawBegin())
-  {
-    IGRAPHICS_DRAW_CLASS::DrawResize();
-    mWindow->DrawEnd();
-  }
+  DrawBegin();
+  IGRAPHICS_DRAW_CLASS::DrawResize();
+  DrawEnd();
   // WARNING: IPlug call it on resize, but at the end. When should we call Paint() ?
   // In Windows version "Update window" is called from PlatformResize, so BEFORE DrawResize...
+}
+
+void* IGraphicsLinux::GetWindow()
+{
+  if (!mWindow) {
+    return nullptr;
+  }
+  SDL_PropertiesID winProps = SDL_GetWindowProperties(mWindow);
+  Sint64 handle = SDL_GetNumberProperty(winProps, SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0);
+  return (void*)handle;
 }
 
 void IGraphicsLinux::LoopEvents()
 {
   bool resetMouse = false;
   SDL_Event event;
-  while (mWindow->PollEvent(&event)) {
+  while (SDL_PollEvent(&event)) {
     switch (event.type) {
       case SDL_EVENT_WINDOW_EXPOSED:
       {
@@ -312,34 +386,73 @@ void IGraphicsLinux::LoopEvents()
 
 void* IGraphicsLinux::OpenWindow(void* pParent)
 {
-  WindowOptions opts;
-  opts.bounds = WRect{};
-  opts.bounds.w = (uint32_t)WindowWidth();
-  opts.bounds.h = (uint32_t)WindowHeight();
+  // If this isn't 2, then we didn't initialize properly.
+  if (gDidSDLInit != 2) {
+    return nullptr;
+  }
+
+  const char* sdlErr = nullptr;
+
+  #if 0
   // NOTE: In case plug-in report REAPER extension in REAPER, pParent is NOT XID (SWELL HWND? I have not checked yet)
-  opts.parent = pParent;
-  #ifdef IGRAPHICS_GL
-  #ifdef IGRAPHICS_GL2
-  opts.glMajor = 2;
-  opts.glMinor = 1;
-  #elif defined IGRAPHICS_GL3
-  opts.glMajor = 3;
-  opts.glMinor = 3;
-  #else
-  #error "Unsupported GL version"
-  #endif
+  SDL_PropertiesID parentProps = SDL_CreateProperties();
+  SDL_SetNumberProperty(parentProps, SDL_PROP_WINDOW_CREATE_X11_WINDOW_NUMBER, (intptr_t) pParent);
+  SDL_Window* sdlParent = SDL_CreateWindowWithProperties(parentProps);
+  sdlErr = SDL_GetError();
+  SDL_DestroyProperties(parentProps);
+  if (!sdlParent) {
+    printf("SDL error: %s\n", sdlErr);
+    return NULL;
+  }
   #endif
 
-  mWindow = gPlatform->CreateWindow(opts);
-  if (!mWindow)
-  {
-    return NULL;
+  bool ok = IPlugTaskThread::instance()->RunAndWait([this]() -> bool {
+    const char* sdlErr = nullptr;
+
+    SDL_PropertiesID childProps = SDL_CreateProperties();
+    //SDL_SetPointerProperty(childProps, SDL_PROP_WINDOW_CREATE_PARENT_POINTER, sdlParent);
+    SDL_SetNumberProperty(childProps, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, WindowWidth());
+    SDL_SetNumberProperty(childProps, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, WindowHeight());
+    #ifdef IGRAPHICS_GL
+    SDL_SetBooleanProperty(childProps, SDL_PROP_WINDOW_CREATE_OPENGL_BOOLEAN, true);
+    #endif
+    mWindow = SDL_CreateWindowWithProperties(childProps);
+    sdlErr = SDL_GetError();
+    SDL_DestroyProperties(childProps);
+    if (!mWindow) {
+      printf("SDL error: %s\n", sdlErr);
+      return false;
+    }
+
+    mContext = SDL_GL_CreateContext(mWindow);
+    if (!mContext) {
+      logSdlError();
+      return false;
+    }
+
+    // Initialize the glad gl functions.
+    if (gDidGladInit == 0) {
+      gDidGladInit = 1;
+      if (!gladLoadGLLoader((GLADloadproc) SDL_GL_GetProcAddress)) {
+        TRACE("gladLoadGL failed\n");
+        return false;
+      }
+      gDidGladInit = 2;
+    }
+    if (gDidGladInit != 2) {
+      return false;
+    }
+
+    return true;
+  });
+  if (!ok) {
+    return nullptr;
   }
 
 #if defined(VST3_API)
-  mWindow->SetVisible(true);
+  SDL_ShowWindow(mWindow);
 #elif defined(APP_API) || defined(CLAP_API) || defined(VST2_API) || defined(LV2_API)
-  mWindow->SetVisible(true);
+  SDL_ShowWindow(mWindow);
   mTaskId = IPlugTaskThread::instance()->Push(Task::FromMs(0, 10, [this](uint64_t) {
     this->UpdateUI();
     return true;
@@ -348,10 +461,8 @@ void* IGraphicsLinux::OpenWindow(void* pParent)
   #error "IGraphicsLinux:OpenWindow: unknown api. Map or not to map... that is the question"
 #endif
 
-  std::promise<bool> done1;
-  AddUiTask([this, opts, &done1]() {
-    // GL context set
-    if (mWindow->DrawBegin())
+  WaitUiTask([this]() {
+    if (DrawBegin())
     {
       OnViewInitialized(nullptr);
       SetScreenScale(1); // resizes draw context, calls DrawResize
@@ -359,32 +470,26 @@ void* IGraphicsLinux::OpenWindow(void* pParent)
       GetDelegate()->LayoutUI(this);
       SetAllControlsDirty();
       GetDelegate()->OnUIOpen();
-
-      mWindow->DrawEnd();
     }
-    done1.set_value(true);
+    DrawEnd();
   });
-  done1.get_future().wait();
 
   // Reset some state
   mCursorLock = false;
   mNextDrawTime = 0;
 
-  return mWindow->GetHandle();
+  return GetWindow();
 }
 
 void IGraphicsLinux::CloseWindow()
 {
   if (mWindow) {
-    std::promise<bool> closeWait;
-    AddUiTask([this, &closeWait]() {
+    WaitUiTask([this]() {
       OnViewDestroyed();
       SetPlatformContext(nullptr);
-      mWindow->Close();
+      SDL_DestroyWindow(mWindow);
       mWindow = nullptr;
-      closeWait.set_value(true);
     });
-    closeWait.get_future().wait();
   }
 
   if (mTaskId) {
@@ -401,8 +506,14 @@ void IGraphicsLinux::GetMouseLocation(float& x, float& y) const
 
 void IGraphicsLinux::HideMouseCursor(bool hide, bool lock)
 {
-  mWindow->SetCursorVisible(!hide);
-  mWindow->SetCursorGrabbed(lock);
+  if (hide) {
+    SDL_HideCursor();
+  } else {
+    SDL_ShowCursor();
+  }
+  if (!SDL_SetWindowRelativeMouseMode(mWindow, lock)) {
+    logSdlError();
+  }
   mCursorHidden = hide;
   mCursorLock = lock;
   mMouseLockPos.x = mCursorX;
@@ -411,7 +522,7 @@ void IGraphicsLinux::HideMouseCursor(bool hide, bool lock)
 
 void IGraphicsLinux::MoveMouseCursor(float x, float y)
 {
-  mWindow->MoveMouse(MOUSE_MOVE_WINDOW, (int)x, (int)y);
+  SDL_WarpMouseInWindow(mWindow, x, y);
 }
 
 EMsgBoxResult IGraphicsLinux::ShowMessageBox(const char* text, const char* caption, EMsgBoxType type, IMsgBoxCompletionHandlerFunc completionHandler)
@@ -732,7 +843,7 @@ void IGraphicsLinux::CreatePlatformTextEntry(int paramIdx, const IText& text, co
   (void)length;
 
   WDL_String args;
-  uint32_t windowId = (uint32_t)reinterpret_cast<uintptr_t>(mWindow->GetHandle());
+  uint32_t windowId = (uint32_t)reinterpret_cast<uintptr_t>(GetWindow());
   const char* paramName = GetDelegate()->GetParam(paramIdx)->GetName();
 
   args.Append("zenity --modal --entry ");
@@ -784,20 +895,22 @@ bool IGraphicsLinux::OpenURL(const char* url, const char* msgWindowTitle, const 
 
 bool IGraphicsLinux::GetTextFromClipboard(WDL_String& str)
 {
-  EClipboardFormat format = CLIPBOARD_FORMAT_UTF8;
-  WDL_TypedBuf<uint8_t> data {1024};
-  if (gPlatform->GetClipboard(&format, &data)) {
-    str.Append((char*)data.Get(), data.GetSize());
-    return true;
-  } else {
+  char* text = SDL_GetClipboardText();
+  if (!text) {
     return false;
   }
+  str.Set(text);
+  SDL_free(text);
+  return true;
 }
 
 bool IGraphicsLinux::SetTextInClipboard(const char* str)
 {
-  gPlatform->SetClipboard(CLIPBOARD_FORMAT_UTF8, str, strlen(str));
-  return true;
+  bool ok = SDL_SetClipboardText(str);
+  if (!ok) {
+    logSdlError();
+  }
+  return ok;
 }
 
 void IGraphicsLinux::PlatformResize(bool parentHasResized)
@@ -805,7 +918,7 @@ void IGraphicsLinux::PlatformResize(bool parentHasResized)
   if (WindowIsOpen()) {
     uint32_t w = (uint32_t)(WindowWidth() * GetScreenScale());
     uint32_t h = (uint32_t)(WindowHeight() * GetScreenScale());
-    mWindow->Resize(w, h);
+    SDL_SetWindowSize(mWindow, (int)w, (int)h);
     if (!parentHasResized) {
       DBGMSG("WARNING: parent is not resized, but I (should) have no control on it on X... XEMBED?\n");
     }
@@ -815,7 +928,7 @@ void IGraphicsLinux::PlatformResize(bool parentHasResized)
 void IGraphicsLinux::RequestFocus()
 {
   if (mWindow) {
-    mWindow->RequestFocus();
+    SDL_RaiseWindow(mWindow);
   }
 }
 
@@ -840,11 +953,19 @@ void IGraphicsLinux::AddUiTask(std::function<void()>&& task)
   mUiTasks.Add(std::move(task));
 }
 
+void IGraphicsLinux::WaitUiTask(std::function<void()>&& task)
+{
+  // task();
+  std::promise<bool> done1;
+  AddUiTask([task, &done1]() {
+    task();
+    done1.set_value(true);
+  });
+  done1.get_future().wait();
+}
+
 void IGraphicsLinux::UpdateUI()
 {
-  // allow the platform to process things
-  gPlatform->ProcessEvents();
-
   // Run all tasks that have to happen on this thread.
   mUiTasks.Process();
 
@@ -968,12 +1089,7 @@ PlatformFontPtr IGraphicsLinux::LoadPlatformFont(const char* fontID, const char*
 IGraphicsLinux::IGraphicsLinux(IGEditorDelegate& dlg, int w, int h, int fps, float scale)
   : IGRAPHICS_DRAW_CLASS(dlg, w, h, fps, scale)
 {
-  gPlatformLock.Enter();
-  if (!gPlatform)
-  {
-    gPlatform = PlatformX11::Create();
-  }
-  gPlatformLock.Leave();
+  InitPlatform();
 
   mNextDrawTime = 0;
   mCursorLock = false;

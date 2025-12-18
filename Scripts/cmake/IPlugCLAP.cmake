@@ -55,7 +55,15 @@ bn_target_add(iPlug2_CLAP INTERFACE
     clap
     clap-helpers
     iPlug2_Core
+    iPlug2_Plugin
 )
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  target_link_options(iPlug2_CLAP INTERFACE
+    -Wl,--version-script=${cwd}/myplug.version
+  )
+endif()
+
+
 
 #--------------------------------------------------------------------
 # configure function
@@ -73,6 +81,7 @@ function(iplug_configure_clap base_plugin target)
     # After building copy to the correct directory
     POST_BUILD_COPY
   )
+  set_target_properties(${target} PROPERTIES POSITION_INDEPENDENT_CODE ON)
   # Handle resources
   iplug_target_bundle_resources(${target} "${resource_dir}")
   # Set the output directories to remove config sub-folders.

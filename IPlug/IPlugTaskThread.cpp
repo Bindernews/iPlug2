@@ -8,6 +8,7 @@
 #include <mutex>
 #include <vector>
 #include <queue>
+#include <future>
 
 #ifdef OS_LINUX
 #include <pthread.h>

@@ -36,6 +36,7 @@ Dependencies/IPlug/AAX_SDK/*
 Dependencies/IPlug/WAM_AWP/*
 Dependencies/IPlug/WAM_SDK/*
 Dependencies/Build/*
+Dependencies/sdl3/*
 Documentation/html
 Documentation/doxygen_warnings.txt
 Examples/build_errors.log

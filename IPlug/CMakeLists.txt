@@ -198,6 +198,10 @@ if (IPLUG_LINKER_FLAG_ERROR_UNRESOLVED_SYMBOLS)
   # This way we get errors on GCC/clang for missing symbols
   target_link_options(iPlug2_Plugin INTERFACE "--error-unresolved-symbols")
 endif()
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|Intel")
+  message("Enabling -fvisibility=hidden")
+  target_compile_options(iPlug2_Plugin INTERFACE "-fvisibility=hidden")
+endif()
 
 # Load extras libraries
 add_subdirectory(Extras)
