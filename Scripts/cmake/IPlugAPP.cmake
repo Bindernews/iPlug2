@@ -4,13 +4,13 @@ set(cwd ${IPLUG2_SDK_PATH}/IPlug/APP)
 
 add_subdirectory(${cwd}/RTLibs ${iPlug2_BINARY_DIR}/RTLibs)
 
+set(_suffix "")
+bn_setif(_suffix ".exe" IF CMAKE_SYSTEM_NAME MATCHES "Windows")
+bn_setif(_suffix ".app" IF CMAKE_SYSTEM_NAME MATCHES "Darwin")
 iplug_format_helper(
   SETUP
   FORMAT app
-  SUFFIX
-    "Windows" ".exe"
-    "Darwin"  ""
-    "Linux"   ""
+  SUFFIX "${_suffix}"
   CUSTOM_XML [[
   <key>LSApplicationCategoryType</key> <string>public.app-category.music</string>
   <key>NSMainNibFile</key> <string>${PLUGIN_NAME}-macOS-MainMenu</string>
@@ -32,6 +32,7 @@ set(_src
   ${cwd}/IPlugAPP.cpp
   ${cwd}/IPlugAPP.h
 )
+target_sources(iPlug2_APP INTERFACE ${_src})
 set(_lib
   iPlug2_Core
   iPlug2_IGraphicsCore
@@ -53,7 +54,14 @@ if (IPLUG_OS MATCHES "Windows")
   # Nothing to do
 elseif (IPLUG_OS MATCHES "Darwin")
   # Some source files here combine C++ and Objective-C, so we tell clang how to compile them
-  set_property(SOURCE ${_src} PROPERTY LANGUAGE "OBJCXX")
+  set_property(
+    SOURCE
+      ${cwd}/IPlugAPP_dialog.cpp
+      ${cwd}/IPlugAPP_host.cpp
+      ${cwd}/IPlugAPP_main.cpp
+    PROPERTY
+      LANGUAGE "OBJCXX"
+  )
   # Link to swell, and additional platform-specific frameworks
   list(APPEND _lib
     WDL_SWELL
@@ -61,6 +69,7 @@ elseif (IPLUG_OS MATCHES "Darwin")
     "-framework CoreMIDI"
     "-framework CoreAudio"
   )
+  list(APPEND _def "__MACOSX_CORE__")
 elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
   # Link to swell
   list(APPEND _lib WDL_SWELL)
@@ -74,7 +83,6 @@ endif()
 
 iplug_target_add(
   iPlug2_APP INTERFACE
-  SOURCE ${_src}
   INCLUDE ${cwd}
   DEFINE ${_def}
   LINK ${_lib}
@@ -100,6 +108,16 @@ function(iplug_configure_app base_plugin target)
       FORMAT app
       TARGET ${target}
       CONVERT_XIB ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/macOS-MainMenu.xib
+    )
+
+    set(cwd ${IPLUG2_SDK_PATH}/IPlug/APP)
+    set_property(
+      SOURCE
+        ${cwd}/IPlugAPP_dialog.cpp
+        ${cwd}/IPlugAPP_host.cpp
+        ${cwd}/IPlugAPP_main.cpp
+      PROPERTY
+        LANGUAGE "OBJCXX"
     )
 
     # Add the icon file

@@ -4,15 +4,15 @@ cmake_policy(SET CMP0076 NEW)
 # Enable setting MSVC runtime flags with CMAKE_MSVC_RUNTIME_LIBRARY
 cmake_policy(SET CMP0091 NEW)
 
-project(
-  iPlug2
-  DESCRIPTION "A C++ framework for developing cross-platform audio plugins."
-  LANGUAGES C CXX)
+# project(
+#   iPlug2
+#   DESCRIPTION "A C++ framework for developing cross-platform audio plugins."
+#   LANGUAGES C CXX)
 
-if (APPLE)
-  enable_language(OBJC)
-  enable_language(OBJCXX)
-endif()
+# By default the plugin name is the same as the root project name.
+# This may be overridden by setting the cache variable.
+set(IPLUG2_PLUGIN_NAME "${CMAKE_PROJECT_NAME}"
+  CACHE STRING "Name for the iPlug2 plugin, used in many locations.")
 
 # This is used in many places
 set(IPLUG2_SDK_PATH ${CMAKE_CURRENT_LIST_DIR} CACHE PATH "Path to the iPlug2 SDK")
@@ -75,7 +75,9 @@ if (NOT CACHE{IPLUG_VALID_FORMATS})
 
   # Save this as a cache variable
   set(IPLUG_VALID_FORMATS "${ok_formats}" CACHE INTERNAL "List of valid output formats for iPlug2")
-
+  foreach (format IN LISTS IPLUG_VALID_FORMATS)
+    option("IPLUG_REQUIRE_${format}" "Fail if the ${format} format cannot be loaded.")
+  endforeach()
 endif()
 
 #================================================
@@ -86,7 +88,7 @@ set(IPLUG_LOADED_FORMATS "")
 
 foreach (format format_subdir IN ZIP_LISTS IPLUG_ALL_FORMATS IPLUG_FORMAT_MOD_NAMES)
   # Skip invalid formats
-  if(NOT format IN_LIST IPLUG_VALID_FORMATS)
+  if (NOT format IN_LIST IPLUG_VALID_FORMATS)
     continue()
   endif()
 
@@ -97,12 +99,18 @@ foreach (format format_subdir IN ZIP_LISTS IPLUG_ALL_FORMATS IPLUG_FORMAT_MOD_NA
 
   # Just because it included, doesn't mean we succeeded though.
   # If we succeeded, but ${module_name}_FOUND is not set, then we still failed, like find_package.
-  if(${module_name}_FOUND)
+  if (${module_name}_FOUND)
     list(APPEND IPLUG_LOADED_FORMATS ${format})
   else()
     # Allow modules to add an extra error message
-    bn_tern(extra_error "${${module_name}_ERROR}" "error" DEFINED ${module_name}_ERROR)
+    set(extra_error "error")
+    bn_setif(extra_error "${${module_name}_ERROR}" IF DEFINED ${module_name}_ERROR)
+    # bn_tern(extra_error "${${module_name}_ERROR}" "error" DEFINED ${module_name}_ERROR)
     message(NOTICE "Failed to load plugin format ${format_subdir}: ${extra_error}")
+    # Check if the format is required
+    if (${IPLUG_REQUIRE_${format}})
+      message(SEND_ERROR "Missing required output format ${format}")
+    endif()
   endif()
 endforeach()
 

@@ -13,8 +13,10 @@
 #include "IGraphicsNanoVG.h"
 #include "ITextEntryControl.h"
 
-#if defined IGRAPHICS_GL
+#if defined(IGRAPHICS_GL)
+  #if !defined(OS_MAC) && !defined(OS_IOS)
   #include <glad/glad.h>
+  #endif
 
   #if defined OS_MAC
     #if defined IGRAPHICS_GL2
@@ -63,6 +65,7 @@
   #include "nanovg_gl.h"
   #include "nanovg_gl_utils.h"
 #elif defined IGRAPHICS_METAL
+  #include <glad/glad.h>
   #include "nanovg_mtl.h"
   #if defined OS_MAC
     //even though this is a .cpp we are in an objc(pp) compilation unit
@@ -368,7 +371,7 @@ APIBitmap* IGraphicsNanoVG::LoadAPIBitmap(const char* name, const void* pData, i
       ScopedGLContext scopedGLCtx {this};
       idx = nvgCreateImageMem(mVG, nvgImageFlags, (unsigned char*)pData, dataSize);
     }
-    
+
     pBitmap = new Bitmap(mVG, name, scale, idx, false);
 
     storage.Add(pBitmap, name, scale);
@@ -927,19 +930,19 @@ void IGraphicsNanoVG::DrawMultiLineText(const IText& text, const char* str, cons
   nvgSave(mVG);
   nvgFontSize(mVG, text.mSize);
   nvgFontFace(mVG, text.mFont);
- 
+
   float x = 0.0, y = 0.0;
   const float width = bounds.W();
   int align = 0;
   float yOffsetScale = 0.0;
-  
+
   switch (text.mAlign)
   {
     case EAlign::Near:     align = NVG_ALIGN_LEFT;     x = bounds.L;        break;
     case EAlign::Center:   align = NVG_ALIGN_CENTER;   x = bounds.MW();     break;
     case EAlign::Far:      align = NVG_ALIGN_RIGHT;    x = bounds.R;        break;
   }
-    
+
   switch (text.mVAlign)
   {
     case EVAlign::Top:
@@ -964,9 +967,9 @@ void IGraphicsNanoVG::DrawMultiLineText(const IText& text, const char* str, cons
       break;
     }
   }
-  
+
   nvgTextAlign(mVG, align);
-  
+
   NVGtextRow rows[3];
   const char* start;
   const char* end;
@@ -996,6 +999,6 @@ void IGraphicsNanoVG::DrawMultiLineText(const IText& text, const char* str, cons
       start = rows[nRows-1].next;
     }
   }
-  
+
   nvgRestore(mVG);
 }

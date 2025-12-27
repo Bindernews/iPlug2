@@ -5,7 +5,7 @@ set(vst3_target_arch "")
 
 if (NOT EXISTS ${VST3_SDK}/CMakeLists.txt)
   set(IPlugVST3_FOUND FALSE)
-  message(WARNING "VST3_SDK not found or invalid")
+  set(IPlugVST3_ERROR "VST3_SDK not found or missing files")
   return()
 endif()
 
@@ -50,10 +50,7 @@ iplug_format_helper(
     "Windows" "$ENV{CommonProgramFiles}/VST3"
     "Darwin"  "/Library/Audio/Plug-Ins/VST3"
     "Linux"   "/usr/local/lib/vst3"
-  SUFFIX
-    "Windows" ".vst3"
-    "Darwin"  ".vst3"
-    "Linux"   ".vst3"
+  SUFFIX ".vst3"
   CUSTOM_XML ""
 )
 

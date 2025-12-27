@@ -157,8 +157,8 @@ function(iplug_format_helper)
   cmake_parse_arguments(
     PARSE_ARGV 0 a13
     "SETUP;MAKE_BUNDLE;GENERATE_PLIST;MAIN_RC;POST_BUILD_COPY;GET_VARS;COPY_PROPERTIES;COPY_RESOURCE_H;SET_NAME;TARGET_COMMON"
-    "FORMAT;TARGET;CUSTOM_XML;INSTALL_SUBDIR;CONVERT_XIB"
-    "USER_INSTALL_PATH;SYSTEM_INSTALL_PATH;SUFFIX;RESOURCE_METHOD;PLIST_VARIABLES"
+    "FORMAT;TARGET;CUSTOM_XML;INSTALL_SUBDIR;CONVERT_XIB;SUFFIX"
+    "USER_INSTALL_PATH;SYSTEM_INSTALL_PATH;RESOURCE_METHOD;PLIST_VARIABLES"
   )
 
   string(TOUPPER "${a13_FORMAT}" format_cap)
@@ -185,13 +185,11 @@ function(iplug_format_helper)
     endif()
     set(
       IPLUG_${format_cap}_SYSTEM_INSTALL_PATH "${tmp}" CACHE PATH
-      "Path to install ${format_cap} plugins to the system,
-      potentially requiring administrator permissions")
+      "Path to install ${format_cap} plugins to the system, potentially requiring administrator permissions")
 
     # Determine the suffix
     if(a13_SUFFIX)
-      bn_case(tmp "${IPLUG_OS}" ${a13_SUFFIX})
-      set_property(GLOBAL PROPERTY ${prop_key}_suffix "${tmp}")
+      set_property(GLOBAL PROPERTY ${prop_key}_suffix "${a13_SUFFIX}")
     endif()
 
     # Determine the resource method, default to "auto"
@@ -227,9 +225,10 @@ function(iplug_format_helper)
       set(binary_subdir "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${target}.dir")
     endif()
     set(resource_dir "${output_dir}/resources")
-    if(IPLUG_OS MATCHES "Darwin|iOS")
+    if(CMAKE_SYSTEM_NAME MATCHES "Darwin|iOS")
+      get_property(a13_suffix2 GLOBAL PROPERTY "iplug_${a13_FORMAT}_suffix")
       # Bundle mode for resources
-      set(resource_dir "${output_dir}/Contents/Resources")
+      set(resource_dir "${output_dir}/${plugin_name}${a13_suffix2}/Contents/Resources")
     endif()
 
     # Convert clap category to the appropriate category for the format
@@ -298,7 +297,7 @@ function(iplug_format_helper)
     set(BUNDLE_SIGNATURE "PmBl")
 
     # Load plist variable overrides
-    foreach(entry IN_LIST a13_plist_variables)
+    foreach(entry IN LISTS a13_plist_variables)
       if("${entry}" MATCHES "^([A-Za-z0-9_])=(.+)$")
         set(${CMAKE_MATCH_1} "${CMAKE_MATCH_2}")
       else()
@@ -329,14 +328,21 @@ function(iplug_format_helper)
     get_property(a13_suffix GLOBAL PROPERTY ${prop_key}_suffix)
     get_property(a13_is_bundle TARGET ${target} PROPERTY MACOSX_BUNDLE)
 
-    set_target_properties(${target} PROPERTIES
+    set_target_properties(
+      ${target} PROPERTIES
       # Make sure the output name is the same as the app name.
       # This is basically required for bundles, but good for all formats.
       OUTPUT_NAME "${PLUGIN_NAME}"
       PREFIX ""
     )
     if(NOT "${a13_suffix}" STREQUAL "")
-      bn_tern(suffix_property "BUNDLE_EXTENSION" "SUFFIX" a13_is_bundle)
+      if(a13_is_bundle)
+        # Remove leading . in suffix
+        string(REPLACE "." "" a13_suffix "${a13_suffix}")
+        set(suffix_property BUNDLE_EXTENSION)
+      else()
+        set(suffix_property SUFFIX)
+      endif()
       set_target_properties(${target} PROPERTIES ${suffix_property} "${a13_suffix}")
     endif()
   endif()
@@ -378,13 +384,13 @@ function(iplug_format_helper)
     # Do some path operations
     list(GET a13_CONVERT_XIB 0 xib_in_path)
     cmake_path(GET xib_in_path FILENAME xib_fn)
-    cmake_path(SET xib_bin_path NORMALIZE "${resource_dir}/${xib_fn}")
-    cmake_path(REPLACE_EXTENSION xib_bin_path ".xib")
-    cmake_path(GET xib_path STEM LAST_ONLY stem)
+    cmake_path(SET xib_out_path NORMALIZE "${resource_dir}/${xib_fn}")
+    cmake_path(REPLACE_EXTENSION xib_in_path ".xib")
+    cmake_path(GET xib_in_path STEM LAST_ONLY stem)
     set(nib_path "${resource_dir}/${stem}.nib")
     # Configure
     get_target_property(PLUGIN_NAME ${base_plugin} IPLUG_PLUGIN_NAME)
-    configure_file(${xib_in_path} ${xib_bin_path} @ONLY NEWLINE_STYLE UNIX)
+    configure_file(${xib_in_path} ${xib_out_path} @ONLY NEWLINE_STYLE UNIX)
     # Compile .xib to .nib
     add_custom_command(
       OUTPUT ${nib_path}
@@ -636,7 +642,7 @@ Setup the base INTERFACE target for an iPlug2 plugin with required options.
   iplug_setup_plugin(
     <base_target>
     FORMATS [``ALL`` | formats...]
-    [GRAPHICS backend[+api]]
+    [GRAPHICS backend[+api] ]
     CONFIG <yaml>
   )
 
@@ -672,7 +678,7 @@ Main Arguments
 
 ``CONFIG``
   A set of "key: value" pairs, one per line. See the `Config Options`_ section for a list
-  of valid options. Using CMake's literal strings (e.g. [[my text]]) is recommended.
+  of valid options. Using CMake's literal strings (e.g. [\[my text]\]) is recommended.
   Technically, this is a yaml dictionary, so indentation does matter slightly.
 
 Config Options
@@ -752,12 +758,45 @@ UI Options
 
 #]===]
 function(iplug_setup_plugin base_target)
-  cmake_parse_arguments(
-    PARSE_ARGV 1 arg
-    ""
-    "CONFIG"
-    "GRAPHICS;FORMATS"
+  set(flags
   )
+  set(sv_options
+    CONFIG
+    NAME
+    CLASS_NAME
+    VERSION
+    EMAIL
+    DESCRIPTION
+    COPYRIGHT
+    YEAR
+    UNIQUE_ID
+
+    AUTHOR
+    AUTHOR_ID
+
+    CATEGORY
+    CATEGORY_VST3
+    CATEGORY_LV2
+    CATEGORY_CLAP
+    # URL options
+    URL
+    SUPPORT_URL
+    MANUAL_URL
+    # MIDI / MPE options
+    MIDI_IN
+    MIDI_OUT
+    DOES_MPE
+    # UI options
+    ALLOW_HOST_RESIZE
+    UI_WIDTH
+    UI_HEIGHT
+    UI_FPS
+  )
+  set(mv_options
+    GRAPHICS
+    FORMATS
+  )
+  cmake_parse_arguments(PARSE_ARGV 1 arg "${flags}" "${sv_options}" "${mv_options}")
 
   if (NOT arg_FORMATS)
     message(SEND_ERROR "In iplug_setup_plugin the FORMATS argument is required")
@@ -768,6 +807,54 @@ function(iplug_setup_plugin base_target)
 
   # Use the global/cli flag, then the argument, then the default.
   bn_fallback(graphics_api "${IPLUG_FORCE_GRAPHICS}" "${arg_GRAPHICS}" "nanovg+gl2")
+  iplug_parse_config(plug GRAPHICS "${graphics_api}")
+  set(plug2_gui_library "${plug_gui_library}")
+  set(plug2_gui_backend "${plug_gui_backend}")
+
+  string(TIMESTAMP current_year "%Y")
+
+  bn_fallback(plug_name "${arg_NAME}" "${PROJECT_NAME}")
+  if(NOT plug_name)
+    message(FATAL_ERROR "Plugin name not set")
+  endif()
+  bn_fallback(plug_class_name "${arg_CLASS_NAME}" "${plug_name}")
+  bn_fallback(plug_email "${arg_EMAIL}" "@@ @@")
+  bn_fallback(plug_description "${arg_DESCRIPTION}" "${PROJECT_DESCRIPTION}" "@@ @@")
+  bn_fallback(plug_category "${arg_CATEGORY}" "@@ @@")
+  bn_fallback(plug_author "${arg_AUTHOR}" "@@ @@")
+  bn_fallback(plug_email "${arg_EMAIL}" "spam@mail.me")
+  bn_fallback(plug_version "${arg_VERSION}" "${PROJECT_VERSION}" "0.0.1")
+  bn_fallback(plug_year "${arg_YEAR}" "${current_year}")
+  bn_fallback(plug_copyright "${arg_COPYRIGHT}" "@@Copyright (c) ${plug_author} ${plug_year}@@")
+  bn_fallback(plug_unique_id "${arg_UNIQUE_ID}" "PmBl")
+  bn_fallback(plug_midi_in "${arg_MIDI_IN}" FALSE)
+  bn_fallback(plug_midi_out "${arg_MIDI_OUT}" FALSE)
+  bn_fallback(plug_does_mpe "${arg_DOES_MPE}" FALSE)
+  bn_fallback(plug_url "${arg_URL}" "${PROJECT_HOMEPAGE_URL}" "@@ @@")
+  bn_fallback(plug_manual_url "${arg_MANUAL_URL}" "${arg_URL}" "@@ @@")
+  bn_fallback(plug_support_url "${arg_SUPPORT_URL}" "${arg_URL}" "@@ @@")
+
+  if(plug_gui_library STREQUAL "none")
+    set(plug_ui_width 0)
+    set(plug_ui_height 0)
+    set(plug_ui_fps 0)
+    set(plug_allow_host_resize FALSE)
+  else()
+    bn_fallback(plug_ui_width "${arg_UI_WIDTH}" "800")
+    bn_fallback(plug_ui_height "${arg_UI_HEIGHT}" "600")
+    bn_fallback(plug_ui_fps "${arg_UI_FPS}" "60")
+    bn_fallback(plug_allow_host_resize "${arg_ALLOW_HOST_RESIZE}" FALSE)
+  endif()
+  set(msg_int "must be an integer")
+  set(msg_bool "must be a boolean")
+  bn_check_type(ok INT "${plug_ui_width}" ERROR "UI_WIDTH ${msg_int}")
+  bn_check_type(ok INT "${plug_ui_height}" ERROR "UI_HEIGHT ${msg_int}")
+  bn_check_type(ok INT "${plug_ui_fps}" ERROR "UI_FPS ${msg_int}")
+  bn_check_type(ok BOOL "${plug_allow_host_resize}" ERROR "ALLOW_HOST_RESIZE ${msg_bool}")
+  bn_check_type(ok BOOL "${plug_midi_in}" ERROR "MIDI_IN ${msg_bool}")
+  bn_check_type(ok BOOL "${plug_midi_out}" ERROR "MIDI_OUT ${msg_bool}")
+  bn_check_type(ok BOOL "${plug_does_mpe}" ERROR "DOES_MPE ${msg_bool}")
+
 
   # Parse config options
   bn_cache_call(
@@ -781,6 +868,9 @@ function(iplug_setup_plugin base_target)
   bn_json_to_variables(plug JSON "${meta}")
   set(plugin_name "${plug_name}")
 
+  set(plug_gui_library "${plug2_gui_library}")
+  set(plug_gui_backend "${plug2_gui_backend}")
+
   # Handle minor differences for different gui libraries.
   if(plug_gui_library STREQUAL "skia")
     # Try to find Skia package
@@ -788,6 +878,8 @@ function(iplug_setup_plugin base_target)
   endif()
   if(plug_gui_library STREQUAL "none")
     set(gui_libs iPlug2_NoGraphics)
+  elseif(plug_gui_library STREQUAL "nanovg")
+    set(gui_libs iPlug2_gui_${plug_gui_library}_${plug_gui_backend})
   else()
     set(gui_libs iPlug2_gui_${plug_gui_library} iPlug2_${plug_gui_backend})
   endif()
@@ -814,6 +906,7 @@ function(iplug_setup_plugin base_target)
     IPLUG_PLUGIN_NAME "${plug_name}"
     IPLUG_PLUGIN_GRAPHICS "${gui_libs}"
   )
+  target_link_libraries(${base_target} INTERFACE iPlug2_Definitions)
 
   #========================================================
   # Generate output targets for the desired formats
@@ -892,3 +985,207 @@ import iplug; iplug.cm_build_config('''${config_in}''', {
   )
   set(${VAR} "${meta}" PARENT_SCOPE)
 endfunction()
+
+function(iplug_parse_config OUT)
+  cmake_parse_arguments(PARSE_ARGV 1 a13 "" "GRAPHICS;CATEGORY;VERSION" "")
+
+  # Setup a bunch of constants that store data
+  set(PD_nanovg_auto "gl2")
+  set(PD_nanovg_choices "auto;gl2;gl3;metal")
+  set(PD_skia_auto "cpu")
+  set(PD_skia_choices "auto;gl2;gl3;cpu;metal")
+  set(PD_custom_auto "cpu")
+  set(PD_custom_choices "auto;gl2;gl3;cpu")
+  set(PD_none_auto "cpu")
+  set(PD_none_choices "cpu")
+
+  # List of valid plugin categories, sourced from CLAP's plugin-features.h
+  set(PD_clap_category_list
+  # Main categories
+  "instrument"
+  "audio-effect"
+  "note-effect"
+  "note-detector"
+  "analyzer"
+  # Sub-categories - instrument
+  "synthesizer"
+  "sampler"
+  "drum"
+  "drum-machine"
+  # Sub-categories - audio effect
+  "filter"
+  "phaser"
+  "equalizer"
+  "de-esser"
+  "phase-vocoder"
+  "granular"
+  "frequency-shifter"
+  "pitch-shifter"
+  "distortion"
+  "transient-shaper"
+  "compressor"
+  "expander"
+  "gate"
+  "limiter"
+  "flanger"
+  "chorus"
+  "delay"
+  "reverb"
+  "tremolo"
+  "glitch"
+  # Sub-categories - misc
+  "utility"
+  "pitch-correction"
+  "restoration"
+  "multi-effects"
+  "mixing"
+  "mastering"
+  )
+
+  set(PD_vst3_category_mapping [[{
+  "instrument":         "Instrument",
+  "synthesizer":        "Instrument|Synth",
+  "sampler":            "Instrument|Sampler",
+  "drum":               "Instrument|Drum",
+  "drum-machine":       "Instrument|DrumMachine",
+  "audio-effect":       "Fx",
+  "note-effect":        "Fx|Midi",
+  "note-detector":      "Fx|Midi",
+  "analyzer":           "Fx|Analyzer",
+  "filter":             "Fx|Filter",
+  "phaser":             "Fx|Phaser",
+  "equalizer":          "Fx|Equalizer",
+  "de-esser":           "Fx|DeEsser",
+  "granular":           "Fx|Granular",
+  "compressor":         "Fx|Compressor",
+  "expander":           "Fx|Expander",
+  "gate":               "Fx|Gate",
+  "limiter":            "Fx|Limiter",
+  "flanger":            "Fx|Flanger",
+  "chorus":             "Fx|Chorus",
+  "delay":              "Fx|Delay",
+  "reverb":             "Fx|Reverb",
+  "tremolo":            "Fx|Tremolo",
+  "glitch":             "Fx|Glitch",
+  "distortion":         "Fx|Distortion",
+  "phase-vocoder":      "Fx|PhaseVocoder",
+  "frequency-shifter":  "Fx|FrequencyShifter",
+  "pitch-shifter":      "Fx|PitchShifter",
+  "transient-shaper":   "Fx|TransientShaper",
+  "utility":            "Misc|Utility",
+  "pitch-correction":   "Misc|PitchCorrection",
+  "restoration":        "Misc|Restoration",
+  "multi-effects":      "Misc|MultiEffects",
+  "mixing":             "Misc|Mixing",
+  "mastering":          "Misc|Mastering",
+  "": ""
+  }]])
+  set(PD_lv2_category_mapping [[{
+  "instrument":         "lv2:InstrumentPlugin",
+  "synthesizer":        "lv2:GeneratorPlugin",
+  "sampler":            "lv2:InstrumentPlugin",
+  "drum":               "lv2:InstrumentPlugin",
+  "drum-machine":       "lv2:InstrumentPlugin",
+  "audio-effect":       "lv2:ModulatorPlugin",
+  "note-effect":        "lv2:MIDIPlugin",
+  "note-detector":      "lv2:MIDIPlugin",
+  "analyzer":           "lv2:AnalyzerPlugin",
+  "filter":             "lv2:FilterPlugin",
+  "phaser":             "lv2:PhaserPlugin",
+  "equalizer":          "lv2:EQPlugin",
+  "de-esser":           "lv2:FilterPlugin",
+  "granular":           "lv2:FilterPlugin",
+  "compressor":         "lv2:CompressorPlugin",
+  "expander":           "lv2:ExpanderPlugin",
+  "gate":               "lv2:GatePlugin",
+  "limiter":            "lv2:LimiterPlugin",
+  "flanger":            "lv2:FlangerPlugin",
+  "chorus":             "lv2:ChorusPlugin",
+  "delay":              "lv2:DelayPlugin",
+  "reverb":             "lv2:ReverbPlugin",
+  "tremolo":            "lv2:DistortionPlugin",
+  "glitch":             "lv2:DistortionPlugin",
+  "distortion":         "lv2:DistortionPlugin",
+  "phase-vocoder":      "lv2:ModulatorPlugin",
+  "frequency-shifter":  "lv2:PitchPlugin",
+  "pitch-shifter":      "lv2:PitchPlugin",
+  "transient-shaper":   "lv2:EnvelopePlugin",
+  "utility":            "lv2:UtilityPlugin",
+  "pitch-correction":   "lv2:PitchPlugin",
+  "restoration":        "lv2:UtilityPlugin",
+  "multi-effects":      "lv2:Plugin",
+  "mixing":             "lv2:MixerPlugin",
+  "mastering":          "lv2:MixerPlugin",
+  "": ""
+  }]])
+
+  if (a13_GRAPHICS)
+    string(TOLOWER "${a13_GRAPHICS}" _a)
+    # Parse the argument into driver and backend.
+    if (NOT "${_a}" MATCHES "^([a-z]+)([+]([a-z0-9]+))?")
+      message(FATAL_ERROR "Invalid graphics spec format '${a13_GRAPHICS}', format is <library>[+<backend>]")
+    endif()
+    set(g_lib "${CMAKE_MATCH_1}")
+    bn_fallback(g_back "${CMAKE_MATCH_3}" "auto")
+
+    if (NOT "${g_lib}" MATCHES "^(nanovg|skia|custom|none)")
+      message(FATAL_ERROR "Invalid graphics library ${g_lib}")
+    endif()
+    if (NOT "${g_back}" MATCHES "^(gl2|gl3|metal|cpu|auto)")
+      message(FATAL_ERROR "Invalid graphics backend ${g_back}")
+    endif()
+
+    # Force nanovg+metal on MacOS or iOS
+    if (g_lib STREQUAL "nanovg" AND CMAKE_SYSTEM_NAME MATCHES "(Darwin)|(iOS)")
+      message(NOTICE "Using Metal instead of ${g_back} because NanoVG requires it on MacOS/iOS")
+      set(g_back "metal")
+    endif()
+    # Set the default backend.
+    if (g_back STREQUAL "auto")
+      set(g_back "${PD_${g_lib}_auto}")
+    endif()
+    # Check that the backend is valid.
+    set(_choices "${PD_${g_lib}_choices}")
+    if (NOT g_back IN_LIST _choices)
+      message(FATAL_ERROR "Invalid backend for ${g_lib} \"${g_back}\" - choices are ${_choices}")
+    endif()
+    # Metal only works on Apple systems.
+    if (NOT CMAKE_SYSTEM_NAME MATCHES "(Darwin)|(iOS)" AND g_back STREQUAL "metal")
+      message(FATAL_ERROR "The Metal backend is only valid on MacOS/iOS")
+    endif()
+
+    set(${OUT}_gui_library "${g_lib}" PARENT_SCOPE)
+    set(${OUT}_gui_backend "${g_back}" PARENT_SCOPE)
+  endif()
+
+  if (a13_CATEGORY)
+    set(out_category_clap "")
+    bn_setif(out_category_clap "${a13_CATEGORY}" IF a13_CATEGORY IN_LIST PD_clap_category_list)
+    string(JSON out_category_vst3 GET "${PD_vst3_category_mapping}" "${a13_CATEGORY}")
+    string(JSON out_category_lv2 GET "${PD_lv2_category_mapping}" "${a13_CATEGORY}")
+    set(${OUT}_category_vst3 "${out_category_vst3}" PARENT_SCOPE)
+    set(${OUT}_category_lv2 "${out_category_lv2}" PARENT_SCOPE)
+    set(${OUT}_category_clap "${out_category_clap}" PARENT_SCOPE)
+  endif()
+
+  if(a13_VERSION)
+    string(REPLACE "." ";" version_list "${a13_VERSION}")
+    # Append so we know we've got at least 3 list items
+    set(version_list "${version_list};0;0;0")
+    list(POP_FRONT version_list v_major v_minor v_patch)
+    # Format the string as hex using Python
+    set(hex_fmt_cmd "\
+    ver = [${v_major},${v_minor},${v_patch}]; \
+    print(f'0x{ver[0]:04x}{ver[1]:02x}{ver[2]:02x}'); \
+    ")
+    execute_process(
+      COMMAND ${IPLUG_PYENV_EXECUTABLE} -c "${hex_fmt_cmd}"
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+      COMMAND_ERROR_IS_FATAL ANY
+      OUTPUT_VARIABLE out_version_hex
+    )
+    set(${OUT}_version_hex "${out_version_hex}" PARENT_SCOPE)
+  endif()
+endfunction()
+
+

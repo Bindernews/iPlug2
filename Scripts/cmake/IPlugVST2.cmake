@@ -6,9 +6,16 @@ set(VST2_SDK "${IPLUG2_SDK_PATH}/Dependencies/IPlug/VST2_SDK" CACHE PATH "VST2 S
 # Check to make sure we have at least one of the files we need.
 if (NOT EXISTS "${VST2_SDK}/aeffectx.h")
   set(IPlugVST2_FOUND FALSE CACHE INTERNAL "")
-  message(WARNING "VST2 SDK not found or missing files.")
+  set(IPlugVST2_ERROR "VST2 SDK not found or missing files")
   return()
 endif()
+
+set(_suffix "")
+bn_case(_suffix "${CMAKE_SYSTEM_NAME}"
+  "Windows" ".dll"
+  "Darwin"  ".vst"
+  "Linux"   ".so"
+)
 
 iplug_format_helper(
   SETUP
@@ -25,10 +32,7 @@ iplug_format_helper(
     "Windows" "$ENV{ProgramFiles}/Steinberg/VstPlugins"
     "Darwin"  "/Library/Audio/Plug-Ins/VST"
     "Linux"   "/usr/local/lib/vst"
-  SUFFIX
-    "Windows" ".dll"
-    "Darwin"  ".vst"
-    "Linux"   ".so"
+  SUFFIX "${_suffix}"
   CUSTOM_XML ""
 )
 

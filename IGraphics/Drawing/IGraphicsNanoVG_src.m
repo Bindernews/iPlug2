@@ -14,6 +14,7 @@
 
 #if defined IGRAPHICS_NANOVG
   #if defined IGRAPHICS_METAL
+//    #error Including nanovg_mtl.m
     #include "nanovg_mtl.m"
   #endif
   #if defined IGRAPHICS_FREETYPE

@@ -734,10 +734,13 @@ void IGraphicsMac::DeactivateGLContext()
   [pView deactivateGLContext];
 }
 
-#if defined IGRAPHICS_NANOVG
-  #include "Drawing/IGraphicsNanoVG.cpp"
-#elif defined IGRAPHICS_SKIA
-  #include "Drawing/IGraphicsSkia.cpp"
-#else
-  #error Either NO_IGRAPHICS or one and only one choice of graphics library must be defined!
+// If built with CMake, it's a separate library.
+#if !defined(BUILT_WITH_CMAKE)
+  #if defined IGRAPHICS_NANOVG
+    #include "Drawing/IGraphicsNanoVG.cpp"
+  #elif defined IGRAPHICS_SKIA
+    #include "Drawing/IGraphicsSkia.cpp"
+  #else
+    #error Either NO_IGRAPHICS or one and only one choice of graphics library must be defined!
+  #endif
 #endif

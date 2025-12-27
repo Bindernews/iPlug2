@@ -23,6 +23,9 @@ SOFTWARE.
 
 cmake_minimum_required(VERSION 3.20)
 include_guard(GLOBAL)
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.31")
+  cmake_policy(SET CMP0174 NEW)
+endif()
 
 set(
   BN_RESOURCE_PROPERTY "RESOURCES" CACHE INTERNAL
@@ -43,6 +46,41 @@ macro(bn_tern VAR val_true val_false)
     set(${VAR} ${val_false})
   endif()
 endmacro()
+
+macro(bn_setif VAR value_true IF)
+  if(${ARGN})
+    set(${VAR} ${value_true})
+  endif()
+endmacro()
+
+function(bn_check_type OUT)
+  cmake_parse_arguments(
+    PARSE_ARGV 1 bn31
+    "" "INT;BOOL;VERSION;ERROR;FATAL;WARNING" ""
+  )
+  set(bn31_ok FALSE)
+  if(DEFINED bn31_INT)
+    bn_setif(bn31_ok TRUE IF "${bn31_INT}" MATCHES "^([0-9]+|0x[0-9A-Fa-f]+)$")
+  elseif(DEFINED bn31_BOOL)
+    set(bool_strings 1 ON YES TRUE Y 0 OFF NO FALSE N IGNORE NOTFOUND)
+    bn_setif(bn31_ok TRUE IF bn31_BOOL IN_LIST bool_strings OR "${bn31_BOOL}" MATCHES "-NOTFOUND$")
+  elseif(DEFINED bn31_VERSION)
+    bn_setif(bn31_ok TRUE IF "${bn31_VERSION}" MATCHES "^[0-9]+(\.[0-9]+)*$")
+  else()
+    message(FATAL_ERROR "Invalid TYPE argument")
+  endif()
+  set(${OUT} ${bn31_ok} PARENT_SCOPE)
+  if(NOT ${bn31_ok})
+    if("${bn31_FATAL}" MATCHES ".+")
+      message(FATAL_ERROR "${bn31_FATAL}")
+    elseif("${bn31_ERROR}" MATCHES ".+")
+      message(SEND_ERROR "${bn31_ERROR}")
+    elseif("${bn31_WARNING}" MATCHES ".+")
+      message(WARNING "${bn31_WARNING}")
+    endif()
+  endif()
+endfunction()
+
 
 #[===[.rst
 Sets `VAR` to the first argument that is not "NOTFOUND" or an empty string.

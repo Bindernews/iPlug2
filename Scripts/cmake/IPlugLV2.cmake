@@ -19,6 +19,12 @@ if (NOT LV2_SDK_PATH)
   return()
 endif()
 
+bn_case(_suffix "${CMAKE_SYSTEM_NAME}"
+  "Windows" ".dll"
+  "Darwin"  ".dylib"
+  "Linux"   ".so"
+)
+
 iplug_format_helper(
   SETUP
   FORMAT lv2
@@ -34,10 +40,7 @@ iplug_format_helper(
     "Windows" "$ENV{COMMONPROGRAMFILES}/LV2"
     "Darwin"  "/Library/Audio/Plug-Ins/LV2"
     "Linux"   "/usr/local/lib/lv2" # Or /usr/lib/lv2
-  SUFFIX
-    "Windows" ".dll"
-    "Darwin"  ".dylib"
-    "Linux"   ".so"
+  SUFFIX "${_suffix}"
   RESOURCE_METHOD
     "Windows" "embed"
 

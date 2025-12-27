@@ -132,7 +132,7 @@ def parse_version(s: str) -> 'list[int]':
       pass
   while len(result) < 4:
     result.append(0)
-  return result  
+  return result
 
 def version_to_hex(ver: 'list[int]') -> 'str':
   # Use two hex digits for major version, and ignore tweak.

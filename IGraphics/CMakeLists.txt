@@ -1,24 +1,13 @@
 cmake_minimum_required(VERSION 3.24)
 include(FetchContent)
 
-# Set SDL options before making it available.
-set(SDL_SHARED OFF CACHE BOOL "")
-set(SDL_STATIC ON CACHE BOOL "")
-set(SDL_WAYLAND OFF CACHE BOOL "")
-set(SDL_STATIC_PIC ON CACHE BOOL "")
-set(BUILD_SHARED_LIBS OFF CACHE BOOL "")
-set(BUILD_STATIC_LIBS ON CACHE BOOL "")
-
-
 FetchContent_Declare(
     SDL3
     GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-#    GIT_TAG release-3.2.16
-    GIT_TAG 0f061ff154dafb2f65fd882aa69beb119f99318d
+#    GIT_TAG release-3.2.28
+    GIT_TAG 7f3ae3d57459e59943a4ecfefc8f6277ec6bf540
     SOURCE_DIR "${IPLUG2_SDK_PATH}/Dependencies/sdl3"
 )
-FetchContent_MakeAvailable(SDL3)
-set_target_properties(SDL3-static PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 set(WDL_DIR ${IPLUG2_SDK_PATH}/WDL)
 if (IPLUG_OS MATCHES "Linux")
@@ -34,26 +23,31 @@ add_subdirectory(${deps_dir}/yoga ${CMAKE_CURRENT_BINARY_DIR}/yoga)
 # iPlug2_IGraphicsCore #
 ########################
 
-set(_def
-  "IPLUG_EDITOR=1"
-  BUILT_WITH_CMAKE
+add_library(iPlug2_IGraphicsCore INTERFACE)
+bn_target_add(
+  iPlug2_IGraphicsCore INTERFACE
+  DEFINE
+    "IPLUG_EDITOR=1"
+    "BUILT_WITH_CMAKE"
+  LINK
+    iPlug2_Core
+  INCLUDE
+    # IGraphics
+    ${cwd}
+    ${cwd}/Controls
+    ${cwd}/Extras
+    ${deps_dir}/NanoSVG/src
+    ${deps_dir}/NanoVG/src
+    ${deps_dir}/STB
+    ${deps_dir}/imgui
+    ${deps_dir}/imgui/examples
+    ${IPLUG2_SDK_PATH}/Dependencies/Build/src
+    ${IPLUG2_SDK_PATH}/Dependencies/Build/src/freetype/include
 )
-set(_lib
-  iPlug2_Core
-)
-set(_inc
-  # IGraphics
-  ${cwd}
-  ${cwd}/Controls
-  ${cwd}/Extras
-  ${deps_dir}/NanoSVG/src
-  ${deps_dir}/NanoVG/src
-  ${deps_dir}/STB
-  ${deps_dir}/imgui
-  ${deps_dir}/imgui/examples
-  ${IPLUG2_SDK_PATH}/Dependencies/Build/src
-  ${IPLUG2_SDK_PATH}/Dependencies/Build/src/freetype/include
-)
+
+set(_def "")
+set(_lib "")
+set(_inc "")
 set(_src
   ${cwd}/IControl.cpp
   ${cwd}/IControl.h
@@ -86,7 +80,19 @@ if (IPLUG_OS MATCHES "Windows")
     ${cwd}/Platforms/IGraphicsWinFonts.h
   )
 
-elseif (IPLUG_OS MATCHES "Linux")
+elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
+
+  # Set SDL options before making it available.
+  set(SDL_SHARED OFF CACHE BOOL "")
+  set(SDL_STATIC ON CACHE BOOL "")
+  set(SDL_WAYLAND OFF CACHE BOOL "")
+  set(SDL_STATIC_PIC ON CACHE BOOL "")
+  set(BUILD_SHARED_LIBS OFF CACHE BOOL "")
+  set(BUILD_STATIC_LIBS ON CACHE BOOL "")
+
+  FetchContent_MakeAvailable(SDL3)
+  set_target_properties(SDL3-static PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
   pkg_check_modules(
     X11Libraries REQUIRED IMPORTED_TARGET
     "freetype2"
@@ -133,8 +139,8 @@ elseif (IPLUG_OS MATCHES "Linux")
     ${cwd}/Platforms/SDL_events.hpp
     ${cwd}/Platforms/IGraphicsLinux.cpp
     ${cwd}/Platforms/IGraphicsLinux.h
-    ${cwd}/Platforms/PlatformX11.cpp
-    ${cwd}/Platforms/PlatformX11.hpp
+    # ${cwd}/Platforms/PlatformX11.cpp
+    # ${cwd}/Platforms/PlatformX11.hpp
   )
   list(APPEND _inc
     ${WDL_DIR}
@@ -160,7 +166,7 @@ elseif (IPLUG_OS MATCHES "Darwin")
   list(APPEND _opt "-Wno-deprecated-declarations")
 endif()
 
-add_library(iPlug2_IGraphicsCore INTERFACE)
+
 iplug_target_add(iPlug2_IGraphicsCore INTERFACE
   DEFINE ${_def}
   INCLUDE ${_inc}
@@ -253,43 +259,82 @@ target_compile_definitions(${tgt} INTERFACE "IGRAPHICS_GL3")
 # NanoVG #
 ##########
 
-set(tgt iPlug2_gui_nanovg)
-add_library(${tgt} INTERFACE)
+add_library(iPlug2_gui_nanovg_core INTERFACE)
 bn_target_add(
-  ${tgt} INTERFACE
+  iPlug2_gui_nanovg_core INTERFACE
   DEFINE
     "IGRAPHICS_NANOVG"
-  LINK
-    iPlug2_IGraphicsCore
+  SOURCE
+    ${cwd}/Drawing/IGraphicsNanoVG.cpp
+  INCLUDE
+    ${deps_dir}/NanoVG/src
+    ${deps_dir}/NanoSVG/src
 )
 
-if (IPLUG_OS MATCHES "Darwin")
-  # Prefer MetalNanoVG on macOS/iOS
-  set(nvg_dir ${deps_dir}/MetalNanoVG)
+add_library(iPlug2_gui_nanovg_gl2 INTERFACE)
+bn_target_add(
+  iPlug2_gui_nanovg_gl2 INTERFACE
+  LINK
+    iPlug2_IGraphicsCore
+    iPlug2_gui_nanovg_core
+    iPlug2_gl2
+)
+
+add_library(iPlug2_gui_nanovg_gl3 INTERFACE)
+bn_target_add(
+  iPlug2_gui_nanovg_gl3 INTERFACE
+  LINK
+    iPlug2_IGraphicsCore
+    iPlug2_gui_nanovg_core
+    iPlug2_gl3
+)
+
+# NanoVG metal is only available on MacOS/iOS
+if (CMAKE_SYSTEM_NAME MATCHES "(Darwin|iOS)")
+
+  # Static library is required so we can set source properties.
+  add_library(iPlug2_NanoVG_MetalStatic STATIC EXCLUDE_FROM_ALL)
   bn_target_add(
-    ${tgt} INTERFACE
-    INCLUDE ${nvg_dir}/src
-    DEFINE "IGRAPHICS_METAL"
-    LINK iPlug2_DesktopGL_Base
-  )
-else()
-  # Link to normal NanoVG
-  set(sdk ${deps_dir}/NanoVG/src)
-  bn_target_add(
-    ${tgt} INTERFACE
+    iPlug2_NanoVG_MetalStatic PRIVATE
     INCLUDE
-      ${deps_dir}/NanoVG/src
+      ${deps_dir}/MetalNanoVG/src
+      ${deps_dir}/glad_GL3/include
+    SOURCE
+      ${cwd}/Drawing/IGraphicsNanoVG_src.m
+    DEFINE
+      "IGRAPHICS_NANOVG"
+      "IGRAPHICS_METAL"
+    LINK
+      iPlug2_gui_nanovg_core
+      iPlug2_IGraphicsCore
+      iPlug2_Definitions
+  )
+  set_property(
+    SOURCE ${cwd}/Drawing/IGraphicsNanoVG_src.m
+    APPEND PROPERTY COMPILE_FLAGS "-fobjc-arc"
+  )
+  set_property(
+    SOURCE
+      ${cwd}/Drawing/IGraphicsNanoVG.cpp
+    PROPERTY
+      LANGUAGE "OBJCXX"
+  )
+
+  add_library(iPlug2_gui_nanovg_metal INTERFACE)
+  bn_target_add(
+    iPlug2_gui_nanovg_metal INTERFACE
+    DEFINE
+      "IGRAPHICS_NANOVG"
+      "IGRAPHICS_METAL"
+    INCLUDE
+      ${deps_dir}/MetalNanoVG/src
       ${deps_dir}/NanoSVG/src
-    # SOURCE
-      # ${sdk}/nanovg.c
-      # ${sdk}/fontstash.h
-      # ${sdk}/nanovg_gl_utils.h
-      # ${sdk}/nanovg_gl.h
-      # ${sdk}/nanovg.h
-      # ${sdk}/stb_image.h
-      # ${sdk}/stb_truetype.h
-      # ${cwd}/Drawing/IGraphicsNanoVG.cpp
-    )
+    LINK
+      iPlug2_IGraphicsCore
+      iPlug2_NanoVG_MetalStatic
+      "-framework Metal"
+      "-framework MetalKit"
+  )
 endif()
 
 #######################

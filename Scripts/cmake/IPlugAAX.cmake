@@ -5,7 +5,7 @@ set(IPLUG2_AAX_ICON "${AAX_SDK_PATH}/Utilities/PlugIn.ico" CACHE FILEPATH "Path 
 
 if (NOT EXISTS "${AAX_SDK_PATH}/Interfaces/AAX.h")
   set(IPlugAAX_FOUND OFF)
-  set(IPlugAAX_ERROR "AAX sdk does not contain required files, likely incorrect.")
+  set(IPlugAAX_ERROR "AAX sdk does not contain required files")
   return()
 endif()
 

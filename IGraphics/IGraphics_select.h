@@ -44,6 +44,7 @@
         #include <OpenGL/gl.h>
       #elif defined IGRAPHICS_GL3
         #include <OpenGL/gl3.h>
+        // #include <glad/glad.h>
       #endif
     #elif defined OS_LINUX
       #include <glad/glad.h>

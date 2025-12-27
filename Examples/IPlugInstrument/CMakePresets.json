@@ -7,28 +7,45 @@
   },
   "configurePresets": [
     {
+      "name": "default-common",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "IPLUG_APP_JACK": "OFF",
+        "IPLUG_REQUIRE_APP": true,
+        "IPLUG_REQUIRE_CLAP": true,
+        "CMAKE_BUILD_TYPE": "Debug",
+        "IPLUG2_SDK_PATH": "${sourceDir}/../../"
+      }
+    },
+    {
       "name": "default-linux",
       "displayName": "Default Configuration (Linux)",
-      "generator": "Ninja",
+      "inherits": "default-common",
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
         "rhs": "Linux"
       },
-      "binaryDir": "${sourceDir}/build-linux/",
-      "cacheVariables": {
-        "IPLUG_APP_JACK": "OFF",
-        "CMAKE_BUILD_TYPE": "Debug"
-      }
+      "binaryDir": "${sourceDir}/build-linux/"
     },
     {
       "name": "default-windows",
       "displayName": "Default Configuration (Windows)",
+      "inherits": "default-common",
       "generator": "Visual Studio 17 2022",
-      "binaryDir": "${sourceDir}/build-default/",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug"
-      }
+      "binaryDir": "${sourceDir}/build-win/"
+    },
+    {
+      "name": "default-macos",
+      "displayName": "Default Configuration (MacOS)",
+      "inherits": "default-common",
+      "generator": "Unix Makefiles",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
+      "binaryDir": "${sourceDir}/build-macos/"
     },
     {
       "name": "web",

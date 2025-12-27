@@ -30,10 +30,7 @@ iplug_format_helper(
     "Windows" "$ENV{COMMONPROGRAMFILES}/CLAP"
     "Darwin"  "/Library/Audio/Plug-Ins/CLAP"
     "Linux"   "/usr/local/lib/clap" # Or /usr/lib/clap
-  SUFFIX
-    "Windows" ".clap"
-    "Darwin"  ".clap"
-    "Linux"   ".clap"
+  SUFFIX ".clap"
   CUSTOM_XML ""
   INSTALL_SUBDIR "\${plugin_name}"
 )

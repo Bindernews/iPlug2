@@ -59,6 +59,32 @@ endif()
 # iPlug2 Core Interface #
 #########################
 
+# Shorthand for absolute path to CMAKE_CURRENT_LIST_DIR
+set(cwd ${CMAKE_CURRENT_LIST_DIR})
+
+add_library(iPlug2_Definitions INTERFACE)
+if(CMAKE_SYSTEM_NAME MATCHES "Darwin")
+  # Force-include the prefix header on ObjC/ObjC++ sources
+  # The Xcode generator doesn't always properly map COMPILE_LANGUAGE:OBJCXX to
+  # OTHER_CPLUSPLUSFLAGS, so we apply to all C-family languages.
+  # The prefix header is guarded by #ifdef __OBJC__ so it's safe for C/C++ files.
+  target_compile_options(
+    iPlug2_Definitions INTERFACE
+    "$<$<COMPILE_LANGUAGE:C>:SHELL:-include ${cwd}/IPlugOBJCPrefix.pch>"
+    "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include ${cwd}/IPlugOBJCPrefix.pch>"
+    "$<$<COMPILE_LANGUAGE:OBJC>:SHELL:-include ${cwd}/IPlugOBJCPrefix.pch>"
+    "$<$<COMPILE_LANGUAGE:OBJCXX>:SHELL:-include ${cwd}/IPlugOBJCPrefix.pch>"
+  )
+endif()
+if(APPLE)
+  target_compile_definitions(
+    iPlug2_Definitions INTERFACE
+    "OBJC_PREFIX=v${IPLUG2_PLUGIN_NAME}"
+    "SWELL_APP_PREFIX=Swell_v${IPLUG2_PLUGIN_NAME}"
+  )
+endif()
+
+
 # Core iPlug2 interface. All targets MUST link to this.
 add_library(iPlug2_Core INTERFACE)
 
@@ -69,8 +95,6 @@ set(IPLUG_DEPS ${IPLUG2_SDK_PATH}/Dependencies/IPlug)
 set(IGRAPHICS_DEPS ${IPLUG2_SDK_PATH}/Dependencies/IGraphics)
 set(BUILD_DEPS ${IPLUG2_SDK_PATH}/Dependencies/Build)
 
-set(cwd ${CMAKE_CURRENT_LIST_DIR})
-
 # Make sure we define DEBUG for debug builds
 set(_def
   # Required for SWELL and MSVC builds
@@ -78,7 +102,9 @@ set(_def
   $<$<CONFIG:Debug>:_DEBUG>
 )
 set(_opt "")
-set(_lib "")
+set(_lib
+  iPlug2_Definitions
+)
 set(_inc
   ${cwd}
   ${cwd}/Extras
@@ -117,14 +143,14 @@ set(_static_src
 )
 
 # Platform Settings
-if (IPLUG_OS MATCHES "Windows")
+if (CMAKE_SYSTEM_NAME MATCHES "Windows")
   list(APPEND _lib
     "Shlwapi.lib"
     "comctl32.lib"
     "wininet.lib"
   )
 
-elseif (IPLUG_OS MATCHES "Linux")
+elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
   list(APPEND _inc ${WDL_DIR}/swell)
   list(APPEND _lib "pthread" "rt")
   list(APPEND _opt "-Wno-multichar")
@@ -134,7 +160,7 @@ elseif (IPLUG_OS MATCHES "Linux")
     ${cwd}/IPlugTaskThread.cpp
   )
 
-elseif (IPLUG_OS MATCHES "Darwin")
+elseif (CMAKE_SYSTEM_NAME MATCHES "Darwin")
   list(APPEND _static_src
     ${IPLUG_SRC}/IPlugPaths.mm)
   list(APPEND _inc
@@ -145,14 +171,22 @@ elseif (IPLUG_OS MATCHES "Darwin")
     "-framework CoreFoundation"
     "-framework CoreData"
     "-framework Foundation"
-    "-framework CoreServices")
+    "-framework CoreServices"
+    "-framework Accelerate"
+  )
   list(APPEND _opts
     "-Wno-deprecated-declarations"
     "-Wno-c++11-narrowing")
 endif()
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-  list(APPEND _def "_CRT_SECURE_NO_WARNINGS" "_CRT_SECURE_NO_DEPRECATE" "_CRT_NONSTDC_NO_DEPRECATE" "NOMINMAX" "_MBCS")
+  list(APPEND _def
+    "_CRT_SECURE_NO_WARNINGS"
+    "_CRT_SECURE_NO_DEPRECATE"
+    "_CRT_NONSTDC_NO_DEPRECATE"
+    "NOMINMAX"
+    "_MBCS"
+  )
   list(APPEND _opt
     # Warning options
     "/wd4996" "/wd4250" "/wd4018" "/wd4267" "/wd4068"
@@ -162,7 +196,7 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
 endif()
 
 # Set certain compiler flags, specifically errors if there are undefined symbols
-if (CMAKE_CXX_COMPILER_ID MATCHES "(Clang)|(GNU)" AND NOT IPLUG_OS MATCHES "Emscripten")
+if (CMAKE_CXX_COMPILER_ID MATCHES "(GNU)" AND NOT IPLUG_OS MATCHES "Emscripten")
   list(APPEND _opt "-Wl,--no-undefined")
 endif()
 
